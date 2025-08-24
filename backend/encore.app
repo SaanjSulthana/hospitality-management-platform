@@ -1,0 +1,1 @@
+{"id": "hospitality-management-platform-cr8i", "lang": "typescript"}

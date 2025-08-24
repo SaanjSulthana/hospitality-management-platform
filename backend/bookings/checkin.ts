@@ -1,0 +1,79 @@
+import { api, APIError } from "encore.dev/api";
+import { getAuthData } from "~encore/auth";
+import { bookingsDB } from "./db";
+import { requireRole } from "../auth/middleware";
+
+export interface CheckinRequest {
+  id: number;
+}
+
+export interface CheckinResponse {
+  success: boolean;
+  bookingId: number;
+  status: string;
+}
+
+// Checks in a guest for their booking
+export const checkin = api<CheckinRequest, CheckinResponse>(
+  { auth: true, expose: true, method: "POST", path: "/bookings/:id/checkin" },
+  async (req) => {
+    const authData = getAuthData()!;
+    requireRole('CORP_ADMIN', 'REGIONAL_MANAGER', 'PROPERTY_MANAGER', 'DEPT_HEAD', 'STAFF')(authData);
+
+    const { id } = req;
+
+    // Get booking and check access
+    const bookingRow = await bookingsDB.queryRow`
+      SELECT b.id, b.org_id, b.property_id, b.status, b.checkin_date, p.region_id
+      FROM bookings b
+      JOIN properties p ON b.property_id = p.id
+      WHERE b.id = ${id} AND b.org_id = ${authData.orgId}
+    `;
+
+    if (!bookingRow) {
+      throw APIError.notFound("Booking not found");
+    }
+
+    // Check role-based access
+    if (authData.role === 'REGIONAL_MANAGER' && authData.regionId && bookingRow.region_id !== authData.regionId) {
+      throw APIError.permissionDenied("No access to this booking");
+    }
+
+    if (['PROPERTY_MANAGER', 'DEPT_HEAD', 'STAFF'].includes(authData.role)) {
+      const accessCheck = await bookingsDB.queryRow`
+        SELECT 1 FROM user_properties WHERE user_id = ${parseInt(authData.userID)} AND property_id = ${bookingRow.property_id}
+      `;
+      if (!accessCheck) {
+        throw APIError.permissionDenied("No access to this booking");
+      }
+    }
+
+    // Validate booking status
+    if (bookingRow.status !== 'confirmed') {
+      throw APIError.failedPrecondition(`Cannot check in booking with status: ${bookingRow.status}`);
+    }
+
+    // Check if check-in date is valid (today or past)
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const checkinDate = new Date(bookingRow.checkin_date);
+    checkinDate.setHours(0, 0, 0, 0);
+
+    if (checkinDate > today) {
+      throw APIError.failedPrecondition("Cannot check in before the check-in date");
+    }
+
+    // Update booking status
+    await bookingsDB.exec`
+      UPDATE bookings 
+      SET status = 'checked_in'
+      WHERE id = ${id}
+    `;
+
+    return {
+      success: true,
+      bookingId: id,
+      status: 'checked_in',
+    };
+  }
+);

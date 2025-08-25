@@ -1,25 +1,111 @@
 import React, { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../contexts/AuthContext';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Textarea } from '@/components/ui/textarea';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { useToast } from '@/components/ui/use-toast';
 import { CheckSquare, Clock, AlertCircle, Plus, Search, User, Calendar } from 'lucide-react';
 
 export default function TasksPage() {
   const { getAuthenticatedBackend } = useAuth();
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [priorityFilter, setPriorityFilter] = useState<string>('all');
+  const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
+  const [taskForm, setTaskForm] = useState({
+    propertyId: '',
+    type: 'maintenance' as 'maintenance' | 'housekeeping' | 'service',
+    title: '',
+    description: '',
+    priority: 'med' as 'low' | 'med' | 'high',
+    dueAt: '',
+    estimatedHours: '',
+  });
 
   const { data: tasks, isLoading } = useQuery({
     queryKey: ['tasks'],
     queryFn: async () => {
       const backend = getAuthenticatedBackend();
       return backend.tasks.list();
+    },
+  });
+
+  const { data: properties } = useQuery({
+    queryKey: ['properties'],
+    queryFn: async () => {
+      const backend = getAuthenticatedBackend();
+      return backend.properties.list();
+    },
+  });
+
+  const createTaskMutation = useMutation({
+    mutationFn: async (data: any) => {
+      const backend = getAuthenticatedBackend();
+      return backend.tasks.create({
+        propertyId: parseInt(data.propertyId),
+        type: data.type,
+        title: data.title,
+        description: data.description || undefined,
+        priority: data.priority,
+        dueAt: data.dueAt ? new Date(data.dueAt) : undefined,
+        estimatedHours: data.estimatedHours ? parseFloat(data.estimatedHours) : undefined,
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['tasks'] });
+      setIsCreateDialogOpen(false);
+      setTaskForm({
+        propertyId: '',
+        type: 'maintenance',
+        title: '',
+        description: '',
+        priority: 'med',
+        dueAt: '',
+        estimatedHours: '',
+      });
+      toast({
+        title: "Task created",
+        description: "The task has been created successfully.",
+      });
+    },
+    onError: (error: any) => {
+      console.error('Create task error:', error);
+      toast({
+        variant: "destructive",
+        title: "Failed to create task",
+        description: error.message || "Please try again.",
+      });
+    },
+  });
+
+  const updateTaskStatusMutation = useMutation({
+    mutationFn: async ({ id, status }: { id: number; status: string }) => {
+      const backend = getAuthenticatedBackend();
+      return backend.tasks.updateStatus({ id, status });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['tasks'] });
+      toast({
+        title: "Task updated",
+        description: "The task status has been updated.",
+      });
+    },
+    onError: (error: any) => {
+      console.error('Update task error:', error);
+      toast({
+        variant: "destructive",
+        title: "Failed to update task",
+        description: error.message || "Please try again.",
+      });
     },
   });
 
@@ -78,6 +164,22 @@ export default function TasksPage() {
     in_progress: filteredTasks.filter(task => task.status === 'in_progress'),
     blocked: filteredTasks.filter(task => task.status === 'blocked'),
     done: filteredTasks.filter(task => task.status === 'done'),
+  };
+
+  const handleCreateTask = () => {
+    if (!taskForm.propertyId || !taskForm.title) {
+      toast({
+        variant: "destructive",
+        title: "Missing fields",
+        description: "Please fill in the required fields.",
+      });
+      return;
+    }
+    createTaskMutation.mutate(taskForm);
+  };
+
+  const handleStatusChange = (taskId: number, newStatus: string) => {
+    updateTaskStatusMutation.mutate({ id: taskId, status: newStatus });
   };
 
   if (isLoading) {
@@ -155,9 +257,17 @@ export default function TasksPage() {
           </div>
 
           <div className="flex items-center justify-between">
-            <Badge className={getStatusColor(task.status)}>
-              {task.status.replace('_', ' ')}
-            </Badge>
+            <Select value={task.status} onValueChange={(value) => handleStatusChange(task.id, value)}>
+              <SelectTrigger className="w-32">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="open">Open</SelectItem>
+                <SelectItem value="in_progress">In Progress</SelectItem>
+                <SelectItem value="blocked">Blocked</SelectItem>
+                <SelectItem value="done">Done</SelectItem>
+              </SelectContent>
+            </Select>
             <Button variant="outline" size="sm">
               View Details
             </Button>
@@ -175,10 +285,118 @@ export default function TasksPage() {
           <h1 className="text-3xl font-bold text-gray-900">Tasks</h1>
           <p className="text-gray-600">Manage and track operational tasks</p>
         </div>
-        <Button>
-          <Plus className="mr-2 h-4 w-4" />
-          Create Task
-        </Button>
+        <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
+          <DialogTrigger asChild>
+            <Button>
+              <Plus className="mr-2 h-4 w-4" />
+              Create Task
+            </Button>
+          </DialogTrigger>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Create New Task</DialogTitle>
+              <DialogDescription>
+                Create a new task for your property operations
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="property">Property *</Label>
+                <Select value={taskForm.propertyId} onValueChange={(value) => setTaskForm(prev => ({ ...prev, propertyId: value }))}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select property" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {properties?.properties.map((property) => (
+                      <SelectItem key={property.id} value={property.id.toString()}>
+                        {property.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="type">Type</Label>
+                  <Select value={taskForm.type} onValueChange={(value: any) => setTaskForm(prev => ({ ...prev, type: value }))}>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="maintenance">Maintenance</SelectItem>
+                      <SelectItem value="housekeeping">Housekeeping</SelectItem>
+                      <SelectItem value="service">Service</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="priority">Priority</Label>
+                  <Select value={taskForm.priority} onValueChange={(value: any) => setTaskForm(prev => ({ ...prev, priority: value }))}>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="low">Low</SelectItem>
+                      <SelectItem value="med">Medium</SelectItem>
+                      <SelectItem value="high">High</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="title">Title *</Label>
+                <Input
+                  id="title"
+                  value={taskForm.title}
+                  onChange={(e) => setTaskForm(prev => ({ ...prev, title: e.target.value }))}
+                  placeholder="Enter task title"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="description">Description</Label>
+                <Textarea
+                  id="description"
+                  value={taskForm.description}
+                  onChange={(e) => setTaskForm(prev => ({ ...prev, description: e.target.value }))}
+                  placeholder="Enter task description"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="dueAt">Due Date</Label>
+                  <Input
+                    id="dueAt"
+                    type="datetime-local"
+                    value={taskForm.dueAt}
+                    onChange={(e) => setTaskForm(prev => ({ ...prev, dueAt: e.target.value }))}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="estimatedHours">Estimated Hours</Label>
+                  <Input
+                    id="estimatedHours"
+                    type="number"
+                    step="0.5"
+                    value={taskForm.estimatedHours}
+                    onChange={(e) => setTaskForm(prev => ({ ...prev, estimatedHours: e.target.value }))}
+                    placeholder="0"
+                  />
+                </div>
+              </div>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setIsCreateDialogOpen(false)}>
+                Cancel
+              </Button>
+              <Button 
+                onClick={handleCreateTask}
+                disabled={createTaskMutation.isPending || !taskForm.propertyId || !taskForm.title}
+              >
+                {createTaskMutation.isPending ? 'Creating...' : 'Create Task'}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </div>
 
       {/* Filters */}
@@ -239,7 +457,7 @@ export default function TasksPage() {
                     : 'Get started by creating your first task'
                   }
                 </p>
-                <Button>
+                <Button onClick={() => setIsCreateDialogOpen(true)}>
                   <Plus className="mr-2 h-4 w-4" />
                   Create Task
                 </Button>

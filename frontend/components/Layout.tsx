@@ -39,6 +39,7 @@ const navigation = [
 
 export default function Layout({ children }: LayoutProps) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
   const { user, logout } = useAuth();
   const { theme } = useTheme();
   const { toast } = useToast();
@@ -46,13 +47,16 @@ export default function Layout({ children }: LayoutProps) {
   const navigate = useNavigate();
 
   const handleLogout = async () => {
+    if (isLoggingOut) return;
+    
+    setIsLoggingOut(true);
     try {
       await logout();
       toast({
         title: "Logged out successfully",
         description: "You have been signed out of your account.",
       });
-      navigate('/login');
+      navigate('/login', { replace: true });
     } catch (error) {
       console.error('Logout error:', error);
       toast({
@@ -60,6 +64,8 @@ export default function Layout({ children }: LayoutProps) {
         title: "Logout failed",
         description: "There was an error signing you out. Please try again.",
       });
+    } finally {
+      setIsLoggingOut(false);
     }
   };
 
@@ -130,10 +136,11 @@ export default function Layout({ children }: LayoutProps) {
           variant="ghost"
           size="sm"
           onClick={handleLogout}
+          disabled={isLoggingOut}
           className="w-full justify-start text-gray-600 hover:text-gray-900"
         >
           <LogOut className="mr-2 h-4 w-4" />
-          Sign out
+          {isLoggingOut ? 'Signing out...' : 'Sign out'}
         </Button>
       </div>
     </div>

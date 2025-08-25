@@ -5,7 +5,7 @@ import type { AuthData } from '~backend/auth/types';
 interface AuthContextType {
   user: AuthData | null;
   login: (email: string, password: string) => Promise<void>;
-  logout: () => void;
+  logout: () => Promise<void>;
   isLoading: boolean;
   getAuthenticatedBackend: () => typeof backend;
 }
@@ -63,11 +63,17 @@ export function AuthProvider({ children }: AuthProviderProps) {
     try {
       const refreshToken = localStorage.getItem('refreshToken');
       if (refreshToken) {
-        await backend.auth.logout({ refreshToken });
+        try {
+          await backend.auth.logout({ refreshToken });
+        } catch (error) {
+          console.error('Logout API call failed:', error);
+          // Continue with local logout even if API call fails
+        }
       }
     } catch (error) {
       console.error('Logout error:', error);
     } finally {
+      // Always clear local storage and state
       localStorage.removeItem('accessToken');
       localStorage.removeItem('refreshToken');
       setAccessToken(null);
@@ -90,7 +96,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
       return response.accessToken;
     } catch (error) {
       console.error('Token refresh failed:', error);
-      logout();
+      await logout();
       throw error;
     }
   };
@@ -124,7 +130,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
             setUser(meResponse.user);
           } catch (refreshError) {
             console.error('Auth initialization failed:', refreshError);
-            logout();
+            await logout();
           }
         }
       } catch (error) {

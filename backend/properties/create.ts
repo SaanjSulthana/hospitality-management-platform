@@ -63,6 +63,15 @@ export const create = api<CreatePropertyRequest, CreatePropertyResponse>(
           throw new Error("Failed to create property");
         }
 
+        // If a MANAGER creates a property, automatically grant them access to it.
+        if (authData.role === "MANAGER") {
+          await tx.exec`
+            INSERT INTO user_properties (user_id, property_id)
+            VALUES (${parseInt(authData.userID)}, ${propertyRow.id})
+            ON CONFLICT DO NOTHING
+          `;
+        }
+
         // Commit the transaction
         await tx.commit();
 

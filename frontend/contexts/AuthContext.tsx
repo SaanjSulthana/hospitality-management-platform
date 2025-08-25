@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import backend from '~backend/client';
 import type { AuthData } from '~backend/auth/types';
+import { useQueryClient } from '@tanstack/react-query';
 
 interface AuthContextType {
   user: AuthData | null;
@@ -28,6 +29,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const [user, setUser] = useState<AuthData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [accessToken, setAccessToken] = useState<string | null>(null);
+  const queryClient = useQueryClient();
 
   const getAuthenticatedBackend = () => {
     if (accessToken) {
@@ -42,6 +44,9 @@ export function AuthProvider({ children }: AuthProviderProps) {
     try {
       const response = await backend.auth.login({ email, password });
       
+      // Clear any previous cached data to avoid stale views after user switch
+      queryClient.clear();
+
       // Store tokens
       localStorage.setItem('accessToken', response.accessToken);
       localStorage.setItem('refreshToken', response.refreshToken);
@@ -78,6 +83,8 @@ export function AuthProvider({ children }: AuthProviderProps) {
       localStorage.removeItem('refreshToken');
       setAccessToken(null);
       setUser(null);
+      // Clear all cached queries so the next user/session gets fresh data
+      queryClient.clear();
     }
   };
 

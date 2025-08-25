@@ -66,16 +66,6 @@ export default function LoginPage() {
     }
   };
 
-  const handleAdminDemo = () => {
-    setEmail('admin@example.com');
-    setPassword('password123');
-  };
-
-  const handleManagerDemo = () => {
-    setEmail('manager@example.com');
-    setPassword('password123');
-  };
-
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
       <div className="max-w-md w-full space-y-8">
@@ -168,48 +158,6 @@ export default function LoginPage() {
                 )}
               </Button>
             </form>
-
-            <div className="mt-6">
-              <div className="relative">
-                <div className="absolute inset-0 flex items-center">
-                  <div className="w-full border-t border-gray-300" />
-                </div>
-                <div className="relative flex justify-center text-sm">
-                  <span className="px-2 bg-white text-gray-500">Demo accounts</span>
-                </div>
-              </div>
-
-              <div className="mt-4 space-y-2">
-                <Button
-                  variant="outline"
-                  className="w-full"
-                  onClick={handleAdminDemo}
-                  disabled={isLoading}
-                >
-                  Demo Admin Login
-                </Button>
-                <Button
-                  variant="outline"
-                  className="w-full"
-                  onClick={handleManagerDemo}
-                  disabled={isLoading}
-                >
-                  Demo Manager Login
-                </Button>
-              </div>
-            </div>
-
-            <div className="mt-6 text-center">
-              <p className="text-xs text-gray-500 mb-2">
-                Demo credentials:
-              </p>
-              <p className="text-xs text-gray-500">
-                Admin: admin@example.com / password123
-              </p>
-              <p className="text-xs text-gray-500">
-                Manager: manager@example.com / password123
-              </p>
-            </div>
 
             <div className="mt-6 text-center">
               <p className="text-sm text-gray-600">

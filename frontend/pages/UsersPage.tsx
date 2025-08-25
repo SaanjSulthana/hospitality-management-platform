@@ -12,6 +12,19 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { useToast } from '@/components/ui/use-toast';
 import { Users, Plus, Search, Mail, Calendar, UserPlus, Pencil } from 'lucide-react';
 
+type ListUsersResponse = {
+  users: {
+    id: number;
+    email: string;
+    role: 'ADMIN' | 'MANAGER';
+    displayName: string;
+    createdByUserId?: number;
+    createdByName?: string;
+    createdAt: Date;
+    lastLoginAt?: Date;
+  }[];
+};
+
 export default function UsersPage() {
   const { user, getAuthenticatedBackend } = useAuth();
   const { toast } = useToast();
@@ -33,7 +46,7 @@ export default function UsersPage() {
   const [editingPassword, setEditingPassword] = useState('');
   const [editingPropertyIds, setEditingPropertyIds] = useState<number[]>([]);
 
-  const { data: users, isLoading } = useQuery({
+  const { data: users, isLoading } = useQuery<ListUsersResponse>({
     queryKey: ['users'],
     queryFn: async () => {
       const backend = getAuthenticatedBackend();
@@ -56,8 +69,26 @@ export default function UsersPage() {
       const backend = getAuthenticatedBackend();
       return backend.users.create(userData);
     },
-    onSuccess: () => {
+    onSuccess: (created: any) => {
+      // Optimistically insert the newly created manager into the cache for instant UI feedback
+      queryClient.setQueryData<ListUsersResponse>(['users'], (old) => {
+        if (!old) return old;
+        const optimistic = {
+          id: created.id,
+          email: created.email,
+          role: created.role,
+          displayName: created.displayName,
+          createdByUserId: created.createdByUserId,
+          createdByName: user?.displayName,
+          createdAt: new Date(),
+          lastLoginAt: undefined,
+        };
+        return { users: [optimistic, ...old.users] };
+      });
+
+      // Trigger a refetch to ensure data consistency from the server
       queryClient.invalidateQueries({ queryKey: ['users'] });
+
       setIsCreateDialogOpen(false);
       setNewUser({
         email: '',
@@ -86,7 +117,23 @@ export default function UsersPage() {
       const backend = getAuthenticatedBackend();
       return backend.users.update(payload);
     },
-    onSuccess: () => {
+    onSuccess: (_res, variables) => {
+      // Optimistically update the cached list for immediate UI consistency
+      queryClient.setQueryData<ListUsersResponse>(['users'], (old) => {
+        if (!old) return old;
+        return {
+          users: old.users.map((u) =>
+            u.id === variables.id
+              ? {
+                  ...u,
+                  displayName: variables.displayName ?? u.displayName,
+                  email: variables.email ?? u.email,
+                }
+              : u
+          ),
+        };
+      });
+
       queryClient.invalidateQueries({ queryKey: ['users'] });
       toast({
         title: "User updated",

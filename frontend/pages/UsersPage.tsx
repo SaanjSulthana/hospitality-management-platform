@@ -10,7 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { useToast } from '@/components/ui/use-toast';
-import { Users, Plus, Search, Mail, Calendar, UserPlus, Pencil } from 'lucide-react';
+import { Users, Plus, Search, Mail, Calendar, UserPlus, Pencil, RefreshCw } from 'lucide-react';
 
 type ListUsersResponse = {
   users: {
@@ -46,15 +46,17 @@ export default function UsersPage() {
   const [editingPassword, setEditingPassword] = useState('');
   const [editingPropertyIds, setEditingPropertyIds] = useState<number[]>([]);
 
-  const { data: users, isLoading } = useQuery<ListUsersResponse>({
+  const { data: users, isLoading, refetch: refetchUsers } = useQuery<ListUsersResponse>({
     queryKey: ['users'],
     queryFn: async () => {
       const backend = getAuthenticatedBackend();
       return backend.users.list();
     },
     enabled: user?.role === 'ADMIN',
-    staleTime: 30000, // 30 seconds
+    staleTime: 10000, // Reduced to 10 seconds for more frequent updates
     gcTime: 300000, // 5 minutes
+    refetchOnMount: true,
+    refetchOnWindowFocus: true,
   });
 
   const { data: properties } = useQuery({
@@ -74,15 +76,15 @@ export default function UsersPage() {
       return backend.users.create(userData);
     },
     onSuccess: (createdUser) => {
-      // Invalidate and refetch users
-      queryClient.invalidateQueries({ queryKey: ['users'] });
+      // Force refetch to ensure we have the latest data
+      refetchUsers();
       
-      // Update the cache immediately with the new user
+      // Also update the cache immediately with the new user
       queryClient.setQueryData<ListUsersResponse>(['users'], (old) => {
         if (!old) return { users: [createdUser] };
         
         // Check if user already exists to avoid duplicates
-        const exists = old.users.some((u) => u.id === createdUser.id);
+        const exists = old.users.some((u) => u.id === createdUser.id || u.email === createdUser.email);
         if (exists) return old;
         
         const newUserData = {
@@ -114,10 +116,27 @@ export default function UsersPage() {
     },
     onError: (error: any) => {
       console.error('Create user error:', error);
+      
+      // Force refetch to ensure UI is in sync with database
+      refetchUsers();
+      
+      let errorMessage = "Please try again.";
+      if (error.message) {
+        if (error.message.includes('already exists')) {
+          errorMessage = "A user with this email already exists in your organization. Please check the user list or use a different email.";
+        } else if (error.message.includes('email')) {
+          errorMessage = "This email address is already in use.";
+        } else if (error.message.includes('password')) {
+          errorMessage = "Password must be at least 8 characters long.";
+        } else {
+          errorMessage = error.message;
+        }
+      }
+      
       toast({
         variant: "destructive",
         title: "Failed to create manager",
-        description: error.message || "Please try again.",
+        description: errorMessage,
       });
     },
   });
@@ -128,8 +147,8 @@ export default function UsersPage() {
       return backend.users.update(payload);
     },
     onSuccess: (result, variables) => {
-      // Invalidate and refetch users
-      queryClient.invalidateQueries({ queryKey: ['users'] });
+      // Force refetch to ensure we have the latest data
+      refetchUsers();
       
       // Update the specific user in cache
       queryClient.setQueryData<ListUsersResponse>(['users'], (old) => {
@@ -155,10 +174,21 @@ export default function UsersPage() {
     },
     onError: (error: any) => {
       console.error('Update user error:', error);
+      
+      // Force refetch on error
+      refetchUsers();
+      
+      let errorMessage = "Please try again.";
+      if (error.message && error.message.includes('already exists')) {
+        errorMessage = "This email address is already in use by another user.";
+      } else if (error.message) {
+        errorMessage = error.message;
+      }
+      
       toast({
         variant: "destructive",
         title: "Failed to update user",
-        description: error.message || "Please try again.",
+        description: errorMessage,
       });
     },
   });
@@ -169,7 +199,7 @@ export default function UsersPage() {
       return backend.users.assignProperties(payload);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['users'] });
+      refetchUsers();
       toast({
         title: "Assignments updated",
         description: "Property assignments have been saved.",
@@ -177,6 +207,7 @@ export default function UsersPage() {
     },
     onError: (error: any) => {
       console.error('Assign properties error:', error);
+      refetchUsers();
       toast({
         variant: "destructive",
         title: "Failed to update assignments",
@@ -213,10 +244,22 @@ export default function UsersPage() {
       toast({
         variant: "destructive",
         title: "Missing fields",
-        description: "Please fill in all fields.",
+        description: "Please fill in all required fields.",
       });
       return;
     }
+
+    // Check if email already exists in current user list
+    const emailExists = users?.users.some(u => u.email.toLowerCase() === newUser.email.toLowerCase());
+    if (emailExists) {
+      toast({
+        variant: "destructive",
+        title: "Email already exists",
+        description: "A user with this email already exists in your organization.",
+      });
+      return;
+    }
+
     createUserMutation.mutate(newUser);
   };
 
@@ -241,6 +284,14 @@ export default function UsersPage() {
     setEditingPropertyIds(prev =>
       prev.includes(pid) ? prev.filter(id => id !== pid) : [...prev, pid]
     );
+  };
+
+  const handleRefresh = () => {
+    refetchUsers();
+    toast({
+      title: "Refreshed",
+      description: "User list has been refreshed.",
+    });
   };
 
   // Only show to admins
@@ -292,88 +343,103 @@ export default function UsersPage() {
           <h1 className="text-3xl font-bold text-gray-900">Users</h1>
           <p className="text-gray-600">Manage team members and their roles</p>
         </div>
-        <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
-          <DialogTrigger asChild>
-            <Button>
-              <Plus className="mr-2 h-4 w-4" />
-              Create Manager
-            </Button>
-          </DialogTrigger>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>Create Manager Account</DialogTitle>
-              <DialogDescription>
-                Create a new manager account and assign properties.
-              </DialogDescription>
-            </DialogHeader>
-            <div className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="displayName">Full Name</Label>
-                <Input
-                  id="displayName"
-                  value={newUser.displayName}
-                  onChange={(e) => setNewUser(prev => ({ ...prev, displayName: e.target.value }))}
-                  placeholder="Enter full name"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="email">Email</Label>
-                <Input
-                  id="email"
-                  type="email"
-                  value={newUser.email}
-                  onChange={(e) => setNewUser(prev => ({ ...prev, email: e.target.value }))}
-                  placeholder="Enter email address"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="password">Password</Label>
-                <Input
-                  id="password"
-                  type="password"
-                  value={newUser.password}
-                  onChange={(e) => setNewUser(prev => ({ ...prev, password: e.target.value }))}
-                  placeholder="Enter password (min 8 characters)"
-                  minLength={8}
-                />
-              </div>
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={handleRefresh}>
+            <RefreshCw className="mr-2 h-4 w-4" />
+            Refresh
+          </Button>
+          <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
+            <DialogTrigger asChild>
+              <Button>
+                <Plus className="mr-2 h-4 w-4" />
+                Create Manager
+              </Button>
+            </DialogTrigger>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Create Manager Account</DialogTitle>
+                <DialogDescription>
+                  Create a new manager account and assign properties.
+                </DialogDescription>
+              </DialogHeader>
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="displayName">Full Name</Label>
+                  <Input
+                    id="displayName"
+                    value={newUser.displayName}
+                    onChange={(e) => setNewUser(prev => ({ ...prev, displayName: e.target.value }))}
+                    placeholder="Enter full name"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="email">Email</Label>
+                  <Input
+                    id="email"
+                    type="email"
+                    value={newUser.email}
+                    onChange={(e) => setNewUser(prev => ({ ...prev, email: e.target.value }))}
+                    placeholder="Enter email address"
+                  />
+                  {users?.users.some(u => u.email.toLowerCase() === newUser.email.toLowerCase()) && (
+                    <p className="text-sm text-red-600">This email is already in use</p>
+                  )}
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="password">Password</Label>
+                  <Input
+                    id="password"
+                    type="password"
+                    value={newUser.password}
+                    onChange={(e) => setNewUser(prev => ({ ...prev, password: e.target.value }))}
+                    placeholder="Enter password (min 8 characters)"
+                    minLength={8}
+                  />
+                </div>
 
-              <div className="space-y-2">
-                <Label>Assign Properties</Label>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-2 max-h-48 overflow-auto border rounded p-2">
-                  {properties?.properties.map((p) => (
-                    <label key={p.id} className="flex items-center gap-2 text-sm">
-                      <input
-                        type="checkbox"
-                        checked={newUser.propertyIds.includes(p.id)}
-                        onChange={() => {
-                          setNewUser(prev => ({
-                            ...prev,
-                            propertyIds: prev.propertyIds.includes(p.id)
-                              ? prev.propertyIds.filter(id => id !== p.id)
-                              : [...prev.propertyIds, p.id]
-                          }));
-                        }}
-                      />
-                      <span>{p.name}</span>
-                    </label>
-                  ))}
+                <div className="space-y-2">
+                  <Label>Assign Properties</Label>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2 max-h-48 overflow-auto border rounded p-2">
+                    {properties?.properties.map((p) => (
+                      <label key={p.id} className="flex items-center gap-2 text-sm">
+                        <input
+                          type="checkbox"
+                          checked={newUser.propertyIds.includes(p.id)}
+                          onChange={() => {
+                            setNewUser(prev => ({
+                              ...prev,
+                              propertyIds: prev.propertyIds.includes(p.id)
+                                ? prev.propertyIds.filter(id => id !== p.id)
+                                : [...prev.propertyIds, p.id]
+                            }));
+                          }}
+                        />
+                        <span>{p.name}</span>
+                      </label>
+                    ))}
+                  </div>
                 </div>
               </div>
-            </div>
-            <DialogFooter>
-              <Button variant="outline" onClick={() => setIsCreateDialogOpen(false)}>
-                Cancel
-              </Button>
-              <Button 
-                onClick={handleCreateUser}
-                disabled={createUserMutation.isPending || !newUser.email || !newUser.password || !newUser.displayName}
-              >
-                {createUserMutation.isPending ? 'Creating...' : 'Create Manager'}
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setIsCreateDialogOpen(false)}>
+                  Cancel
+                </Button>
+                <Button 
+                  onClick={handleCreateUser}
+                  disabled={
+                    createUserMutation.isPending || 
+                    !newUser.email || 
+                    !newUser.password || 
+                    !newUser.displayName ||
+                    users?.users.some(u => u.email.toLowerCase() === newUser.email.toLowerCase())
+                  }
+                >
+                  {createUserMutation.isPending ? 'Creating...' : 'Create Manager'}
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+        </div>
       </div>
 
       {/* Filters */}
@@ -411,10 +477,16 @@ export default function UsersPage() {
                 : 'Get started by creating your first manager'
               }
             </p>
-            <Button onClick={() => setIsCreateDialogOpen(true)}>
-              <Plus className="mr-2 h-4 w-4" />
-              Create Manager
-            </Button>
+            <div className="flex gap-2">
+              <Button variant="outline" onClick={handleRefresh}>
+                <RefreshCw className="mr-2 h-4 w-4" />
+                Refresh List
+              </Button>
+              <Button onClick={() => setIsCreateDialogOpen(true)}>
+                <Plus className="mr-2 h-4 w-4" />
+                Create Manager
+              </Button>
+            </div>
           </CardContent>
         </Card>
       ) : (
@@ -507,6 +579,9 @@ export default function UsersPage() {
                   value={editingEmail}
                   onChange={(e) => setEditingEmail(e.target.value)}
                 />
+                {users?.users.some(u => u.id !== editingUser.id && u.email.toLowerCase() === editingEmail.toLowerCase()) && (
+                  <p className="text-sm text-red-600">This email is already in use by another user</p>
+                )}
               </div>
               <div className="space-y-2">
                 <Label>New Password (optional)</Label>
@@ -542,6 +617,21 @@ export default function UsersPage() {
             <Button
               onClick={async () => {
                 if (!editingUser) return;
+                
+                // Check for email conflicts before saving
+                const emailConflict = users?.users.some(u => 
+                  u.id !== editingUser.id && u.email.toLowerCase() === editingEmail.toLowerCase()
+                );
+                
+                if (emailConflict) {
+                  toast({
+                    variant: "destructive",
+                    title: "Email conflict",
+                    description: "This email is already in use by another user.",
+                  });
+                  return;
+                }
+                
                 try {
                   await updateUserMutation.mutateAsync({
                     id: editingUser.id,
@@ -559,7 +649,13 @@ export default function UsersPage() {
                   // errors handled in mutations
                 }
               }}
-              disabled={updateUserMutation.isPending || assignPropertiesMutation.isPending || !editingDisplayName || !editingEmail}
+              disabled={
+                updateUserMutation.isPending || 
+                assignPropertiesMutation.isPending || 
+                !editingDisplayName || 
+                !editingEmail ||
+                users?.users.some(u => u.id !== editingUser?.id && u.email.toLowerCase() === editingEmail.toLowerCase())
+              }
             >
               {(updateUserMutation.isPending || assignPropertiesMutation.isPending) ? 'Saving...' : 'Save Changes'}
             </Button>

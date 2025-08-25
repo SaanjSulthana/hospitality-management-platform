@@ -11,7 +11,6 @@ import ResetPasswordPage from './pages/ResetPasswordPage';
 import DashboardPage from './pages/DashboardPage';
 import PropertiesPage from './pages/PropertiesPage';
 import TasksPage from './pages/TasksPage';
-import BookingsPage from './pages/BookingsPage';
 import FinancePage from './pages/FinancePage';
 import StaffPage from './pages/StaffPage';
 import UsersPage from './pages/UsersPage';
@@ -57,7 +56,6 @@ function AppInner() {
                   <Route path="/dashboard" element={<DashboardPage />} />
                   <Route path="/properties" element={<PropertiesPage />} />
                   <Route path="/tasks" element={<TasksPage />} />
-                  <Route path="/bookings" element={<BookingsPage />} />
                   <Route path="/finance" element={<FinancePage />} />
                   <Route path="/staff" element={<StaffPage />} />
                   <Route path="/users" element={<UsersPage />} />

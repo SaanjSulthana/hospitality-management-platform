@@ -74,7 +74,7 @@ export const create = api<CreateStaffRequest, CreateStaffResponse>(
     const existingStaff = await staffDB.queryRow`
       SELECT id FROM staff 
       WHERE user_id = ${userId} AND org_id = ${authData.orgId} 
-      AND (property_id = ${propertyId || null} OR (property_id IS NULL AND ${propertyId} IS NULL))
+      AND (property_id = ${propertyId ?? null} OR (property_id IS NULL AND ${propertyId ?? null} IS NULL))
     `;
 
     if (existingStaff) {
@@ -84,7 +84,7 @@ export const create = api<CreateStaffRequest, CreateStaffResponse>(
     // Create staff record
     const staffRow = await staffDB.queryRow`
       INSERT INTO staff (org_id, user_id, property_id, department, hourly_rate_cents, hire_date, notes, status)
-      VALUES (${authData.orgId}, ${userId}, ${propertyId || null}, ${department}, ${hourlyRateCents}, ${hireDate || null}, ${notes || null}, 'active')
+      VALUES (${authData.orgId}, ${userId}, ${propertyId ?? null}, ${department}, ${hourlyRateCents}, ${hireDate ?? null}, ${notes ?? null}, 'active')
       RETURNING id, org_id, user_id, property_id, department, hourly_rate_cents, performance_rating, hire_date, notes, status
     `;
 

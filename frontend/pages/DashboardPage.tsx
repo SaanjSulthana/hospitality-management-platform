@@ -11,7 +11,6 @@ import {
   Building2, 
   Users, 
   CheckSquare, 
-  Calendar, 
   DollarSign, 
   TrendingUp,
   AlertCircle,
@@ -482,12 +481,12 @@ export default function DashboardPage() {
                   <p className="text-sm font-medium">View Tasks</p>
                 </div>
                 <div className="text-center p-4 border rounded-lg hover:bg-gray-50 cursor-pointer">
-                  <Calendar className="h-8 w-8 mx-auto mb-2 text-green-500" />
-                  <p className="text-sm font-medium">Bookings</p>
-                </div>
-                <div className="text-center p-4 border rounded-lg hover:bg-gray-50 cursor-pointer">
                   <Building2 className="h-8 w-8 mx-auto mb-2 text-purple-500" />
                   <p className="text-sm font-medium">Properties</p>
+                </div>
+                <div className="text-center p-4 border rounded-lg hover:bg-gray-50 cursor-pointer">
+                  <DollarSign className="h-8 w-8 mx-auto mb-2 text-green-500" />
+                  <p className="text-sm font-medium">Finance</p>
                 </div>
                 <div className="text-center p-4 border rounded-lg hover:bg-gray-50 cursor-pointer">
                   <TrendingUp className="h-8 w-8 mx-auto mb-2 text-orange-500" />

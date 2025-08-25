@@ -35,11 +35,12 @@ export const nightAuditHandler = api<void, void>(
             AND b.checkin_date = ${yesterday.toISOString().split('T')[0]}
         `;
 
-        // Create revenue records for room bookings
+        // Create revenue records for room bookings with booking_id for idempotency
         for (const booking of bookings) {
+          const metaJson = JSON.stringify({ booking_id: booking.id });
           await cronDB.exec`
-            INSERT INTO revenues (org_id, property_id, source, amount_cents, currency, occurred_at)
-            VALUES (${org.id}, ${booking.property_id}, 'room', ${booking.price_cents}, ${booking.currency}, ${yesterday})
+            INSERT INTO revenues (org_id, property_id, source, amount_cents, currency, occurred_at, meta_json)
+            VALUES (${org.id}, ${booking.property_id}, 'room', ${booking.price_cents}, ${booking.currency}, ${yesterday}, ${metaJson})
             ON CONFLICT DO NOTHING
           `;
         }

@@ -9,7 +9,7 @@ export interface SeedDataResponse {
 }
 
 // Seeds the database with demo data
-export const seedData = api<void, SeedDataResponse>(
+export const seedData = api<SeedDataResponse, void>(
   { expose: true, method: "POST", path: "/seed/data" },
   async () => {
     try {
@@ -128,89 +128,140 @@ export const seedData = api<void, SeedDataResponse>(
         SELECT id FROM regions WHERE org_id = ${orgId} AND name = 'South Region'
       `;
 
-      // Create properties
-      const property1 = await seedDB.queryRow`
-        INSERT INTO properties (org_id, region_id, name, type, address_json, amenities_json, capacity_json)
-        VALUES (
-          ${orgId}, 
-          ${northRegion?.id || null}, 
-          'Downtown Hotel', 
-          'hotel',
-          '{"street": "123 Main St", "city": "Downtown", "state": "CA", "country": "USA", "zipCode": "90210"}',
-          '{"amenities": ["wifi", "parking", "pool", "gym", "restaurant"]}',
-          '{"totalRooms": 50, "totalBeds": 75, "maxGuests": 150}'
-        )
-        ON CONFLICT DO NOTHING
-        RETURNING id
-      `;
-
-      const property2 = await seedDB.queryRow`
-        INSERT INTO properties (org_id, region_id, name, type, address_json, amenities_json, capacity_json)
-        VALUES (
-          ${orgId}, 
-          ${southRegion?.id || null}, 
-          'Beach Resort', 
-          'resort',
-          '{"street": "456 Ocean Ave", "city": "Beachside", "state": "CA", "country": "USA", "zipCode": "90211"}',
-          '{"amenities": ["wifi", "parking", "pool", "spa", "beach_access", "restaurant", "bar"]}',
-          '{"totalRooms": 100, "totalBeds": 200, "maxGuests": 400}'
-        )
-        ON CONFLICT DO NOTHING
-        RETURNING id
-      `;
-
-      // Get existing properties if they weren't just created
-      const downtownHotel = property1 || await seedDB.queryRow`
+      // Create properties with unique constraint handling
+      let downtownHotel = await seedDB.queryRow`
         SELECT id FROM properties WHERE org_id = ${orgId} AND name = 'Downtown Hotel'
       `;
-      const beachResort = property2 || await seedDB.queryRow`
+
+      if (!downtownHotel) {
+        const addressJson = JSON.stringify({
+          street: "123 Main St",
+          city: "Downtown", 
+          state: "CA",
+          country: "USA",
+          zipCode: "90210"
+        });
+        const amenitiesJson = JSON.stringify({
+          amenities: ["wifi", "parking", "pool", "gym", "restaurant"]
+        });
+        const capacityJson = JSON.stringify({
+          totalRooms: 50,
+          totalBeds: 75,
+          maxGuests: 150
+        });
+
+        downtownHotel = await seedDB.queryRow`
+          INSERT INTO properties (org_id, region_id, name, type, address_json, amenities_json, capacity_json)
+          VALUES (
+            ${orgId}, 
+            ${northRegion?.id || null}, 
+            'Downtown Hotel', 
+            'hotel',
+            ${addressJson},
+            ${amenitiesJson},
+            ${capacityJson}
+          )
+          RETURNING id
+        `;
+      }
+
+      let beachResort = await seedDB.queryRow`
         SELECT id FROM properties WHERE org_id = ${orgId} AND name = 'Beach Resort'
       `;
 
-      // Create rooms for properties
+      if (!beachResort) {
+        const addressJson = JSON.stringify({
+          street: "456 Ocean Ave",
+          city: "Beachside",
+          state: "CA", 
+          country: "USA",
+          zipCode: "90211"
+        });
+        const amenitiesJson = JSON.stringify({
+          amenities: ["wifi", "parking", "pool", "spa", "beach_access", "restaurant", "bar"]
+        });
+        const capacityJson = JSON.stringify({
+          totalRooms: 100,
+          totalBeds: 200,
+          maxGuests: 400
+        });
+
+        beachResort = await seedDB.queryRow`
+          INSERT INTO properties (org_id, region_id, name, type, address_json, amenities_json, capacity_json)
+          VALUES (
+            ${orgId}, 
+            ${southRegion?.id || null}, 
+            'Beach Resort', 
+            'resort',
+            ${addressJson},
+            ${amenitiesJson},
+            ${capacityJson}
+          )
+          RETURNING id
+        `;
+      }
+
+      // Create rooms for properties with unique constraint handling
       if (downtownHotel?.id) {
         for (let i = 1; i <= 10; i++) {
+          const attributesJson = JSON.stringify({
+            bed_type: "queen",
+            view: "city"
+          });
           await seedDB.exec`
             INSERT INTO rooms (org_id, property_id, name, type, capacity, attributes_json)
-            VALUES (${orgId}, ${downtownHotel.id}, ${'Room ' + i}, 'standard', 2, '{"bed_type": "queen", "view": "city"}')
-            ON CONFLICT DO NOTHING
+            VALUES (${orgId}, ${downtownHotel.id}, ${'Room ' + i}, 'standard', 2, ${attributesJson})
+            ON CONFLICT (org_id, property_id, name) DO NOTHING
           `;
         }
       }
 
-      // Create beds/units
+      // Create beds/units with unique constraint handling
       if (downtownHotel?.id) {
         for (let i = 1; i <= 20; i++) {
+          const metaJson = JSON.stringify({});
           await seedDB.exec`
             INSERT INTO beds_or_units (org_id, property_id, label, status, meta_json)
-            VALUES (${orgId}, ${downtownHotel.id}, ${'Unit ' + i}, ${i <= 5 ? 'occupied' : 'available'}, '{}')
-            ON CONFLICT DO NOTHING
+            VALUES (${orgId}, ${downtownHotel.id}, ${'Unit ' + i}, ${i <= 5 ? 'occupied' : 'available'}, ${metaJson})
+            ON CONFLICT (org_id, property_id, label) DO NOTHING
           `;
         }
       }
 
       // Create sample guests and bookings
-      const guest1 = await seedDB.queryRow`
-        INSERT INTO guests (org_id, primary_contact_json, notes_text)
-        VALUES (${orgId}, '{"name": "John Doe", "email": "john@example.com", "phone": "+1234567890"}', 'VIP guest')
-        ON CONFLICT DO NOTHING
-        RETURNING id
-      `;
-
-      const guest2 = await seedDB.queryRow`
-        INSERT INTO guests (org_id, primary_contact_json, notes_text)
-        VALUES (${orgId}, '{"name": "Jane Smith", "email": "jane@example.com", "phone": "+1234567891"}', 'Business traveler')
-        ON CONFLICT DO NOTHING
-        RETURNING id
-      `;
-
-      // Get existing guests if they weren't just created
-      const johnDoe = guest1 || await seedDB.queryRow`
+      let johnDoe = await seedDB.queryRow`
         SELECT id FROM guests WHERE org_id = ${orgId} AND primary_contact_json->>'email' = 'john@example.com'
       `;
-      const janeSmith = guest2 || await seedDB.queryRow`
+
+      if (!johnDoe) {
+        const contactJson = JSON.stringify({
+          name: "John Doe",
+          email: "john@example.com",
+          phone: "+1234567890"
+        });
+        johnDoe = await seedDB.queryRow`
+          INSERT INTO guests (org_id, primary_contact_json, notes_text)
+          VALUES (${orgId}, ${contactJson}, 'VIP guest')
+          RETURNING id
+        `;
+      }
+
+      let janeSmith = await seedDB.queryRow`
         SELECT id FROM guests WHERE org_id = ${orgId} AND primary_contact_json->>'email' = 'jane@example.com'
       `;
+
+      if (!janeSmith) {
+        const contactJson = JSON.stringify({
+          name: "Jane Smith",
+          email: "jane@example.com", 
+          phone: "+1234567891"
+        });
+        janeSmith = await seedDB.queryRow`
+          INSERT INTO guests (org_id, primary_contact_json, notes_text)
+          VALUES (${orgId}, ${contactJson}, 'Business traveler')
+          RETURNING id
+        `;
+      }
 
       // Create bookings
       if (johnDoe?.id && downtownHotel?.id) {
@@ -229,24 +280,25 @@ export const seedData = api<void, SeedDataResponse>(
         `;
       }
 
-      // Create sample revenues and expenses
+      // Create sample revenues and expenses with explicit JSON casting
       if (downtownHotel?.id) {
+        const revenueMetaJson = JSON.stringify({ source: "demo" });
         await seedDB.exec`
-          INSERT INTO revenues (org_id, property_id, source, amount_cents, currency, occurred_at)
-          VALUES (${orgId}, ${downtownHotel.id}, 'room', 15000, 'USD', CURRENT_DATE - INTERVAL '1 day')
+          INSERT INTO revenues (org_id, property_id, source, amount_cents, currency, occurred_at, meta_json)
+          VALUES (${orgId}, ${downtownHotel.id}, 'room', 15000, 'USD', CURRENT_DATE - INTERVAL '1 day', ${revenueMetaJson})
           ON CONFLICT DO NOTHING
         `;
 
         if (adminUser) {
           await seedDB.exec`
-            INSERT INTO expenses (org_id, property_id, category, amount_cents, currency, created_by_user_id)
-            VALUES (${orgId}, ${downtownHotel.id}, 'supplies', 5000, 'USD', ${adminUser.id})
+            INSERT INTO expenses (org_id, property_id, category, amount_cents, currency, created_by_user_id, expense_date)
+            VALUES (${orgId}, ${downtownHotel.id}, 'supplies', 5000, 'USD', ${adminUser.id}, CURRENT_DATE)
             ON CONFLICT DO NOTHING
           `;
         }
       }
 
-      // Create sample tasks
+      // Create sample tasks with unique constraint handling
       if (downtownHotel?.id && adminUser) {
         const sampleTasks = [
           {
@@ -308,20 +360,19 @@ export const seedData = api<void, SeedDataResponse>(
         }
       }
 
-      // Seed Staff records for assignment UX
-      // Create staff records for staff1 and staff2 (and optionally manager as staff) to allow task assignment
+      // Seed Staff records for assignment UX with unique constraint handling
       if (staff1User && downtownHotel?.id) {
         await seedDB.exec`
           INSERT INTO staff (org_id, user_id, property_id, department, hourly_rate_cents, status)
           VALUES (${orgId}, ${staff1User.id}, ${downtownHotel.id}, 'frontdesk', 1800, 'active')
-          ON CONFLICT DO NOTHING
+          ON CONFLICT (org_id, user_id, property_id) DO NOTHING
         `;
       }
       if (staff2User && downtownHotel?.id) {
         await seedDB.exec`
           INSERT INTO staff (org_id, user_id, property_id, department, hourly_rate_cents, status)
           VALUES (${orgId}, ${staff2User.id}, ${downtownHotel.id}, 'housekeeping', 1600, 'active')
-          ON CONFLICT DO NOTHING
+          ON CONFLICT (org_id, user_id, property_id) DO NOTHING
         `;
       }
       // Optionally add manager as staff record for assignment
@@ -329,7 +380,7 @@ export const seedData = api<void, SeedDataResponse>(
         await seedDB.exec`
           INSERT INTO staff (org_id, user_id, property_id, department, hourly_rate_cents, status)
           VALUES (${orgId}, ${managerUser.id}, ${beachResort.id}, 'admin', 0, 'active')
-          ON CONFLICT DO NOTHING
+          ON CONFLICT (org_id, user_id, property_id) DO NOTHING
         `;
       }
 

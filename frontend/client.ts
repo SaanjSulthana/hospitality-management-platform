@@ -474,6 +474,7 @@ export namespace orgs {
 import { create as api_properties_create_create } from "~backend/properties/create";
 import { list as api_properties_list_list } from "~backend/properties/list";
 import { getOccupancy as api_properties_occupancy_getOccupancy } from "~backend/properties/occupancy";
+import { update as api_properties_update_update } from "~backend/properties/update";
 
 export namespace properties {
 
@@ -485,6 +486,7 @@ export namespace properties {
             this.create = this.create.bind(this)
             this.getOccupancy = this.getOccupancy.bind(this)
             this.list = this.list.bind(this)
+            this.update = this.update.bind(this)
         }
 
         /**
@@ -518,6 +520,26 @@ export namespace properties {
             // Now make the actual call to the API
             const resp = await this.baseClient.callTypedAPI(`/properties`, {query, method: "GET", body: undefined})
             return JSON.parse(await resp.text(), dateReviver) as ResponseType<typeof api_properties_list_list>
+        }
+
+        /**
+         * Updates an existing property (Admin or Manager with access)
+         */
+        public async update(params: RequestType<typeof api_properties_update_update>): Promise<ResponseType<typeof api_properties_update_update>> {
+            // Construct the body with only the fields which we want encoded within the body (excluding query string or header fields)
+            const body: Record<string, any> = {
+                address:   params.address,
+                amenities: params.amenities,
+                capacity:  params.capacity,
+                name:      params.name,
+                regionId:  params.regionId,
+                status:    params.status,
+                type:      params.type,
+            }
+
+            // Now make the actual call to the API
+            const resp = await this.baseClient.callTypedAPI(`/properties/${encodeURIComponent(params.id)}`, {method: "PATCH", body: JSON.stringify(body)})
+            return JSON.parse(await resp.text(), dateReviver) as ResponseType<typeof api_properties_update_update>
         }
     }
 }
@@ -795,8 +817,11 @@ export namespace tasks {
 /**
  * Import the endpoint handlers to derive the types for the client.
  */
+import { assignProperties as api_users_assign_properties_assignProperties } from "~backend/users/assign_properties";
 import { create as api_users_create_create } from "~backend/users/create";
+import { get as api_users_get_get } from "~backend/users/get";
 import { list as api_users_list_list } from "~backend/users/list";
+import { update as api_users_update_update } from "~backend/users/update";
 
 export namespace users {
 
@@ -805,8 +830,26 @@ export namespace users {
 
         constructor(baseClient: BaseClient) {
             this.baseClient = baseClient
+            this.assignProperties = this.assignProperties.bind(this)
             this.create = this.create.bind(this)
+            this.get = this.get.bind(this)
             this.list = this.list.bind(this)
+            this.update = this.update.bind(this)
+        }
+
+        /**
+         * Assigns properties to a manager (Admin only).
+         * Replaces existing assignments with the provided list.
+         */
+        public async assignProperties(params: RequestType<typeof api_users_assign_properties_assignProperties>): Promise<ResponseType<typeof api_users_assign_properties_assignProperties>> {
+            // Construct the body with only the fields which we want encoded within the body (excluding query string or header fields)
+            const body: Record<string, any> = {
+                propertyIds: params.propertyIds,
+            }
+
+            // Now make the actual call to the API
+            const resp = await this.baseClient.callTypedAPI(`/users/${encodeURIComponent(params.id)}/properties`, {method: "PATCH", body: JSON.stringify(body)})
+            return JSON.parse(await resp.text(), dateReviver) as ResponseType<typeof api_users_assign_properties_assignProperties>
         }
 
         /**
@@ -816,6 +859,15 @@ export namespace users {
             // Now make the actual call to the API
             const resp = await this.baseClient.callTypedAPI(`/users`, {method: "POST", body: JSON.stringify(params)})
             return JSON.parse(await resp.text(), dateReviver) as ResponseType<typeof api_users_create_create>
+        }
+
+        /**
+         * Gets user details including assigned property IDs (Admin only)
+         */
+        public async get(params: { id: number }): Promise<ResponseType<typeof api_users_get_get>> {
+            // Now make the actual call to the API
+            const resp = await this.baseClient.callTypedAPI(`/users/${encodeURIComponent(params.id)}`, {method: "GET", body: undefined})
+            return JSON.parse(await resp.text(), dateReviver) as ResponseType<typeof api_users_get_get>
         }
 
         /**
@@ -830,6 +882,22 @@ export namespace users {
             // Now make the actual call to the API
             const resp = await this.baseClient.callTypedAPI(`/users`, {query, method: "GET", body: undefined})
             return JSON.parse(await resp.text(), dateReviver) as ResponseType<typeof api_users_list_list>
+        }
+
+        /**
+         * Updates a manager's details (Admin only).
+         */
+        public async update(params: RequestType<typeof api_users_update_update>): Promise<ResponseType<typeof api_users_update_update>> {
+            // Construct the body with only the fields which we want encoded within the body (excluding query string or header fields)
+            const body: Record<string, any> = {
+                displayName: params.displayName,
+                email:       params.email,
+                password:    params.password,
+            }
+
+            // Now make the actual call to the API
+            const resp = await this.baseClient.callTypedAPI(`/users/${encodeURIComponent(params.id)}`, {method: "PATCH", body: JSON.stringify(body)})
+            return JSON.parse(await resp.text(), dateReviver) as ResponseType<typeof api_users_update_update>
         }
     }
 }

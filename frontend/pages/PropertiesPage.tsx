@@ -10,7 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Textarea } from '@/components/ui/textarea';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { useToast } from '@/components/ui/use-toast';
-import { Building2, MapPin, Users, Bed, Plus, Search } from 'lucide-react';
+import { Building2, MapPin, Users, Bed, Plus, Search, Pencil } from 'lucide-react';
 
 export default function PropertiesPage() {
   const { getAuthenticatedBackend } = useAuth();
@@ -19,6 +19,8 @@ export default function PropertiesPage() {
   const [searchTerm, setSearchTerm] = useState('');
   const [typeFilter, setTypeFilter] = useState<string>('all');
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
+  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
+  const [editingProperty, setEditingProperty] = useState<any | null>(null);
   const [propertyForm, setPropertyForm] = useState({
     name: '',
     type: 'hotel' as 'hotel' | 'hostel' | 'resort' | 'apartment',
@@ -61,7 +63,6 @@ export default function PropertiesPage() {
       });
     },
     onSuccess: (created: any) => {
-      // Optimistically update the cache so the new property appears immediately
       queryClient.setQueryData(['properties'], (old: any) => {
         const prev = old?.properties ?? [];
         const newItem = {
@@ -77,26 +78,9 @@ export default function PropertiesPage() {
         };
         return { properties: [newItem, ...prev] };
       });
-      // Also invalidate to ensure server truth wins
       queryClient.invalidateQueries({ queryKey: ['properties'] });
       setIsCreateDialogOpen(false);
-      setPropertyForm({
-        name: '',
-        type: 'hotel',
-        address: {
-          street: '',
-          city: '',
-          state: '',
-          country: '',
-          zipCode: '',
-        },
-        amenities: [],
-        capacity: {
-          totalRooms: '',
-          totalBeds: '',
-          maxGuests: '',
-        },
-      });
+      resetForm();
       toast({
         title: "Property created",
         description: "The property has been created successfully.",
@@ -107,6 +91,42 @@ export default function PropertiesPage() {
       toast({
         variant: "destructive",
         title: "Failed to create property",
+        description: error.message || "Please try again.",
+      });
+    },
+  });
+
+  const updatePropertyMutation = useMutation({
+    mutationFn: async (data: any) => {
+      const backend = getAuthenticatedBackend();
+      return backend.properties.update({
+        id: data.id,
+        name: data.name,
+        type: data.type,
+        address: data.address,
+        amenities: data.amenities,
+        capacity: {
+          totalRooms: data.capacity.totalRooms ? parseInt(data.capacity.totalRooms) : null,
+          totalBeds: data.capacity.totalBeds ? parseInt(data.capacity.totalBeds) : null,
+          maxGuests: data.capacity.maxGuests ? parseInt(data.capacity.maxGuests) : null,
+        },
+        status: data.status,
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['properties'] });
+      setIsEditDialogOpen(false);
+      setEditingProperty(null);
+      toast({
+        title: "Property updated",
+        description: "The property has been updated successfully.",
+      });
+    },
+    onError: (error: any) => {
+      console.error('Update property error:', error);
+      toast({
+        variant: "destructive",
+        title: "Failed to update property",
         description: error.message || "Please try again.",
       });
     },
@@ -161,6 +181,31 @@ export default function PropertiesPage() {
     'wifi', 'parking', 'pool', 'gym', 'restaurant', 'bar', 'spa', 'beach_access',
     'laundry', 'concierge', 'room_service', 'business_center', 'pet_friendly'
   ];
+
+  const resetForm = () => {
+    setPropertyForm({
+      name: '',
+      type: 'hotel',
+      address: {
+        street: '',
+        city: '',
+        state: '',
+        country: '',
+        zipCode: '',
+      },
+      amenities: [],
+      capacity: {
+        totalRooms: '',
+        totalBeds: '',
+        maxGuests: '',
+      },
+    });
+  };
+
+  const openEditDialog = (property: any) => {
+    setEditingProperty(property);
+    setIsEditDialogOpen(true);
+  };
 
   if (isLoading) {
     return (
@@ -435,7 +480,7 @@ export default function PropertiesPage() {
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {filteredProperties.map((property: any) => (
-            <Card key={property.id} className="hover:shadow-lg transition-shadow cursor-pointer">
+            <Card key={property.id} className="hover:shadow-lg transition-shadow">
               <CardHeader>
                 <div className="flex items-start justify-between">
                   <div className="flex-1">
@@ -495,14 +540,17 @@ export default function PropertiesPage() {
                     </div>
                   )}
 
-                  {/* Status */}
+                  {/* Status and actions */}
                   <div className="flex items-center justify-between">
                     <Badge variant={property.status === 'active' ? 'default' : 'secondary'}>
                       {property.status}
                     </Badge>
-                    <Button variant="outline" size="sm">
-                      View Details
-                    </Button>
+                    <div className="flex gap-2">
+                      <Button variant="outline" size="sm" onClick={() => openEditDialog(property)}>
+                        <Pencil className="mr-2 h-4 w-4" />
+                        Edit
+                      </Button>
+                    </div>
                   </div>
                 </div>
               </CardContent>
@@ -510,6 +558,168 @@ export default function PropertiesPage() {
           ))}
         </div>
       )}
+
+      {/* Edit dialog */}
+      <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Edit Property</DialogTitle>
+            <DialogDescription>Update property details</DialogDescription>
+          </DialogHeader>
+          {editingProperty && (
+            <div className="space-y-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label>Property Name</Label>
+                  <Input
+                    value={editingProperty.name}
+                    onChange={(e) => setEditingProperty((prev: any) => ({ ...prev, name: e.target.value }))}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Property Type</Label>
+                  <Select
+                    value={editingProperty.type}
+                    onValueChange={(value: any) => setEditingProperty((prev: any) => ({ ...prev, type: value }))}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="hotel">Hotel</SelectItem>
+                      <SelectItem value="hostel">Hostel</SelectItem>
+                      <SelectItem value="resort">Resort</SelectItem>
+                      <SelectItem value="apartment">Apartment</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label>Status</Label>
+                <Select
+                  value={editingProperty.status}
+                  onValueChange={(value: any) => setEditingProperty((prev: any) => ({ ...prev, status: value }))}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="active">Active</SelectItem>
+                    <SelectItem value="inactive">Inactive</SelectItem>
+                    <SelectItem value="archived">Archived</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Address */}
+              <div className="space-y-4">
+                <Label>Address</Label>
+                <div className="space-y-2">
+                  <Input
+                    placeholder="Street"
+                    value={editingProperty.addressJson?.street || ''}
+                    onChange={(e) => setEditingProperty((prev: any) => ({
+                      ...prev,
+                      addressJson: { ...prev.addressJson, street: e.target.value }
+                    }))}
+                  />
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+                    <Input
+                      placeholder="City"
+                      value={editingProperty.addressJson?.city || ''}
+                      onChange={(e) => setEditingProperty((prev: any) => ({
+                        ...prev,
+                        addressJson: { ...prev.addressJson, city: e.target.value }
+                      }))}
+                    />
+                    <Input
+                      placeholder="State/Province"
+                      value={editingProperty.addressJson?.state || ''}
+                      onChange={(e) => setEditingProperty((prev: any) => ({
+                        ...prev,
+                        addressJson: { ...prev.addressJson, state: e.target.value }
+                      }))}
+                    />
+                    <Input
+                      placeholder="ZIP"
+                      value={editingProperty.addressJson?.zipCode || ''}
+                      onChange={(e) => setEditingProperty((prev: any) => ({
+                        ...prev,
+                        addressJson: { ...prev.addressJson, zipCode: e.target.value }
+                      }))}
+                    />
+                  </div>
+                  <Input
+                    placeholder="Country"
+                    value={editingProperty.addressJson?.country || ''}
+                    onChange={(e) => setEditingProperty((prev: any) => ({
+                      ...prev,
+                      addressJson: { ...prev.addressJson, country: e.target.value }
+                    }))}
+                  />
+                </div>
+              </div>
+
+              {/* Capacity */}
+              <div className="space-y-4">
+                <Label>Capacity</Label>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+                  <Input
+                    type="number"
+                    placeholder="Total Rooms"
+                    value={editingProperty.capacityJson?.totalRooms || ''}
+                    onChange={(e) => setEditingProperty((prev: any) => ({
+                      ...prev,
+                      capacityJson: { ...prev.capacityJson, totalRooms: e.target.value }
+                    }))}
+                  />
+                  <Input
+                    type="number"
+                    placeholder="Total Beds"
+                    value={editingProperty.capacityJson?.totalBeds || ''}
+                    onChange={(e) => setEditingProperty((prev: any) => ({
+                      ...prev,
+                      capacityJson: { ...prev.capacityJson, totalBeds: e.target.value }
+                    }))}
+                  />
+                  <Input
+                    type="number"
+                    placeholder="Max Guests"
+                    value={editingProperty.capacityJson?.maxGuests || ''}
+                    onChange={(e) => setEditingProperty((prev: any) => ({
+                      ...prev,
+                      capacityJson: { ...prev.capacityJson, maxGuests: e.target.value }
+                    }))}
+                  />
+                </div>
+              </div>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsEditDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              onClick={() => {
+                if (!editingProperty) return;
+                updatePropertyMutation.mutate({
+                  id: editingProperty.id,
+                  name: editingProperty.name,
+                  type: editingProperty.type,
+                  status: editingProperty.status,
+                  address: editingProperty.addressJson || {},
+                  amenities: editingProperty.amenitiesJson?.amenities || [],
+                  capacity: editingProperty.capacityJson || {},
+                });
+              }}
+              disabled={updatePropertyMutation.isPending || !editingProperty?.name}
+            >
+              {updatePropertyMutation.isPending ? 'Saving...' : 'Save Changes'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

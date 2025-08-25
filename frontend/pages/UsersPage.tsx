@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../contexts/AuthContext';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -10,7 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { useToast } from '@/components/ui/use-toast';
-import { Users, Plus, Search, Mail, Calendar, UserPlus } from 'lucide-react';
+import { Users, Plus, Search, Mail, Calendar, UserPlus, Pencil } from 'lucide-react';
 
 export default function UsersPage() {
   const { user, getAuthenticatedBackend } = useAuth();
@@ -19,18 +19,34 @@ export default function UsersPage() {
   const [searchTerm, setSearchTerm] = useState('');
   const [roleFilter, setRoleFilter] = useState<string>('all');
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
+  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [newUser, setNewUser] = useState({
     email: '',
     password: '',
     displayName: '',
     role: 'MANAGER' as const,
+    propertyIds: [] as number[],
   });
+  const [editingUser, setEditingUser] = useState<any | null>(null);
+  const [editingDisplayName, setEditingDisplayName] = useState('');
+  const [editingEmail, setEditingEmail] = useState('');
+  const [editingPassword, setEditingPassword] = useState('');
+  const [editingPropertyIds, setEditingPropertyIds] = useState<number[]>([]);
 
   const { data: users, isLoading } = useQuery({
     queryKey: ['users'],
     queryFn: async () => {
       const backend = getAuthenticatedBackend();
       return backend.users.list();
+    },
+    enabled: user?.role === 'ADMIN',
+  });
+
+  const { data: properties } = useQuery({
+    queryKey: ['properties'],
+    queryFn: async () => {
+      const backend = getAuthenticatedBackend();
+      return backend.properties.list();
     },
     enabled: user?.role === 'ADMIN',
   });
@@ -48,6 +64,7 @@ export default function UsersPage() {
         password: '',
         displayName: '',
         role: 'MANAGER',
+        propertyIds: [],
       });
       toast({
         title: "Manager created successfully",
@@ -59,6 +76,50 @@ export default function UsersPage() {
       toast({
         variant: "destructive",
         title: "Failed to create manager",
+        description: error.message || "Please try again.",
+      });
+    },
+  });
+
+  const updateUserMutation = useMutation({
+    mutationFn: async (payload: { id: number; displayName?: string; email?: string; password?: string }) => {
+      const backend = getAuthenticatedBackend();
+      return backend.users.update(payload);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['users'] });
+      toast({
+        title: "User updated",
+        description: "Manager details have been updated.",
+      });
+    },
+    onError: (error: any) => {
+      console.error('Update user error:', error);
+      toast({
+        variant: "destructive",
+        title: "Failed to update user",
+        description: error.message || "Please try again.",
+      });
+    },
+  });
+
+  const assignPropertiesMutation = useMutation({
+    mutationFn: async (payload: { id: number; propertyIds: number[] }) => {
+      const backend = getAuthenticatedBackend();
+      return backend.users.assignProperties(payload);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['users'] });
+      toast({
+        title: "Assignments updated",
+        description: "Property assignments have been saved.",
+      });
+    },
+    onError: (error: any) => {
+      console.error('Assign properties error:', error);
+      toast({
+        variant: "destructive",
+        title: "Failed to update assignments",
         description: error.message || "Please try again.",
       });
     },
@@ -88,7 +149,38 @@ export default function UsersPage() {
   };
 
   const handleCreateUser = () => {
+    if (!newUser.email || !newUser.password || !newUser.displayName) {
+      toast({
+        variant: "destructive",
+        title: "Missing fields",
+        description: "Please fill in all fields.",
+      });
+      return;
+    }
     createUserMutation.mutate(newUser);
+  };
+
+  const openEditDialog = async (u: any) => {
+    setEditingUser(u);
+    setEditingDisplayName(u.displayName);
+    setEditingEmail(u.email);
+    setEditingPassword('');
+    setIsEditDialogOpen(true);
+
+    try {
+      const backend = getAuthenticatedBackend();
+      const details = await backend.users.get({ id: u.id });
+      setEditingPropertyIds(details.propertyIds);
+    } catch (err) {
+      console.error('Failed to load user details:', err);
+      setEditingPropertyIds([]);
+    }
+  };
+
+  const toggleSelectedProperty = (pid: number) => {
+    setEditingPropertyIds(prev =>
+      prev.includes(pid) ? prev.filter(id => id !== pid) : [...prev, pid]
+    );
   };
 
   // Only show to admins
@@ -151,7 +243,7 @@ export default function UsersPage() {
             <DialogHeader>
               <DialogTitle>Create Manager Account</DialogTitle>
               <DialogDescription>
-                Create a new manager account. They will be able to log in with these credentials.
+                Create a new manager account and assign properties.
               </DialogDescription>
             </DialogHeader>
             <div className="space-y-4">
@@ -185,16 +277,28 @@ export default function UsersPage() {
                   minLength={8}
                 />
               </div>
+
               <div className="space-y-2">
-                <Label htmlFor="role">Role</Label>
-                <Select value={newUser.role} onValueChange={(value) => setNewUser(prev => ({ ...prev, role: value as 'MANAGER' }))}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="MANAGER">Manager</SelectItem>
-                  </SelectContent>
-                </Select>
+                <Label>Assign Properties</Label>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-2 max-h-48 overflow-auto border rounded p-2">
+                  {properties?.properties.map((p) => (
+                    <label key={p.id} className="flex items-center gap-2 text-sm">
+                      <input
+                        type="checkbox"
+                        checked={newUser.propertyIds.includes(p.id)}
+                        onChange={() => {
+                          setNewUser(prev => ({
+                            ...prev,
+                            propertyIds: prev.propertyIds.includes(p.id)
+                              ? prev.propertyIds.filter(id => id !== p.id)
+                              : [...prev.propertyIds, p.id]
+                          }));
+                        }}
+                      />
+                      <span>{p.name}</span>
+                    </label>
+                  ))}
+                </div>
               </div>
             </div>
             <DialogFooter>
@@ -258,7 +362,7 @@ export default function UsersPage() {
                 <DialogHeader>
                   <DialogTitle>Create Manager Account</DialogTitle>
                   <DialogDescription>
-                    Create a new manager account. They will be able to log in with these credentials.
+                    Create a new manager account and assign properties.
                   </DialogDescription>
                 </DialogHeader>
                 <div className="space-y-4">
@@ -293,15 +397,26 @@ export default function UsersPage() {
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="role2">Role</Label>
-                    <Select value={newUser.role} onValueChange={(value) => setNewUser(prev => ({ ...prev, role: value as 'MANAGER' }))}>
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="MANAGER">Manager</SelectItem>
-                      </SelectContent>
-                    </Select>
+                    <Label>Assign Properties</Label>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-2 max-h-48 overflow-auto border rounded p-2">
+                      {properties?.properties.map((p) => (
+                        <label key={p.id} className="flex items-center gap-2 text-sm">
+                          <input
+                            type="checkbox"
+                            checked={newUser.propertyIds.includes(p.id)}
+                            onChange={() => {
+                              setNewUser(prev => ({
+                                ...prev,
+                                propertyIds: prev.propertyIds.includes(p.id)
+                                  ? prev.propertyIds.filter(id => id !== p.id)
+                                  : [...prev.propertyIds, p.id]
+                              }));
+                            }}
+                          />
+                          <span>{p.name}</span>
+                        </label>
+                      ))}
+                    </div>
                   </div>
                 </div>
                 <DialogFooter>
@@ -321,20 +436,20 @@ export default function UsersPage() {
         </Card>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {filteredUsers.map((user) => (
-            <Card key={user.id} className="hover:shadow-lg transition-shadow">
+          {filteredUsers.map((u) => (
+            <Card key={u.id} className="hover:shadow-lg transition-shadow">
               <CardHeader>
                 <div className="flex items-start space-x-4">
                   <Avatar className="h-12 w-12">
                     <AvatarFallback className="bg-blue-100 text-blue-600">
-                      {getInitials(user.displayName)}
+                      {getInitials(u.displayName)}
                     </AvatarFallback>
                   </Avatar>
                   <div className="flex-1 min-w-0">
-                    <CardTitle className="text-lg truncate">{user.displayName}</CardTitle>
+                    <CardTitle className="text-lg truncate">{u.displayName}</CardTitle>
                     <CardDescription className="flex items-center mt-1">
                       <Mail className="h-3 w-3 mr-1" />
-                      <span className="truncate">{user.email}</span>
+                      <span className="truncate">{u.email}</span>
                     </CardDescription>
                   </div>
                 </div>
@@ -343,24 +458,24 @@ export default function UsersPage() {
                 <div className="space-y-3">
                   <div className="flex items-center justify-between">
                     <span className="text-sm font-medium text-gray-700">Role</span>
-                    <Badge className={getRoleColor(user.role)}>
-                      {getRoleDisplayName(user.role)}
+                    <Badge className={getRoleColor(u.role)}>
+                      {getRoleDisplayName(u.role)}
                     </Badge>
                   </div>
 
-                  {user.createdByName && (
+                  {u.createdByName && (
                     <div className="flex items-center justify-between text-sm">
                       <span className="text-gray-700">Created by</span>
-                      <span className="text-gray-600">{user.createdByName}</span>
+                      <span className="text-gray-600">{u.createdByName}</span>
                     </div>
                   )}
 
-                  {user.lastLoginAt && (
+                  {u.lastLoginAt && (
                     <div className="flex items-center justify-between text-sm">
                       <span className="text-gray-700">Last login</span>
                       <div className="flex items-center text-gray-600">
                         <Calendar className="h-3 w-3 mr-1" />
-                        <span>{new Date(user.lastLoginAt).toLocaleDateString()}</span>
+                        <span>{new Date(u.lastLoginAt).toLocaleDateString()}</span>
                       </div>
                     </div>
                   )}
@@ -369,13 +484,14 @@ export default function UsersPage() {
                     <span className="text-gray-700">Joined</span>
                     <div className="flex items-center text-gray-600">
                       <Calendar className="h-3 w-3 mr-1" />
-                      <span>{new Date(user.createdAt).toLocaleDateString()}</span>
+                      <span>{new Date(u.createdAt).toLocaleDateString()}</span>
                     </div>
                   </div>
 
                   <div className="flex justify-end pt-2">
-                    <Button variant="outline" size="sm">
-                      View Profile
+                    <Button variant="outline" size="sm" onClick={() => openEditDialog(u)}>
+                      <Pencil className="mr-2 h-4 w-4" />
+                      Edit
                     </Button>
                   </div>
                 </div>
@@ -384,6 +500,89 @@ export default function UsersPage() {
           ))}
         </div>
       )}
+
+      {/* Edit Dialog */}
+      <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Edit Manager</DialogTitle>
+            <DialogDescription>Update manager details and property assignments</DialogDescription>
+          </DialogHeader>
+          {editingUser && (
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <Label>Full Name</Label>
+                <Input
+                  value={editingDisplayName}
+                  onChange={(e) => setEditingDisplayName(e.target.value)}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Email</Label>
+                <Input
+                  type="email"
+                  value={editingEmail}
+                  onChange={(e) => setEditingEmail(e.target.value)}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>New Password (optional)</Label>
+                <Input
+                  type="password"
+                  value={editingPassword}
+                  onChange={(e) => setEditingPassword(e.target.value)}
+                  placeholder="Leave blank to keep current password"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label>Assigned Properties</Label>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-2 max-h-48 overflow-auto border rounded p-2">
+                  {properties?.properties.map((p) => (
+                    <label key={p.id} className="flex items-center gap-2 text-sm">
+                      <input
+                        type="checkbox"
+                        checked={editingPropertyIds.includes(p.id)}
+                        onChange={() => toggleSelectedProperty(p.id)}
+                      />
+                      <span>{p.name}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsEditDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              onClick={async () => {
+                if (!editingUser) return;
+                try {
+                  await updateUserMutation.mutateAsync({
+                    id: editingUser.id,
+                    displayName: editingDisplayName,
+                    email: editingEmail,
+                    password: editingPassword || undefined,
+                  });
+                  await assignPropertiesMutation.mutateAsync({
+                    id: editingUser.id,
+                    propertyIds: editingPropertyIds,
+                  });
+                  setIsEditDialogOpen(false);
+                  setEditingUser(null);
+                } catch (err) {
+                  // errors handled in mutations
+                }
+              }}
+              disabled={updateUserMutation.isPending || assignPropertiesMutation.isPending || !editingDisplayName || !editingEmail}
+            >
+              {(updateUserMutation.isPending || assignPropertiesMutation.isPending) ? 'Saving...' : 'Save Changes'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

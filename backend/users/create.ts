@@ -10,6 +10,8 @@ export interface CreateUserRequest {
   password: string;
   displayName: string;
   role: UserRole;
+  // Optional: assign properties to the user on creation
+  propertyIds?: number[];
 }
 
 export interface CreateUserResponse {
@@ -27,7 +29,7 @@ export const create = api<CreateUserRequest, CreateUserResponse>(
     const authData = getAuthData()!;
     requireRole('ADMIN')(authData);
 
-    const { email, password, displayName, role } = req;
+    const { email, password, displayName, role, propertyIds } = req;
 
     // Only admins can create managers
     if (role !== 'MANAGER') {
@@ -49,19 +51,46 @@ export const create = api<CreateUserRequest, CreateUserResponse>(
 
     const passwordHash = await hashPassword(password);
 
-    // Create user
-    const userRow = await usersDB.queryRow`
-      INSERT INTO users (org_id, email, password_hash, role, display_name, created_by_user_id)
-      VALUES (${authData.orgId}, ${email}, ${passwordHash}, ${role}, ${displayName}, ${parseInt(authData.userID)})
-      RETURNING id, email, role, display_name, created_by_user_id
-    `;
+    // Create user in a transaction and optionally assign properties
+    const tx = await usersDB.begin();
+    try {
+      const userRow = await tx.queryRow`
+        INSERT INTO users (org_id, email, password_hash, role, display_name, created_by_user_id)
+        VALUES (${authData.orgId}, ${email}, ${passwordHash}, ${role}, ${displayName}, ${parseInt(authData.userID)})
+        RETURNING id, email, role, display_name, created_by_user_id
+      `;
 
-    return {
-      id: userRow.id,
-      email: userRow.email,
-      role: userRow.role as UserRole,
-      displayName: userRow.display_name,
-      createdByUserId: userRow.created_by_user_id,
-    };
+      // Assign properties if provided
+      if (propertyIds && propertyIds.length > 0) {
+        // Validate properties belong to org
+        const props = await tx.rawQueryAll<{ id: number }>(
+          `SELECT id FROM properties WHERE org_id = $1 AND id = ANY($2::bigint[])`,
+          authData.orgId,
+          propertyIds
+        );
+        const validIds = new Set(props.map(p => p.id));
+        const toAssign = propertyIds.filter(id => validIds.has(id));
+        for (const pid of toAssign) {
+          await tx.exec`
+            INSERT INTO user_properties (user_id, property_id)
+            VALUES (${userRow.id}, ${pid})
+            ON CONFLICT DO NOTHING
+          `;
+        }
+      }
+
+      await tx.commit();
+
+      return {
+        id: userRow.id,
+        email: userRow.email,
+        role: userRow.role as UserRole,
+        displayName: userRow.display_name,
+        createdByUserId: userRow.created_by_user_id,
+      };
+    } catch (err) {
+      await tx.rollback();
+      throw err;
+    }
   }
 );

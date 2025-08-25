@@ -21,7 +21,7 @@ export const updateStatus = api<UpdateTaskStatusRequest, UpdateTaskStatusRespons
 
     // Get task and check access
     const taskRow = await tasksDB.queryRow`
-      SELECT t.id, t.org_id, t.property_id
+      SELECT t.id, t.org_id, t.property_id, t.assignee_staff_id
       FROM tasks t
       WHERE t.id = ${id} AND t.org_id = ${authData.orgId}
     `;
@@ -30,26 +30,35 @@ export const updateStatus = api<UpdateTaskStatusRequest, UpdateTaskStatusRespons
       throw APIError.notFound("Task not found");
     }
 
-    // Access rules: ADMIN can update any; MANAGER only if they have access to the property
+    // Access rules: ADMIN can update any; MANAGER only if they have access to the property or are assigned
     let hasAccess = false;
 
     if (authData.role === "ADMIN") {
       hasAccess = true;
     } else if (authData.role === "MANAGER") {
+      // Check if manager has access to the property
       const accessCheck = await tasksDB.queryRow`
         SELECT 1 FROM user_properties WHERE user_id = ${parseInt(authData.userID)} AND property_id = ${taskRow.property_id}
       `;
-      hasAccess = !!accessCheck;
+      
+      // Or check if they are assigned to this task
+      const assigneeCheck = await tasksDB.queryRow`
+        SELECT 1 FROM staff WHERE id = ${taskRow.assignee_staff_id} AND user_id = ${parseInt(authData.userID)}
+      `;
+      
+      hasAccess = !!(accessCheck || assigneeCheck);
     }
 
     if (!hasAccess) {
       throw APIError.permissionDenied("No access to this task");
     }
 
-    // Update task status
+    // Update task status and completion time if marking as done
+    const completedAt = status === 'done' ? new Date() : null;
+    
     await tasksDB.exec`
       UPDATE tasks 
-      SET status = ${status}, updated_at = NOW()
+      SET status = ${status}, updated_at = NOW(), completed_at = ${completedAt}
       WHERE id = ${id}
     `;
 

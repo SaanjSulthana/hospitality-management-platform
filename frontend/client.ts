@@ -37,9 +37,11 @@ export class Client {
     public readonly auth: auth.ServiceClient
     public readonly bookings: bookings.ServiceClient
     public readonly branding: branding.ServiceClient
+    public readonly finance: finance.ServiceClient
     public readonly orgs: orgs.ServiceClient
     public readonly properties: properties.ServiceClient
     public readonly seed: seed.ServiceClient
+    public readonly staff: staff.ServiceClient
     public readonly tasks: tasks.ServiceClient
     public readonly users: users.ServiceClient
     private readonly options: ClientOptions
@@ -60,9 +62,11 @@ export class Client {
         this.auth = new auth.ServiceClient(base)
         this.bookings = new bookings.ServiceClient(base)
         this.branding = new branding.ServiceClient(base)
+        this.finance = new finance.ServiceClient(base)
         this.orgs = new orgs.ServiceClient(base)
         this.properties = new properties.ServiceClient(base)
         this.seed = new seed.ServiceClient(base)
+        this.staff = new staff.ServiceClient(base)
         this.tasks = new tasks.ServiceClient(base)
         this.users = new users.ServiceClient(base)
     }
@@ -144,10 +148,12 @@ export namespace analytics {
 /**
  * Import the endpoint handlers to derive the types for the client.
  */
+import { forgotPassword as api_auth_forgot_password_forgotPassword } from "~backend/auth/forgot_password";
 import { login as api_auth_login_login } from "~backend/auth/login";
 import { logout as api_auth_logout_logout } from "~backend/auth/logout";
 import { me as api_auth_me_me } from "~backend/auth/me";
 import { refresh as api_auth_refresh_refresh } from "~backend/auth/refresh";
+import { resetPassword as api_auth_reset_password_resetPassword } from "~backend/auth/reset_password";
 import { signup as api_auth_signup_signup } from "~backend/auth/signup";
 
 export namespace auth {
@@ -157,11 +163,22 @@ export namespace auth {
 
         constructor(baseClient: BaseClient) {
             this.baseClient = baseClient
+            this.forgotPassword = this.forgotPassword.bind(this)
             this.login = this.login.bind(this)
             this.logout = this.logout.bind(this)
             this.me = this.me.bind(this)
             this.refresh = this.refresh.bind(this)
+            this.resetPassword = this.resetPassword.bind(this)
             this.signup = this.signup.bind(this)
+        }
+
+        /**
+         * Initiates password reset process
+         */
+        public async forgotPassword(params: RequestType<typeof api_auth_forgot_password_forgotPassword>): Promise<ResponseType<typeof api_auth_forgot_password_forgotPassword>> {
+            // Now make the actual call to the API
+            const resp = await this.baseClient.callTypedAPI(`/auth/forgot-password`, {method: "POST", body: JSON.stringify(params)})
+            return JSON.parse(await resp.text(), dateReviver) as ResponseType<typeof api_auth_forgot_password_forgotPassword>
         }
 
         /**
@@ -196,6 +213,15 @@ export namespace auth {
             // Now make the actual call to the API
             const resp = await this.baseClient.callTypedAPI(`/auth/refresh`, {method: "POST", body: JSON.stringify(params)})
             return JSON.parse(await resp.text(), dateReviver) as ResponseType<typeof api_auth_refresh_refresh>
+        }
+
+        /**
+         * Resets password using reset token
+         */
+        public async resetPassword(params: RequestType<typeof api_auth_reset_password_resetPassword>): Promise<ResponseType<typeof api_auth_reset_password_resetPassword>> {
+            // Now make the actual call to the API
+            const resp = await this.baseClient.callTypedAPI(`/auth/reset-password`, {method: "POST", body: JSON.stringify(params)})
+            return JSON.parse(await resp.text(), dateReviver) as ResponseType<typeof api_auth_reset_password_resetPassword>
         }
 
         /**
@@ -290,6 +316,117 @@ export namespace branding {
             // Now make the actual call to the API
             const resp = await this.baseClient.callTypedAPI(`/branding/theme`, {method: "PATCH", body: JSON.stringify(params)})
             return JSON.parse(await resp.text(), dateReviver) as ResponseType<typeof api_branding_update_theme_updateTheme>
+        }
+    }
+}
+
+/**
+ * Import the endpoint handlers to derive the types for the client.
+ */
+import { addExpense as api_finance_add_expense_addExpense } from "~backend/finance/add_expense";
+import { addRevenue as api_finance_add_revenue_addRevenue } from "~backend/finance/add_revenue";
+import { approveExpense as api_finance_approve_expense_approveExpense } from "~backend/finance/approve_expense";
+import { listExpenses as api_finance_list_expenses_listExpenses } from "~backend/finance/list_expenses";
+import { listRevenues as api_finance_list_revenues_listRevenues } from "~backend/finance/list_revenues";
+import { profitLoss as api_finance_profit_loss_profitLoss } from "~backend/finance/profit_loss";
+
+export namespace finance {
+
+    export class ServiceClient {
+        private baseClient: BaseClient
+
+        constructor(baseClient: BaseClient) {
+            this.baseClient = baseClient
+            this.addExpense = this.addExpense.bind(this)
+            this.addRevenue = this.addRevenue.bind(this)
+            this.approveExpense = this.approveExpense.bind(this)
+            this.listExpenses = this.listExpenses.bind(this)
+            this.listRevenues = this.listRevenues.bind(this)
+            this.profitLoss = this.profitLoss.bind(this)
+        }
+
+        /**
+         * Adds a new expense record
+         */
+        public async addExpense(params: RequestType<typeof api_finance_add_expense_addExpense>): Promise<ResponseType<typeof api_finance_add_expense_addExpense>> {
+            // Now make the actual call to the API
+            const resp = await this.baseClient.callTypedAPI(`/finance/expenses`, {method: "POST", body: JSON.stringify(params)})
+            return JSON.parse(await resp.text(), dateReviver) as ResponseType<typeof api_finance_add_expense_addExpense>
+        }
+
+        /**
+         * Adds a new revenue record
+         */
+        public async addRevenue(params: RequestType<typeof api_finance_add_revenue_addRevenue>): Promise<ResponseType<typeof api_finance_add_revenue_addRevenue>> {
+            // Now make the actual call to the API
+            const resp = await this.baseClient.callTypedAPI(`/finance/revenues`, {method: "POST", body: JSON.stringify(params)})
+            return JSON.parse(await resp.text(), dateReviver) as ResponseType<typeof api_finance_add_revenue_addRevenue>
+        }
+
+        /**
+         * Approves or rejects an expense
+         */
+        public async approveExpense(params: RequestType<typeof api_finance_approve_expense_approveExpense>): Promise<ResponseType<typeof api_finance_approve_expense_approveExpense>> {
+            // Construct the body with only the fields which we want encoded within the body (excluding query string or header fields)
+            const body: Record<string, any> = {
+                approved: params.approved,
+                notes:    params.notes,
+            }
+
+            // Now make the actual call to the API
+            const resp = await this.baseClient.callTypedAPI(`/finance/expenses/${encodeURIComponent(params.id)}/approve`, {method: "PATCH", body: JSON.stringify(body)})
+            return JSON.parse(await resp.text(), dateReviver) as ResponseType<typeof api_finance_approve_expense_approveExpense>
+        }
+
+        /**
+         * Lists expenses with filtering
+         */
+        public async listExpenses(params: RequestType<typeof api_finance_list_expenses_listExpenses>): Promise<ResponseType<typeof api_finance_list_expenses_listExpenses>> {
+            // Convert our params into the objects we need for the request
+            const query = makeRecord<string, string | string[]>({
+                category:   params.category,
+                endDate:    params.endDate === undefined ? undefined : params.endDate.toISOString(),
+                propertyId: params.propertyId === undefined ? undefined : String(params.propertyId),
+                startDate:  params.startDate === undefined ? undefined : params.startDate.toISOString(),
+                status:     params.status,
+            })
+
+            // Now make the actual call to the API
+            const resp = await this.baseClient.callTypedAPI(`/finance/expenses`, {query, method: "GET", body: undefined})
+            return JSON.parse(await resp.text(), dateReviver) as ResponseType<typeof api_finance_list_expenses_listExpenses>
+        }
+
+        /**
+         * Lists revenues with filtering
+         */
+        public async listRevenues(params: RequestType<typeof api_finance_list_revenues_listRevenues>): Promise<ResponseType<typeof api_finance_list_revenues_listRevenues>> {
+            // Convert our params into the objects we need for the request
+            const query = makeRecord<string, string | string[]>({
+                endDate:    params.endDate === undefined ? undefined : params.endDate.toISOString(),
+                propertyId: params.propertyId === undefined ? undefined : String(params.propertyId),
+                source:     params.source,
+                startDate:  params.startDate === undefined ? undefined : params.startDate.toISOString(),
+            })
+
+            // Now make the actual call to the API
+            const resp = await this.baseClient.callTypedAPI(`/finance/revenues`, {query, method: "GET", body: undefined})
+            return JSON.parse(await resp.text(), dateReviver) as ResponseType<typeof api_finance_list_revenues_listRevenues>
+        }
+
+        /**
+         * Gets profit and loss statement
+         */
+        public async profitLoss(params: RequestType<typeof api_finance_profit_loss_profitLoss>): Promise<ResponseType<typeof api_finance_profit_loss_profitLoss>> {
+            // Convert our params into the objects we need for the request
+            const query = makeRecord<string, string | string[]>({
+                endDate:    params.endDate === undefined ? undefined : params.endDate.toISOString(),
+                propertyId: params.propertyId === undefined ? undefined : String(params.propertyId),
+                startDate:  params.startDate === undefined ? undefined : params.startDate.toISOString(),
+            })
+
+            // Now make the actual call to the API
+            const resp = await this.baseClient.callTypedAPI(`/finance/profit-loss`, {query, method: "GET", body: undefined})
+            return JSON.parse(await resp.text(), dateReviver) as ResponseType<typeof api_finance_profit_loss_profitLoss>
         }
     }
 }
@@ -414,8 +551,148 @@ export namespace seed {
 /**
  * Import the endpoint handlers to derive the types for the client.
  */
+import { approveLeave as api_staff_approve_leave_approveLeave } from "~backend/staff/approve_leave";
+import { create as api_staff_create_create } from "~backend/staff/create";
+import { createSchedule as api_staff_create_schedule_createSchedule } from "~backend/staff/create_schedule";
+import { list as api_staff_list_list } from "~backend/staff/list";
+import { listLeaveRequests as api_staff_list_leave_requests_listLeaveRequests } from "~backend/staff/list_leave_requests";
+import { listSchedules as api_staff_list_schedules_listSchedules } from "~backend/staff/list_schedules";
+import { requestLeave as api_staff_request_leave_requestLeave } from "~backend/staff/request_leave";
+import { updatePerformance as api_staff_update_performance_updatePerformance } from "~backend/staff/update_performance";
+
+export namespace staff {
+
+    export class ServiceClient {
+        private baseClient: BaseClient
+
+        constructor(baseClient: BaseClient) {
+            this.baseClient = baseClient
+            this.approveLeave = this.approveLeave.bind(this)
+            this.create = this.create.bind(this)
+            this.createSchedule = this.createSchedule.bind(this)
+            this.list = this.list.bind(this)
+            this.listLeaveRequests = this.listLeaveRequests.bind(this)
+            this.listSchedules = this.listSchedules.bind(this)
+            this.requestLeave = this.requestLeave.bind(this)
+            this.updatePerformance = this.updatePerformance.bind(this)
+        }
+
+        /**
+         * Approves or rejects a leave request
+         */
+        public async approveLeave(params: RequestType<typeof api_staff_approve_leave_approveLeave>): Promise<ResponseType<typeof api_staff_approve_leave_approveLeave>> {
+            // Construct the body with only the fields which we want encoded within the body (excluding query string or header fields)
+            const body: Record<string, any> = {
+                approved: params.approved,
+            }
+
+            // Now make the actual call to the API
+            const resp = await this.baseClient.callTypedAPI(`/staff/leave-requests/${encodeURIComponent(params.id)}/approve`, {method: "PATCH", body: JSON.stringify(body)})
+            return JSON.parse(await resp.text(), dateReviver) as ResponseType<typeof api_staff_approve_leave_approveLeave>
+        }
+
+        /**
+         * Creates a new staff record
+         */
+        public async create(params: RequestType<typeof api_staff_create_create>): Promise<ResponseType<typeof api_staff_create_create>> {
+            // Now make the actual call to the API
+            const resp = await this.baseClient.callTypedAPI(`/staff`, {method: "POST", body: JSON.stringify(params)})
+            return JSON.parse(await resp.text(), dateReviver) as ResponseType<typeof api_staff_create_create>
+        }
+
+        /**
+         * Creates a new staff schedule
+         */
+        public async createSchedule(params: RequestType<typeof api_staff_create_schedule_createSchedule>): Promise<ResponseType<typeof api_staff_create_schedule_createSchedule>> {
+            // Now make the actual call to the API
+            const resp = await this.baseClient.callTypedAPI(`/staff/schedules`, {method: "POST", body: JSON.stringify(params)})
+            return JSON.parse(await resp.text(), dateReviver) as ResponseType<typeof api_staff_create_schedule_createSchedule>
+        }
+
+        /**
+         * Lists staff members with filtering
+         */
+        public async list(params: RequestType<typeof api_staff_list_list>): Promise<ResponseType<typeof api_staff_list_list>> {
+            // Convert our params into the objects we need for the request
+            const query = makeRecord<string, string | string[]>({
+                department: params.department,
+                propertyId: params.propertyId === undefined ? undefined : String(params.propertyId),
+                status:     params.status,
+            })
+
+            // Now make the actual call to the API
+            const resp = await this.baseClient.callTypedAPI(`/staff`, {query, method: "GET", body: undefined})
+            return JSON.parse(await resp.text(), dateReviver) as ResponseType<typeof api_staff_list_list>
+        }
+
+        /**
+         * Lists leave requests with filtering
+         */
+        public async listLeaveRequests(params: RequestType<typeof api_staff_list_leave_requests_listLeaveRequests>): Promise<ResponseType<typeof api_staff_list_leave_requests_listLeaveRequests>> {
+            // Convert our params into the objects we need for the request
+            const query = makeRecord<string, string | string[]>({
+                leaveType: params.leaveType,
+                staffId:   params.staffId === undefined ? undefined : String(params.staffId),
+                status:    params.status,
+            })
+
+            // Now make the actual call to the API
+            const resp = await this.baseClient.callTypedAPI(`/staff/leave-requests`, {query, method: "GET", body: undefined})
+            return JSON.parse(await resp.text(), dateReviver) as ResponseType<typeof api_staff_list_leave_requests_listLeaveRequests>
+        }
+
+        /**
+         * Lists staff schedules with filtering
+         */
+        public async listSchedules(params: RequestType<typeof api_staff_list_schedules_listSchedules>): Promise<ResponseType<typeof api_staff_list_schedules_listSchedules>> {
+            // Convert our params into the objects we need for the request
+            const query = makeRecord<string, string | string[]>({
+                endDate:    params.endDate === undefined ? undefined : params.endDate.toISOString(),
+                propertyId: params.propertyId === undefined ? undefined : String(params.propertyId),
+                staffId:    params.staffId === undefined ? undefined : String(params.staffId),
+                startDate:  params.startDate === undefined ? undefined : params.startDate.toISOString(),
+                status:     params.status,
+            })
+
+            // Now make the actual call to the API
+            const resp = await this.baseClient.callTypedAPI(`/staff/schedules`, {query, method: "GET", body: undefined})
+            return JSON.parse(await resp.text(), dateReviver) as ResponseType<typeof api_staff_list_schedules_listSchedules>
+        }
+
+        /**
+         * Creates a leave request for the current user
+         */
+        public async requestLeave(params: RequestType<typeof api_staff_request_leave_requestLeave>): Promise<ResponseType<typeof api_staff_request_leave_requestLeave>> {
+            // Now make the actual call to the API
+            const resp = await this.baseClient.callTypedAPI(`/staff/leave-requests`, {method: "POST", body: JSON.stringify(params)})
+            return JSON.parse(await resp.text(), dateReviver) as ResponseType<typeof api_staff_request_leave_requestLeave>
+        }
+
+        /**
+         * Updates staff performance rating
+         */
+        public async updatePerformance(params: RequestType<typeof api_staff_update_performance_updatePerformance>): Promise<ResponseType<typeof api_staff_update_performance_updatePerformance>> {
+            // Construct the body with only the fields which we want encoded within the body (excluding query string or header fields)
+            const body: Record<string, any> = {
+                notes:             params.notes,
+                performanceRating: params.performanceRating,
+            }
+
+            // Now make the actual call to the API
+            const resp = await this.baseClient.callTypedAPI(`/staff/${encodeURIComponent(params.id)}/performance`, {method: "PATCH", body: JSON.stringify(body)})
+            return JSON.parse(await resp.text(), dateReviver) as ResponseType<typeof api_staff_update_performance_updatePerformance>
+        }
+    }
+}
+
+/**
+ * Import the endpoint handlers to derive the types for the client.
+ */
+import { addAttachment as api_tasks_add_attachment_addAttachment } from "~backend/tasks/add_attachment";
+import { assign as api_tasks_assign_assign } from "~backend/tasks/assign";
 import { create as api_tasks_create_create } from "~backend/tasks/create";
 import { list as api_tasks_list_list } from "~backend/tasks/list";
+import { updateHours as api_tasks_update_hours_updateHours } from "~backend/tasks/update_hours";
 import { updateStatus as api_tasks_update_status_updateStatus } from "~backend/tasks/update_status";
 
 export namespace tasks {
@@ -425,9 +702,35 @@ export namespace tasks {
 
         constructor(baseClient: BaseClient) {
             this.baseClient = baseClient
+            this.addAttachment = this.addAttachment.bind(this)
+            this.assign = this.assign.bind(this)
             this.create = this.create.bind(this)
             this.list = this.list.bind(this)
+            this.updateHours = this.updateHours.bind(this)
             this.updateStatus = this.updateStatus.bind(this)
+        }
+
+        /**
+         * Adds an attachment to a task
+         */
+        public async addAttachment(params: RequestType<typeof api_tasks_add_attachment_addAttachment>): Promise<ResponseType<typeof api_tasks_add_attachment_addAttachment>> {
+            // Now make the actual call to the API
+            const resp = await this.baseClient.callTypedAPI(`/tasks/attachments`, {method: "POST", body: JSON.stringify(params)})
+            return JSON.parse(await resp.text(), dateReviver) as ResponseType<typeof api_tasks_add_attachment_addAttachment>
+        }
+
+        /**
+         * Assigns or unassigns a task to/from a staff member
+         */
+        public async assign(params: RequestType<typeof api_tasks_assign_assign>): Promise<ResponseType<typeof api_tasks_assign_assign>> {
+            // Construct the body with only the fields which we want encoded within the body (excluding query string or header fields)
+            const body: Record<string, any> = {
+                staffId: params.staffId,
+            }
+
+            // Now make the actual call to the API
+            const resp = await this.baseClient.callTypedAPI(`/tasks/${encodeURIComponent(params.id)}/assign`, {method: "PATCH", body: JSON.stringify(body)})
+            return JSON.parse(await resp.text(), dateReviver) as ResponseType<typeof api_tasks_assign_assign>
         }
 
         /**
@@ -446,6 +749,7 @@ export namespace tasks {
             // Convert our params into the objects we need for the request
             const query = makeRecord<string, string | string[]>({
                 assignee:   params.assignee,
+                overdue:    params.overdue === undefined ? undefined : String(params.overdue),
                 priority:   params.priority === undefined ? undefined : String(params.priority),
                 propertyId: params.propertyId === undefined ? undefined : String(params.propertyId),
                 status:     params.status === undefined ? undefined : String(params.status),
@@ -455,6 +759,21 @@ export namespace tasks {
             // Now make the actual call to the API
             const resp = await this.baseClient.callTypedAPI(`/tasks`, {query, method: "GET", body: undefined})
             return JSON.parse(await resp.text(), dateReviver) as ResponseType<typeof api_tasks_list_list>
+        }
+
+        /**
+         * Updates estimated or actual hours for a task
+         */
+        public async updateHours(params: RequestType<typeof api_tasks_update_hours_updateHours>): Promise<ResponseType<typeof api_tasks_update_hours_updateHours>> {
+            // Construct the body with only the fields which we want encoded within the body (excluding query string or header fields)
+            const body: Record<string, any> = {
+                actualHours:    params.actualHours,
+                estimatedHours: params.estimatedHours,
+            }
+
+            // Now make the actual call to the API
+            const resp = await this.baseClient.callTypedAPI(`/tasks/${encodeURIComponent(params.id)}/hours`, {method: "PATCH", body: JSON.stringify(body)})
+            return JSON.parse(await resp.text(), dateReviver) as ResponseType<typeof api_tasks_update_hours_updateHours>
         }
 
         /**

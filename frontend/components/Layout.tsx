@@ -4,6 +4,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
+import { useToast } from '@/components/ui/use-toast';
 import { 
   LayoutDashboard, 
   Building2, 
@@ -15,7 +16,9 @@ import {
   Menu,
   LogOut,
   User,
-  Shield
+  Shield,
+  DollarSign,
+  UserCheck
 } from 'lucide-react';
 
 interface LayoutProps {
@@ -27,6 +30,8 @@ const navigation = [
   { name: 'Properties', href: '/properties', icon: Building2, roles: ['ADMIN', 'MANAGER'] },
   { name: 'Tasks', href: '/tasks', icon: CheckSquare, roles: ['ADMIN', 'MANAGER'] },
   { name: 'Bookings', href: '/bookings', icon: Calendar, roles: ['ADMIN', 'MANAGER'] },
+  { name: 'Finance', href: '/finance', icon: DollarSign, roles: ['ADMIN', 'MANAGER'] },
+  { name: 'Staff', href: '/staff', icon: UserCheck, roles: ['ADMIN', 'MANAGER'] },
   { name: 'Users', href: '/users', icon: Users, roles: ['ADMIN'] },
   { name: 'Analytics', href: '/analytics', icon: BarChart3, roles: ['ADMIN'] },
   { name: 'Settings', href: '/settings', icon: Settings, roles: ['ADMIN'] },
@@ -36,12 +41,26 @@ export default function Layout({ children }: LayoutProps) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const { user, logout } = useAuth();
   const { theme } = useTheme();
+  const { toast } = useToast();
   const location = useLocation();
   const navigate = useNavigate();
 
   const handleLogout = async () => {
-    await logout();
-    navigate('/login');
+    try {
+      await logout();
+      toast({
+        title: "Logged out successfully",
+        description: "You have been signed out of your account.",
+      });
+      navigate('/login');
+    } catch (error) {
+      console.error('Logout error:', error);
+      toast({
+        variant: "destructive",
+        title: "Logout failed",
+        description: "There was an error signing you out. Please try again.",
+      });
+    }
   };
 
   const filteredNavigation = navigation.filter(item => {

@@ -31,6 +31,16 @@ CREATE TABLE IF NOT EXISTS sessions (
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
+-- Password reset tokens table
+CREATE TABLE IF NOT EXISTS password_reset_tokens (
+  id BIGSERIAL PRIMARY KEY,
+  user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  token TEXT NOT NULL UNIQUE,
+  expires_at TIMESTAMPTZ NOT NULL,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  UNIQUE(user_id)
+);
+
 -- Regions table
 CREATE TABLE IF NOT EXISTS regions (
   id BIGSERIAL PRIMARY KEY,
@@ -82,7 +92,41 @@ CREATE TABLE IF NOT EXISTS staff (
   property_id BIGINT REFERENCES properties(id),
   department TEXT NOT NULL CHECK (department IN ('frontdesk', 'housekeeping', 'maintenance', 'fnb', 'admin')),
   schedule_json JSONB DEFAULT '{}',
-  status TEXT DEFAULT 'active'
+  status TEXT DEFAULT 'active',
+  hourly_rate_cents BIGINT DEFAULT 0,
+  performance_rating DECIMAL(3,2) DEFAULT 0.0,
+  hire_date DATE,
+  notes TEXT
+);
+
+-- Staff schedules table
+CREATE TABLE IF NOT EXISTS staff_schedules (
+  id BIGSERIAL PRIMARY KEY,
+  org_id BIGINT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+  staff_id BIGINT NOT NULL REFERENCES staff(id) ON DELETE CASCADE,
+  property_id BIGINT NOT NULL REFERENCES properties(id) ON DELETE CASCADE,
+  shift_date DATE NOT NULL,
+  start_time TIME NOT NULL,
+  end_time TIME NOT NULL,
+  break_minutes INTEGER DEFAULT 0,
+  status TEXT NOT NULL CHECK (status IN ('scheduled', 'confirmed', 'completed', 'cancelled')) DEFAULT 'scheduled',
+  notes TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Leave requests table
+CREATE TABLE IF NOT EXISTS leave_requests (
+  id BIGSERIAL PRIMARY KEY,
+  org_id BIGINT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+  staff_id BIGINT NOT NULL REFERENCES staff(id) ON DELETE CASCADE,
+  leave_type TEXT NOT NULL CHECK (leave_type IN ('vacation', 'sick', 'personal', 'emergency')),
+  start_date DATE NOT NULL,
+  end_date DATE NOT NULL,
+  reason TEXT,
+  status TEXT NOT NULL CHECK (status IN ('pending', 'approved', 'rejected')) DEFAULT 'pending',
+  approved_by_user_id BIGINT REFERENCES users(id),
+  approved_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
 -- Guests table
@@ -122,7 +166,23 @@ CREATE TABLE IF NOT EXISTS tasks (
   due_at TIMESTAMPTZ,
   created_by_user_id BIGINT NOT NULL REFERENCES users(id),
   created_at TIMESTAMPTZ DEFAULT NOW(),
-  updated_at TIMESTAMPTZ DEFAULT NOW()
+  updated_at TIMESTAMPTZ DEFAULT NOW(),
+  completed_at TIMESTAMPTZ,
+  estimated_hours DECIMAL(4,2),
+  actual_hours DECIMAL(4,2)
+);
+
+-- Task attachments table
+CREATE TABLE IF NOT EXISTS task_attachments (
+  id BIGSERIAL PRIMARY KEY,
+  org_id BIGINT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+  task_id BIGINT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+  file_name TEXT NOT NULL,
+  file_url TEXT NOT NULL,
+  file_size BIGINT,
+  mime_type TEXT,
+  uploaded_by_user_id BIGINT NOT NULL REFERENCES users(id),
+  created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
 -- Approvals table
@@ -147,9 +207,14 @@ CREATE TABLE IF NOT EXISTS expenses (
   category TEXT NOT NULL,
   amount_cents BIGINT NOT NULL,
   currency TEXT NOT NULL DEFAULT 'USD',
+  description TEXT,
   receipt_url TEXT,
+  expense_date DATE NOT NULL,
   created_by_user_id BIGINT NOT NULL REFERENCES users(id),
-  created_at TIMESTAMPTZ DEFAULT NOW()
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  approved_by_user_id BIGINT REFERENCES users(id),
+  approved_at TIMESTAMPTZ,
+  status TEXT NOT NULL CHECK (status IN ('pending', 'approved', 'rejected')) DEFAULT 'pending'
 );
 
 -- Revenues table
@@ -160,7 +225,11 @@ CREATE TABLE IF NOT EXISTS revenues (
   source TEXT NOT NULL CHECK (source IN ('room', 'addon', 'other')),
   amount_cents BIGINT NOT NULL,
   currency TEXT NOT NULL DEFAULT 'USD',
+  description TEXT,
+  receipt_url TEXT,
   occurred_at TIMESTAMPTZ NOT NULL,
+  created_by_user_id BIGINT NOT NULL REFERENCES users(id),
+  created_at TIMESTAMPTZ DEFAULT NOW(),
   meta_json JSONB DEFAULT '{}'
 );
 
@@ -200,6 +269,8 @@ CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
 CREATE INDEX IF NOT EXISTS idx_users_created_by ON users(created_by_user_id);
 CREATE INDEX IF NOT EXISTS idx_sessions_user_id ON sessions(user_id);
 CREATE INDEX IF NOT EXISTS idx_sessions_expires_at ON sessions(expires_at);
+CREATE INDEX IF NOT EXISTS idx_password_reset_tokens_token ON password_reset_tokens(token);
+CREATE INDEX IF NOT EXISTS idx_password_reset_tokens_expires_at ON password_reset_tokens(expires_at);
 CREATE INDEX IF NOT EXISTS idx_regions_org_id ON regions(org_id);
 CREATE INDEX IF NOT EXISTS idx_properties_org_id ON properties(org_id);
 CREATE INDEX IF NOT EXISTS idx_properties_region_id ON properties(region_id);
@@ -210,6 +281,12 @@ CREATE INDEX IF NOT EXISTS idx_beds_or_units_property_id ON beds_or_units(proper
 CREATE INDEX IF NOT EXISTS idx_staff_org_id ON staff(org_id);
 CREATE INDEX IF NOT EXISTS idx_staff_user_id ON staff(user_id);
 CREATE INDEX IF NOT EXISTS idx_staff_property_id ON staff(property_id);
+CREATE INDEX IF NOT EXISTS idx_staff_schedules_org_id ON staff_schedules(org_id);
+CREATE INDEX IF NOT EXISTS idx_staff_schedules_staff_id ON staff_schedules(staff_id);
+CREATE INDEX IF NOT EXISTS idx_staff_schedules_date ON staff_schedules(shift_date);
+CREATE INDEX IF NOT EXISTS idx_leave_requests_org_id ON leave_requests(org_id);
+CREATE INDEX IF NOT EXISTS idx_leave_requests_staff_id ON leave_requests(staff_id);
+CREATE INDEX IF NOT EXISTS idx_leave_requests_status ON leave_requests(status);
 CREATE INDEX IF NOT EXISTS idx_guests_org_id ON guests(org_id);
 CREATE INDEX IF NOT EXISTS idx_bookings_org_id ON bookings(org_id);
 CREATE INDEX IF NOT EXISTS idx_bookings_property_id ON bookings(property_id);
@@ -219,11 +296,17 @@ CREATE INDEX IF NOT EXISTS idx_tasks_org_id ON tasks(org_id);
 CREATE INDEX IF NOT EXISTS idx_tasks_property_id ON tasks(property_id);
 CREATE INDEX IF NOT EXISTS idx_tasks_assignee ON tasks(assignee_staff_id);
 CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status);
+CREATE INDEX IF NOT EXISTS idx_tasks_due_at ON tasks(due_at);
+CREATE INDEX IF NOT EXISTS idx_task_attachments_org_id ON task_attachments(org_id);
+CREATE INDEX IF NOT EXISTS idx_task_attachments_task_id ON task_attachments(task_id);
 CREATE INDEX IF NOT EXISTS idx_approvals_org_id ON approvals(org_id);
 CREATE INDEX IF NOT EXISTS idx_expenses_org_id ON expenses(org_id);
 CREATE INDEX IF NOT EXISTS idx_expenses_property_id ON expenses(property_id);
+CREATE INDEX IF NOT EXISTS idx_expenses_date ON expenses(expense_date);
+CREATE INDEX IF NOT EXISTS idx_expenses_status ON expenses(status);
 CREATE INDEX IF NOT EXISTS idx_revenues_org_id ON revenues(org_id);
 CREATE INDEX IF NOT EXISTS idx_revenues_property_id ON revenues(property_id);
+CREATE INDEX IF NOT EXISTS idx_revenues_occurred_at ON revenues(occurred_at);
 CREATE INDEX IF NOT EXISTS idx_notifications_org_id ON notifications(org_id);
 CREATE INDEX IF NOT EXISTS idx_notifications_user_id ON notifications(user_id);
 CREATE INDEX IF NOT EXISTS idx_signup_tokens_token ON signup_tokens(token);

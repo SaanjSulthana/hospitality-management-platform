@@ -53,7 +53,7 @@ export default function SignupPage() {
 
     try {
       // Create admin account
-      const response = await backend.auth.signup(formData);
+      await backend.auth.signup(formData);
       
       toast({
         title: "Account created successfully!",

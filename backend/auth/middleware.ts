@@ -1,8 +1,7 @@
 import { APIError, Header } from "encore.dev/api";
 import { authHandler } from "encore.dev/auth";
-import { Gateway } from "encore.dev/api";
 import { verifyAccessToken } from "./utils";
-import { AuthData, UserRole } from "./types";
+import { AuthData } from "./types";
 
 interface AuthParams {
   authorization?: Header<"Authorization">;
@@ -37,7 +36,7 @@ export const auth = authHandler<AuthParams, AuthData>(
   }
 );
 
-export function requireRole(...allowedRoles: UserRole[]) {
+export function requireRole(...allowedRoles: string[]) {
   return (authData: AuthData) => {
     if (!allowedRoles.includes(authData.role)) {
       throw APIError.permissionDenied(`Role ${authData.role} not allowed. Required: ${allowedRoles.join(', ')}`);

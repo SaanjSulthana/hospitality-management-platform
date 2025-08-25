@@ -233,8 +233,8 @@ CREATE INDEX idx_signup_tokens_expires_at ON signup_tokens(expires_at);
 INSERT INTO organizations (name, subdomain_prefix, theme_json) 
 VALUES ('Example Company', 'example', '{"primaryColor": "#3b82f6", "brandName": "Example Company"}');
 
--- Insert admin user with hashed password for "AdminPass123"
--- Password hash for "AdminPass123" using bcrypt with salt rounds 12
+-- Insert admin user with hashed password for "password123"
+-- This will be updated by the seed script to ensure consistency
 INSERT INTO users (org_id, email, password_hash, role, display_name) 
 VALUES (
   1, 

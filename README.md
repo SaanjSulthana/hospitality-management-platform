@@ -11,11 +11,8 @@ A comprehensive hospitality management platform built with Encore.ts and React, 
 - Role-based access control (RBAC)
 
 ### 👥 User Management & Roles
-- **CORP_ADMIN**: Full organizational control
-- **REGIONAL_MANAGER**: Regional property management
-- **PROPERTY_MANAGER**: Individual property management
-- **DEPT_HEAD**: Department-specific operations
-- **STAFF**: Task execution and basic operations
+- **ADMIN**: Full organizational control
+- **MANAGER**: Property and operations management
 
 ### 🏨 Property Management
 - Multi-property support (hotels, hostels, resorts, apartments)
@@ -116,16 +113,18 @@ cd frontend && bun run dev
 ### Demo Credentials
 
 After seeding the database, you can log in with:
-- **Email**: admin@demo.com
+- **Email**: admin@example.com
 - **Password**: password123
-- **Role**: Corporate Admin
+- **Role**: Administrator
 
 Additional demo users:
-- manager@demo.com (Regional Manager)
-- property@demo.com (Property Manager)
-- dept@demo.com (Department Head)
-- staff1@demo.com (Front Desk Staff)
-- staff2@demo.com (Housekeeping Staff)
+- manager@example.com (Manager)
+- property@example.com (Property Manager)
+- dept@example.com (Department Head)
+- staff1@example.com (Front Desk Staff)
+- staff2@example.com (Housekeeping Staff)
+
+All demo accounts use the password: **password123**
 
 ## API Documentation
 
@@ -175,14 +174,14 @@ Additional demo users:
 ## Role-Based Access Control
 
 ### Permission Matrix
-| Feature | Corp Admin | Regional Mgr | Property Mgr | Dept Head | Staff |
-|---------|------------|--------------|--------------|-----------|-------|
-| Org Settings | ✅ | ❌ | ❌ | ❌ | ❌ |
-| User Management | ✅ | Region Only | Property Only | ❌ | ❌ |
-| Property CRUD | ✅ | Region Only | Assigned Only | ❌ | ❌ |
-| Task Management | ✅ | Region Only | Property Only | Dept Only | Assigned Only |
-| Analytics | All Data | Region Only | Property Only | Dept Only | Limited |
-| Bookings | ✅ | Region Only | Property Only | Property Only | Property Only |
+| Feature | Admin | Manager |
+|---------|-------|---------|
+| Org Settings | ✅ | ❌ |
+| User Management | ✅ | ❌ |
+| Property CRUD | ✅ | ✅ |
+| Task Management | ✅ | ✅ |
+| Analytics | All Data | Limited |
+| Bookings | ✅ | ✅ |
 
 ## Deployment
 

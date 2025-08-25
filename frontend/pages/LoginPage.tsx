@@ -51,12 +51,12 @@ export default function LoginPage() {
 
   const handleAdminDemo = () => {
     setEmail('admin@example.com');
-    setPassword('AdminPass123');
+    setPassword('password123');
   };
 
   const handleManagerDemo = () => {
-    setEmail('manager1@example.com');
-    setPassword('ManagerPass123');
+    setEmail('manager@example.com');
+    setPassword('password123');
   };
 
   return (
@@ -167,10 +167,10 @@ export default function LoginPage() {
                 Demo credentials:
               </p>
               <p className="text-xs text-gray-500">
-                Admin: admin@example.com / AdminPass123
+                Admin: admin@example.com / password123
               </p>
               <p className="text-xs text-gray-500">
-                Manager: manager1@example.com / ManagerPass123
+                Manager: manager@example.com / password123
               </p>
             </div>
 

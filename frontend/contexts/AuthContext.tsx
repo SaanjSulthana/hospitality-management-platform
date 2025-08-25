@@ -31,13 +31,16 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const [accessToken, setAccessToken] = useState<string | null>(null);
   const queryClient = useQueryClient();
 
+  // Always read the latest token from localStorage when creating the backend client.
+  // This prevents stale tokens being used across re-renders or after navigating.
   const getAuthenticatedBackend = () => {
-    if (accessToken) {
-      return backend.with({
-        auth: () => Promise.resolve({ authorization: `Bearer ${accessToken}` })
-      });
-    }
-    return backend;
+    return backend.with({
+      auth: async () => {
+        const token = localStorage.getItem('accessToken');
+        if (!token) return null;
+        return { authorization: `Bearer ${token}` };
+      },
+    });
   };
 
   const login = async (email: string, password: string) => {
@@ -52,10 +55,8 @@ export function AuthProvider({ children }: AuthProviderProps) {
       localStorage.setItem('refreshToken', response.refreshToken);
       setAccessToken(response.accessToken);
 
-      // Get user data
-      const authenticatedBackend = backend.with({
-        auth: () => Promise.resolve({ authorization: `Bearer ${response.accessToken}` })
-      });
+      // Get user data using the latest token from localStorage
+      const authenticatedBackend = getAuthenticatedBackend();
       const meResponse = await authenticatedBackend.auth.me();
       setUser(meResponse.user);
     } catch (error) {
@@ -121,18 +122,14 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
         // Try to get user data with stored token
         try {
-          const authenticatedBackend = backend.with({
-            auth: () => Promise.resolve({ authorization: `Bearer ${storedAccessToken}` })
-          });
+          const authenticatedBackend = getAuthenticatedBackend();
           const meResponse = await authenticatedBackend.auth.me();
           setUser(meResponse.user);
         } catch (error) {
           // Token might be expired, try to refresh
           try {
-            const newAccessToken = await refreshAccessToken();
-            const authenticatedBackend = backend.with({
-              auth: () => Promise.resolve({ authorization: `Bearer ${newAccessToken}` })
-            });
+            await refreshAccessToken();
+            const authenticatedBackend = getAuthenticatedBackend();
             const meResponse = await authenticatedBackend.auth.me();
             setUser(meResponse.user);
           } catch (refreshError) {
@@ -149,6 +146,22 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
     initAuth();
   }, []);
+
+  // When user becomes available (login/refresh), invalidate key queries to ensure fresh data.
+  useEffect(() => {
+    if (user) {
+      queryClient.invalidateQueries({ queryKey: ['properties'] });
+      queryClient.invalidateQueries({ queryKey: ['tasks'] });
+      queryClient.invalidateQueries({ queryKey: ['users'] });
+      queryClient.invalidateQueries({ queryKey: ['expenses'] });
+      queryClient.invalidateQueries({ queryKey: ['revenues'] });
+      queryClient.invalidateQueries({ queryKey: ['profit-loss'] });
+      queryClient.invalidateQueries({ queryKey: ['staff'] });
+      queryClient.invalidateQueries({ queryKey: ['schedules'] });
+      queryClient.invalidateQueries({ queryKey: ['leave-requests'] });
+      queryClient.invalidateQueries({ queryKey: ['analytics', 'overview'] });
+    }
+  }, [user, queryClient]);
 
   return (
     <AuthContext.Provider value={{

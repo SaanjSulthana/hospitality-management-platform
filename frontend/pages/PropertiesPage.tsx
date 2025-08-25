@@ -45,6 +45,8 @@ export default function PropertiesPage() {
       const backend = getAuthenticatedBackend();
       return backend.properties.list();
     },
+    staleTime: 30000, // 30 seconds
+    gcTime: 300000, // 5 minutes
   });
 
   const createPropertyMutation = useMutation({
@@ -62,93 +64,36 @@ export default function PropertiesPage() {
         },
       });
     },
-    onMutate: async (newProperty) => {
-      // Cancel any outgoing refetches
-      await queryClient.cancelQueries({ queryKey: ['properties'] });
-
-      // Snapshot the previous value
-      const previousProperties = queryClient.getQueryData(['properties']);
-
-      // Optimistically update to the new value
-      queryClient.setQueryData(['properties'], (old: any) => {
-        if (!old) return { properties: [] };
-        
-        const optimisticProperty = {
-          id: Date.now(), // Temporary ID
-          name: newProperty.name,
-          type: newProperty.type,
-          regionId: null,
-          addressJson: newProperty.address || {},
-          amenitiesJson: { amenities: newProperty.amenities || [] },
-          capacityJson: newProperty.capacity || {},
-          status: 'active',
-          createdAt: new Date().toISOString(),
-        };
-        
-        return {
-          properties: [optimisticProperty, ...old.properties]
-        };
-      });
-
-      // Return a context object with the snapshotted value
-      return { previousProperties };
-    },
-    onError: (err, newProperty, context) => {
-      // If the mutation fails, use the context returned from onMutate to roll back
-      if (context?.previousProperties) {
-        queryClient.setQueryData(['properties'], context.previousProperties);
-      }
-    },
-    onSuccess: (createdProperty) => {
-      // Update the cache with the real server response
-      queryClient.setQueryData(['properties'], (old: any) => {
-        if (!old) return { properties: [createdProperty] };
-        
-        // Replace the optimistic entry with the real one
-        const updatedProperties = old.properties.map((prop: any) => 
-          prop.id === createdProperty.id || (typeof prop.id === 'number' && prop.id > 1000000000000) // temp ID check
-            ? {
-                id: createdProperty.id,
-                name: createdProperty.name,
-                type: createdProperty.type,
-                regionId: createdProperty.regionId,
-                addressJson: createdProperty.addressJson,
-                amenitiesJson: createdProperty.amenitiesJson,
-                capacityJson: createdProperty.capacityJson,
-                status: createdProperty.status,
-                createdAt: createdProperty.createdAt,
-              }
-            : prop
-        );
-        
-        // If no optimistic entry was found, add the new property
-        const hasOptimistic = updatedProperties.some((prop: any) => prop.id === createdProperty.id);
-        if (!hasOptimistic) {
-          updatedProperties.unshift({
-            id: createdProperty.id,
-            name: createdProperty.name,
-            type: createdProperty.type,
-            regionId: createdProperty.regionId,
-            addressJson: createdProperty.addressJson,
-            amenitiesJson: createdProperty.amenitiesJson,
-            capacityJson: createdProperty.capacityJson,
-            status: createdProperty.status,
-            createdAt: createdProperty.createdAt,
-          });
-        }
-        
-        return { properties: updatedProperties };
-      });
-    },
-    onSettled: () => {
-      // Always refetch after error or success to ensure consistency
+    onSuccess: (newProperty) => {
+      // Invalidate and refetch properties
       queryClient.invalidateQueries({ queryKey: ['properties'] });
       
+      // Update the cache immediately with the new property
+      queryClient.setQueryData(['properties'], (old: any) => {
+        if (!old) return { properties: [newProperty] };
+        
+        // Check if property already exists to avoid duplicates
+        const exists = old.properties.some((p: any) => p.id === newProperty.id);
+        if (exists) return old;
+        
+        return {
+          properties: [newProperty, ...old.properties]
+        };
+      });
+
       setIsCreateDialogOpen(false);
       resetForm();
       toast({
         title: "Property created",
         description: "The property has been created successfully.",
+      });
+    },
+    onError: (error: any) => {
+      console.error('Create property error:', error);
+      toast({
+        variant: "destructive",
+        title: "Failed to create property",
+        description: error.message || "Please try again.",
       });
     },
   });
@@ -170,46 +115,44 @@ export default function PropertiesPage() {
         status: data.status,
       });
     },
-    onMutate: async (updatedProperty) => {
-      await queryClient.cancelQueries({ queryKey: ['properties'] });
+    onSuccess: (result, variables) => {
+      // Invalidate and refetch properties
+      queryClient.invalidateQueries({ queryKey: ['properties'] });
       
-      const previousProperties = queryClient.getQueryData(['properties']);
-      
-      // Optimistically update
+      // Update the specific property in cache
       queryClient.setQueryData(['properties'], (old: any) => {
         if (!old) return old;
         
         return {
           properties: old.properties.map((prop: any) =>
-            prop.id === updatedProperty.id
+            prop.id === variables.id
               ? {
                   ...prop,
-                  name: updatedProperty.name,
-                  type: updatedProperty.type,
-                  addressJson: updatedProperty.address || {},
-                  amenitiesJson: { amenities: updatedProperty.amenities || [] },
-                  capacityJson: updatedProperty.capacity || {},
-                  status: updatedProperty.status,
+                  name: variables.name,
+                  type: variables.type,
+                  addressJson: variables.address || {},
+                  amenitiesJson: { amenities: variables.amenities || [] },
+                  capacityJson: variables.capacity || {},
+                  status: variables.status,
                 }
               : prop
           )
         };
       });
-      
-      return { previousProperties };
-    },
-    onError: (err, updatedProperty, context) => {
-      if (context?.previousProperties) {
-        queryClient.setQueryData(['properties'], context.previousProperties);
-      }
-    },
-    onSettled: () => {
-      queryClient.invalidateQueries({ queryKey: ['properties'] });
+
       setIsEditDialogOpen(false);
       setEditingProperty(null);
       toast({
         title: "Property updated",
         description: "The property has been updated successfully.",
+      });
+    },
+    onError: (error: any) => {
+      console.error('Update property error:', error);
+      toast({
+        variant: "destructive",
+        title: "Failed to update property",
+        description: error.message || "Please try again.",
       });
     },
   });

@@ -48,35 +48,41 @@ export const create = api<CreatePropertyRequest, CreatePropertyResponse>(
     const amenitiesJson = { amenities: amenities || [] };
     const capacityJson = capacity || {};
 
-    // Use a transaction to ensure data consistency
-    const tx = await propertiesDB.begin();
     try {
-      const propertyRow = await tx.queryRow`
-        INSERT INTO properties (org_id, region_id, name, type, address_json, amenities_json, capacity_json, status)
-        VALUES (${authData.orgId}, ${regionId || null}, ${name}, ${type}, ${JSON.stringify(addressJson)}, ${JSON.stringify(amenitiesJson)}, ${JSON.stringify(capacityJson)}, 'active')
-        RETURNING id, org_id, region_id, name, type, address_json, amenities_json, capacity_json, status, created_at
-      `;
+      // Use a transaction to ensure data consistency
+      const tx = await propertiesDB.begin();
+      
+      try {
+        const propertyRow = await tx.queryRow`
+          INSERT INTO properties (org_id, region_id, name, type, address_json, amenities_json, capacity_json, status)
+          VALUES (${authData.orgId}, ${regionId || null}, ${name}, ${type}, ${JSON.stringify(addressJson)}, ${JSON.stringify(amenitiesJson)}, ${JSON.stringify(capacityJson)}, 'active')
+          RETURNING id, org_id, region_id, name, type, address_json, amenities_json, capacity_json, status, created_at
+        `;
 
-      if (!propertyRow) {
-        throw new Error("Failed to create property");
+        if (!propertyRow) {
+          throw new Error("Failed to create property");
+        }
+
+        // Commit the transaction
+        await tx.commit();
+
+        return {
+          id: propertyRow.id,
+          name: propertyRow.name,
+          type: propertyRow.type as PropertyType,
+          regionId: propertyRow.region_id,
+          addressJson: propertyRow.address_json,
+          amenitiesJson: propertyRow.amenities_json,
+          capacityJson: propertyRow.capacity_json,
+          status: propertyRow.status,
+          createdAt: propertyRow.created_at,
+        };
+      } catch (err) {
+        await tx.rollback();
+        throw err;
       }
-
-      await tx.commit();
-
-      return {
-        id: propertyRow.id,
-        name: propertyRow.name,
-        type: propertyRow.type as PropertyType,
-        regionId: propertyRow.region_id,
-        addressJson: propertyRow.address_json,
-        amenitiesJson: propertyRow.amenities_json,
-        capacityJson: propertyRow.capacity_json,
-        status: propertyRow.status,
-        createdAt: propertyRow.created_at,
-      };
     } catch (err) {
-      await tx.rollback();
-      console.error('Create property transaction error:', err);
+      console.error('Create property error:', err);
       throw APIError.internal("Failed to create property", err as Error);
     }
   }

@@ -53,6 +53,8 @@ export default function UsersPage() {
       return backend.users.list();
     },
     enabled: user?.role === 'ADMIN',
+    staleTime: 30000, // 30 seconds
+    gcTime: 300000, // 5 minutes
   });
 
   const { data: properties } = useQuery({
@@ -62,6 +64,8 @@ export default function UsersPage() {
       return backend.properties.list();
     },
     enabled: user?.role === 'ADMIN',
+    staleTime: 30000,
+    gcTime: 300000,
   });
 
   const createUserMutation = useMutation({
@@ -69,82 +73,32 @@ export default function UsersPage() {
       const backend = getAuthenticatedBackend();
       return backend.users.create(userData);
     },
-    onMutate: async (newUserData) => {
-      // Cancel any outgoing refetches
-      await queryClient.cancelQueries({ queryKey: ['users'] });
-
-      // Snapshot the previous value
-      const previousUsers = queryClient.getQueryData<ListUsersResponse>(['users']);
-
-      // Optimistically update to the new value
+    onSuccess: (createdUser) => {
+      // Invalidate and refetch users
+      queryClient.invalidateQueries({ queryKey: ['users'] });
+      
+      // Update the cache immediately with the new user
       queryClient.setQueryData<ListUsersResponse>(['users'], (old) => {
-        if (!old) return { users: [] };
+        if (!old) return { users: [createdUser] };
         
-        const optimisticUser = {
-          id: Date.now(), // Temporary ID
-          email: newUserData.email,
-          role: newUserData.role,
-          displayName: newUserData.displayName,
-          createdByUserId: user?.id ? parseInt(user.id) : undefined,
+        // Check if user already exists to avoid duplicates
+        const exists = old.users.some((u) => u.id === createdUser.id);
+        if (exists) return old;
+        
+        const newUserData = {
+          id: createdUser.id,
+          email: createdUser.email,
+          role: createdUser.role,
+          displayName: createdUser.displayName,
+          createdByUserId: createdUser.createdByUserId,
           createdByName: user?.displayName,
           createdAt: new Date(),
           lastLoginAt: undefined,
         };
         
-        return { users: [optimisticUser, ...old.users] };
+        return { users: [newUserData, ...old.users] };
       });
 
-      return { previousUsers };
-    },
-    onError: (err, newUserData, context) => {
-      // If the mutation fails, use the context to roll back
-      if (context?.previousUsers) {
-        queryClient.setQueryData(['users'], context.previousUsers);
-      }
-    },
-    onSuccess: (created: any) => {
-      // Update the cache with the real server response
-      queryClient.setQueryData<ListUsersResponse>(['users'], (old) => {
-        if (!old) return { users: [created] };
-        
-        // Replace the optimistic entry with the real one
-        const updatedUsers = old.users.map((u) => 
-          u.id === created.id || (typeof u.id === 'number' && u.id > 1000000000000) // temp ID check
-            ? {
-                id: created.id,
-                email: created.email,
-                role: created.role,
-                displayName: created.displayName,
-                createdByUserId: created.createdByUserId,
-                createdByName: user?.displayName,
-                createdAt: new Date(),
-                lastLoginAt: undefined,
-              }
-            : u
-        );
-        
-        // If no optimistic entry was found, add the new user
-        const hasOptimistic = updatedUsers.some((u) => u.id === created.id);
-        if (!hasOptimistic) {
-          updatedUsers.unshift({
-            id: created.id,
-            email: created.email,
-            role: created.role,
-            displayName: created.displayName,
-            createdByUserId: created.createdByUserId,
-            createdByName: user?.displayName,
-            createdAt: new Date(),
-            lastLoginAt: undefined,
-          });
-        }
-        
-        return { users: updatedUsers };
-      });
-    },
-    onSettled: () => {
-      // Always refetch after error or success to ensure consistency
-      queryClient.invalidateQueries({ queryKey: ['users'] });
-      
       setIsCreateDialogOpen(false);
       setNewUser({
         email: '',
@@ -158,6 +112,14 @@ export default function UsersPage() {
         description: "The new manager account has been created.",
       });
     },
+    onError: (error: any) => {
+      console.error('Create user error:', error);
+      toast({
+        variant: "destructive",
+        title: "Failed to create manager",
+        description: error.message || "Please try again.",
+      });
+    },
   });
 
   const updateUserMutation = useMutation({
@@ -165,40 +127,38 @@ export default function UsersPage() {
       const backend = getAuthenticatedBackend();
       return backend.users.update(payload);
     },
-    onMutate: async (updatedUser) => {
-      await queryClient.cancelQueries({ queryKey: ['users'] });
+    onSuccess: (result, variables) => {
+      // Invalidate and refetch users
+      queryClient.invalidateQueries({ queryKey: ['users'] });
       
-      const previousUsers = queryClient.getQueryData<ListUsersResponse>(['users']);
-      
-      // Optimistically update
+      // Update the specific user in cache
       queryClient.setQueryData<ListUsersResponse>(['users'], (old) => {
         if (!old) return old;
         
         return {
           users: old.users.map((u) =>
-            u.id === updatedUser.id
+            u.id === variables.id
               ? {
                   ...u,
-                  displayName: updatedUser.displayName ?? u.displayName,
-                  email: updatedUser.email ?? u.email,
+                  displayName: variables.displayName ?? u.displayName,
+                  email: variables.email ?? u.email,
                 }
               : u
           ),
         };
       });
-      
-      return { previousUsers };
-    },
-    onError: (err, updatedUser, context) => {
-      if (context?.previousUsers) {
-        queryClient.setQueryData(['users'], context.previousUsers);
-      }
-    },
-    onSettled: () => {
-      queryClient.invalidateQueries({ queryKey: ['users'] });
+
       toast({
         title: "User updated",
         description: "Manager details have been updated.",
+      });
+    },
+    onError: (error: any) => {
+      console.error('Update user error:', error);
+      toast({
+        variant: "destructive",
+        title: "Failed to update user",
+        description: error.message || "Please try again.",
       });
     },
   });

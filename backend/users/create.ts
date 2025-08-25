@@ -62,12 +62,13 @@ export const create = api<CreateUserRequest, CreateUserResponse>(
 
       // Assign properties if provided
       if (propertyIds && propertyIds.length > 0) {
-        // Validate properties belong to org
-        const props = await tx.rawQueryAll<{ id: number }>(
-          `SELECT id FROM properties WHERE org_id = $1 AND id = ANY($2::bigint[])`,
-          authData.orgId,
-          propertyIds
-        );
+        // Validate properties belong to org using a dynamically constructed IN clause
+        const placeholders = propertyIds.map((_, i) => `$${i + 2}`).join(", ");
+        const sql = `
+          SELECT id FROM properties
+          WHERE org_id = $1 AND id IN (${placeholders})
+        `;
+        const props = await tx.rawQueryAll<{ id: number }>(sql, authData.orgId, ...propertyIds);
         const validIds = new Set(props.map(p => p.id));
         const toAssign = propertyIds.filter(id => validIds.has(id));
         for (const pid of toAssign) {
@@ -90,7 +91,7 @@ export const create = api<CreateUserRequest, CreateUserResponse>(
       };
     } catch (err) {
       await tx.rollback();
-      throw err;
+      throw APIError.internal("Failed to create user", err as Error);
     }
   }
 );

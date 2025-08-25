@@ -1,5 +1,6 @@
 import { APIError, Header } from "encore.dev/api";
 import { authHandler } from "encore.dev/auth";
+import { Gateway } from "encore.dev/api";
 import { verifyAccessToken } from "./utils";
 import { AuthData, UserRole } from "./types";
 
@@ -35,6 +36,9 @@ export const auth = authHandler<AuthParams, AuthData>(
     }
   }
 );
+
+// Configure the API gateway to use the auth handler
+export const gateway = new Gateway({ authHandler: auth });
 
 export function requireRole(...allowedRoles: UserRole[]) {
   return (authData: AuthData) => {

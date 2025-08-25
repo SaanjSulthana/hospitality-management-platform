@@ -1,9 +1,10 @@
 import * as bcrypt from "bcrypt";
 import * as jwt from "jsonwebtoken";
+import { secret } from "encore.dev/config";
 import { JWTPayload, User } from "./types";
 
-const JWT_SECRET = "mySuperSecretKey123!@#";
-const REFRESH_SECRET = "mySuperSecretKey123!@#_refresh";
+const jwtSecret = secret("JWTSecret");
+const refreshSecret = secret("RefreshSecret");
 
 export async function hashPassword(password: string): Promise<string> {
   return bcrypt.hash(password, 12);
@@ -25,7 +26,7 @@ export function generateAccessToken(user: User): string {
     iat: Math.floor(Date.now() / 1000),
   };
   
-  return jwt.sign(payload, JWT_SECRET, { algorithm: 'HS256' });
+  return jwt.sign(payload, jwtSecret(), { algorithm: 'HS256' });
 }
 
 export function generateRefreshToken(userId: number): string {
@@ -36,15 +37,15 @@ export function generateRefreshToken(userId: number): string {
     iat: Math.floor(Date.now() / 1000),
   };
   
-  return jwt.sign(payload, REFRESH_SECRET, { algorithm: 'HS256' });
+  return jwt.sign(payload, refreshSecret(), { algorithm: 'HS256' });
 }
 
 export function verifyAccessToken(token: string): JWTPayload {
-  return jwt.verify(token, JWT_SECRET) as JWTPayload;
+  return jwt.verify(token, jwtSecret()) as JWTPayload;
 }
 
 export function verifyRefreshToken(token: string): any {
-  return jwt.verify(token, REFRESH_SECRET);
+  return jwt.verify(token, refreshSecret());
 }
 
 export async function hashRefreshToken(token: string): Promise<string> {

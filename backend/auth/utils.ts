@@ -1,5 +1,5 @@
 import * as bcrypt from "bcrypt";
-import { sign, verify } from "jsonwebtoken";
+import jwt from "jsonwebtoken";
 import { secret } from "encore.dev/config";
 import { JWTPayload, User } from "./types";
 
@@ -38,7 +38,7 @@ export function generateAccessToken(user: User): string {
       iat: Math.floor(Date.now() / 1000),
     };
     
-    return sign(payload, jwtSecret(), { algorithm: 'HS256' });
+    return jwt.sign(payload, jwtSecret(), { algorithm: 'HS256' });
   } catch (error) {
     console.error('Access token generation error:', error);
     throw new Error('Failed to generate access token');
@@ -54,7 +54,7 @@ export function generateRefreshToken(userId: number): string {
       iat: Math.floor(Date.now() / 1000),
     };
     
-    return sign(payload, refreshSecret(), { algorithm: 'HS256' });
+    return jwt.sign(payload, refreshSecret(), { algorithm: 'HS256' });
   } catch (error) {
     console.error('Refresh token generation error:', error);
     throw new Error('Failed to generate refresh token');
@@ -63,7 +63,7 @@ export function generateRefreshToken(userId: number): string {
 
 export function verifyAccessToken(token: string): JWTPayload {
   try {
-    return verify(token, jwtSecret()) as JWTPayload;
+    return jwt.verify(token, jwtSecret()) as JWTPayload;
   } catch (error) {
     console.error('Access token verification error:', error);
     throw new Error('Invalid access token');
@@ -72,7 +72,7 @@ export function verifyAccessToken(token: string): JWTPayload {
 
 export function verifyRefreshToken(token: string): any {
   try {
-    return verify(token, refreshSecret());
+    return jwt.verify(token, refreshSecret());
   } catch (error) {
     console.error('Refresh token verification error:', error);
     throw new Error('Invalid refresh token');

@@ -35,7 +35,6 @@ const BROWSER = typeof globalThis === "object" && ("window" in globalThis);
 export class Client {
     public readonly analytics: analytics.ServiceClient
     public readonly auth: auth.ServiceClient
-    public readonly bookings: bookings.ServiceClient
     public readonly branding: branding.ServiceClient
     public readonly finance: finance.ServiceClient
     public readonly orgs: orgs.ServiceClient
@@ -60,7 +59,6 @@ export class Client {
         const base = new BaseClient(this.target, this.options)
         this.analytics = new analytics.ServiceClient(base)
         this.auth = new auth.ServiceClient(base)
-        this.bookings = new bookings.ServiceClient(base)
         this.branding = new branding.ServiceClient(base)
         this.finance = new finance.ServiceClient(base)
         this.orgs = new orgs.ServiceClient(base)
@@ -231,54 +229,6 @@ export namespace auth {
             // Now make the actual call to the API
             const resp = await this.baseClient.callTypedAPI(`/auth/signup`, {method: "POST", body: JSON.stringify(params)})
             return JSON.parse(await resp.text(), dateReviver) as ResponseType<typeof api_auth_signup_signup>
-        }
-    }
-}
-
-/**
- * Import the endpoint handlers to derive the types for the client.
- */
-import { checkin as api_bookings_checkin_checkin } from "~backend/bookings/checkin";
-import { checkout as api_bookings_checkout_checkout } from "~backend/bookings/checkout";
-import { create as api_bookings_create_create } from "~backend/bookings/create";
-
-export namespace bookings {
-
-    export class ServiceClient {
-        private baseClient: BaseClient
-
-        constructor(baseClient: BaseClient) {
-            this.baseClient = baseClient
-            this.checkin = this.checkin.bind(this)
-            this.checkout = this.checkout.bind(this)
-            this.create = this.create.bind(this)
-        }
-
-        /**
-         * Checks in a guest for their booking
-         */
-        public async checkin(params: { id: number }): Promise<ResponseType<typeof api_bookings_checkin_checkin>> {
-            // Now make the actual call to the API
-            const resp = await this.baseClient.callTypedAPI(`/bookings/${encodeURIComponent(params.id)}/checkin`, {method: "POST", body: undefined})
-            return JSON.parse(await resp.text(), dateReviver) as ResponseType<typeof api_bookings_checkin_checkin>
-        }
-
-        /**
-         * Checks out a guest from their booking
-         */
-        public async checkout(params: { id: number }): Promise<ResponseType<typeof api_bookings_checkout_checkout>> {
-            // Now make the actual call to the API
-            const resp = await this.baseClient.callTypedAPI(`/bookings/${encodeURIComponent(params.id)}/checkout`, {method: "POST", body: undefined})
-            return JSON.parse(await resp.text(), dateReviver) as ResponseType<typeof api_bookings_checkout_checkout>
-        }
-
-        /**
-         * Creates a new booking and guest
-         */
-        public async create(params: RequestType<typeof api_bookings_create_create>): Promise<ResponseType<typeof api_bookings_create_create>> {
-            // Now make the actual call to the API
-            const resp = await this.baseClient.callTypedAPI(`/bookings`, {method: "POST", body: JSON.stringify(params)})
-            return JSON.parse(await resp.text(), dateReviver) as ResponseType<typeof api_bookings_create_create>
         }
     }
 }
@@ -562,10 +512,8 @@ export namespace seed {
         /**
          * Seeds the database with demo data
          */
-        public async seedData(): Promise<ResponseType<typeof api_seed_seed_data_seedData>> {
-            // Now make the actual call to the API
-            const resp = await this.baseClient.callTypedAPI(`/seed/data`, {method: "POST", body: undefined})
-            return JSON.parse(await resp.text(), dateReviver) as ResponseType<typeof api_seed_seed_data_seedData>
+        public async seedData(params: RequestType<typeof api_seed_seed_data_seedData>): Promise<void> {
+            await this.baseClient.callTypedAPI(`/seed/data`, {method: "POST", body: JSON.stringify(params)})
         }
     }
 }

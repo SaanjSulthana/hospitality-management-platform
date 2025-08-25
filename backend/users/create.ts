@@ -60,6 +60,10 @@ export const create = api<CreateUserRequest, CreateUserResponse>(
         RETURNING id, email, role, display_name, created_by_user_id
       `;
 
+      if (!userRow) {
+        throw new Error("Failed to create user");
+      }
+
       // Assign properties if provided
       if (propertyIds && propertyIds.length > 0) {
         // Validate properties belong to org using a dynamically constructed IN clause
@@ -91,6 +95,7 @@ export const create = api<CreateUserRequest, CreateUserResponse>(
       };
     } catch (err) {
       await tx.rollback();
+      console.error('Create user transaction error:', err);
       throw APIError.internal("Failed to create user", err as Error);
     }
   }

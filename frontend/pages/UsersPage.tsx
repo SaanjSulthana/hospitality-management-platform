@@ -69,26 +69,82 @@ export default function UsersPage() {
       const backend = getAuthenticatedBackend();
       return backend.users.create(userData);
     },
-    onSuccess: (created: any) => {
-      // Optimistically insert the newly created manager into the cache for instant UI feedback
+    onMutate: async (newUserData) => {
+      // Cancel any outgoing refetches
+      await queryClient.cancelQueries({ queryKey: ['users'] });
+
+      // Snapshot the previous value
+      const previousUsers = queryClient.getQueryData<ListUsersResponse>(['users']);
+
+      // Optimistically update to the new value
       queryClient.setQueryData<ListUsersResponse>(['users'], (old) => {
-        if (!old) return old;
-        const optimistic = {
-          id: created.id,
-          email: created.email,
-          role: created.role,
-          displayName: created.displayName,
-          createdByUserId: created.createdByUserId,
+        if (!old) return { users: [] };
+        
+        const optimisticUser = {
+          id: Date.now(), // Temporary ID
+          email: newUserData.email,
+          role: newUserData.role,
+          displayName: newUserData.displayName,
+          createdByUserId: user?.id ? parseInt(user.id) : undefined,
           createdByName: user?.displayName,
           createdAt: new Date(),
           lastLoginAt: undefined,
         };
-        return { users: [optimistic, ...old.users] };
+        
+        return { users: [optimisticUser, ...old.users] };
       });
 
-      // Trigger a refetch to ensure data consistency from the server
+      return { previousUsers };
+    },
+    onError: (err, newUserData, context) => {
+      // If the mutation fails, use the context to roll back
+      if (context?.previousUsers) {
+        queryClient.setQueryData(['users'], context.previousUsers);
+      }
+    },
+    onSuccess: (created: any) => {
+      // Update the cache with the real server response
+      queryClient.setQueryData<ListUsersResponse>(['users'], (old) => {
+        if (!old) return { users: [created] };
+        
+        // Replace the optimistic entry with the real one
+        const updatedUsers = old.users.map((u) => 
+          u.id === created.id || (typeof u.id === 'number' && u.id > 1000000000000) // temp ID check
+            ? {
+                id: created.id,
+                email: created.email,
+                role: created.role,
+                displayName: created.displayName,
+                createdByUserId: created.createdByUserId,
+                createdByName: user?.displayName,
+                createdAt: new Date(),
+                lastLoginAt: undefined,
+              }
+            : u
+        );
+        
+        // If no optimistic entry was found, add the new user
+        const hasOptimistic = updatedUsers.some((u) => u.id === created.id);
+        if (!hasOptimistic) {
+          updatedUsers.unshift({
+            id: created.id,
+            email: created.email,
+            role: created.role,
+            displayName: created.displayName,
+            createdByUserId: created.createdByUserId,
+            createdByName: user?.displayName,
+            createdAt: new Date(),
+            lastLoginAt: undefined,
+          });
+        }
+        
+        return { users: updatedUsers };
+      });
+    },
+    onSettled: () => {
+      // Always refetch after error or success to ensure consistency
       queryClient.invalidateQueries({ queryKey: ['users'] });
-
+      
       setIsCreateDialogOpen(false);
       setNewUser({
         email: '',
@@ -102,14 +158,6 @@ export default function UsersPage() {
         description: "The new manager account has been created.",
       });
     },
-    onError: (error: any) => {
-      console.error('Create user error:', error);
-      toast({
-        variant: "destructive",
-        title: "Failed to create manager",
-        description: error.message || "Please try again.",
-      });
-    },
   });
 
   const updateUserMutation = useMutation({
@@ -117,35 +165,40 @@ export default function UsersPage() {
       const backend = getAuthenticatedBackend();
       return backend.users.update(payload);
     },
-    onSuccess: (_res, variables) => {
-      // Optimistically update the cached list for immediate UI consistency
+    onMutate: async (updatedUser) => {
+      await queryClient.cancelQueries({ queryKey: ['users'] });
+      
+      const previousUsers = queryClient.getQueryData<ListUsersResponse>(['users']);
+      
+      // Optimistically update
       queryClient.setQueryData<ListUsersResponse>(['users'], (old) => {
         if (!old) return old;
+        
         return {
           users: old.users.map((u) =>
-            u.id === variables.id
+            u.id === updatedUser.id
               ? {
                   ...u,
-                  displayName: variables.displayName ?? u.displayName,
-                  email: variables.email ?? u.email,
+                  displayName: updatedUser.displayName ?? u.displayName,
+                  email: updatedUser.email ?? u.email,
                 }
               : u
           ),
         };
       });
-
+      
+      return { previousUsers };
+    },
+    onError: (err, updatedUser, context) => {
+      if (context?.previousUsers) {
+        queryClient.setQueryData(['users'], context.previousUsers);
+      }
+    },
+    onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ['users'] });
       toast({
         title: "User updated",
         description: "Manager details have been updated.",
-      });
-    },
-    onError: (error: any) => {
-      console.error('Update user error:', error);
-      toast({
-        variant: "destructive",
-        title: "Failed to update user",
-        description: error.message || "Please try again.",
       });
     },
   });
@@ -398,87 +451,10 @@ export default function UsersPage() {
                 : 'Get started by creating your first manager'
               }
             </p>
-            <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
-              <DialogTrigger asChild>
-                <Button>
-                  <Plus className="mr-2 h-4 w-4" />
-                  Create Manager
-                </Button>
-              </DialogTrigger>
-              <DialogContent>
-                <DialogHeader>
-                  <DialogTitle>Create Manager Account</DialogTitle>
-                  <DialogDescription>
-                    Create a new manager account and assign properties.
-                  </DialogDescription>
-                </DialogHeader>
-                <div className="space-y-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="displayName2">Full Name</Label>
-                    <Input
-                      id="displayName2"
-                      value={newUser.displayName}
-                      onChange={(e) => setNewUser(prev => ({ ...prev, displayName: e.target.value }))}
-                      placeholder="Enter full name"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="email2">Email</Label>
-                    <Input
-                      id="email2"
-                      type="email"
-                      value={newUser.email}
-                      onChange={(e) => setNewUser(prev => ({ ...prev, email: e.target.value }))}
-                      placeholder="Enter email address"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="password2">Password</Label>
-                    <Input
-                      id="password2"
-                      type="password"
-                      value={newUser.password}
-                      onChange={(e) => setNewUser(prev => ({ ...prev, password: e.target.value }))}
-                      placeholder="Enter password (min 8 characters)"
-                      minLength={8}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Assign Properties</Label>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-2 max-h-48 overflow-auto border rounded p-2">
-                      {properties?.properties.map((p) => (
-                        <label key={p.id} className="flex items-center gap-2 text-sm">
-                          <input
-                            type="checkbox"
-                            checked={newUser.propertyIds.includes(p.id)}
-                            onChange={() => {
-                              setNewUser(prev => ({
-                                ...prev,
-                                propertyIds: prev.propertyIds.includes(p.id)
-                                  ? prev.propertyIds.filter(id => id !== p.id)
-                                  : [...prev.propertyIds, p.id]
-                              }));
-                            }}
-                          />
-                          <span>{p.name}</span>
-                        </label>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-                <DialogFooter>
-                  <Button variant="outline" onClick={() => setIsCreateDialogOpen(false)}>
-                    Cancel
-                  </Button>
-                  <Button 
-                    onClick={handleCreateUser}
-                    disabled={createUserMutation.isPending || !newUser.email || !newUser.password || !newUser.displayName}
-                  >
-                    {createUserMutation.isPending ? 'Creating...' : 'Create Manager'}
-                  </Button>
-                </DialogFooter>
-              </DialogContent>
-            </Dialog>
+            <Button onClick={() => setIsCreateDialogOpen(true)}>
+              <Plus className="mr-2 h-4 w-4" />
+              Create Manager
+            </Button>
           </CardContent>
         </Card>
       ) : (

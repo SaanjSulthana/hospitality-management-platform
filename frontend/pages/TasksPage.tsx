@@ -60,8 +60,80 @@ export default function TasksPage() {
         estimatedHours: data.estimatedHours ? parseFloat(data.estimatedHours) : undefined,
       });
     },
-    onSuccess: () => {
+    onMutate: async (newTask) => {
+      // Cancel any outgoing refetches
+      await queryClient.cancelQueries({ queryKey: ['tasks'] });
+
+      // Snapshot the previous value
+      const previousTasks = queryClient.getQueryData(['tasks']);
+
+      // Find property name for optimistic update
+      const property = properties?.properties.find(p => p.id === parseInt(newTask.propertyId));
+
+      // Optimistically update to the new value
+      queryClient.setQueryData(['tasks'], (old: any) => {
+        if (!old) return { tasks: [] };
+        
+        const optimisticTask = {
+          id: Date.now(), // Temporary ID
+          propertyId: parseInt(newTask.propertyId),
+          propertyName: property?.name || 'Unknown Property',
+          type: newTask.type,
+          title: newTask.title,
+          description: newTask.description,
+          priority: newTask.priority,
+          status: 'open',
+          assigneeStaffId: null,
+          assigneeName: null,
+          dueAt: newTask.dueAt || null,
+          createdByUserId: 1, // Will be updated with real data
+          createdByName: 'You',
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+          completedAt: null,
+          estimatedHours: newTask.estimatedHours ? parseFloat(newTask.estimatedHours) : null,
+          actualHours: null,
+          attachmentCount: 0,
+        };
+        
+        return {
+          tasks: [optimisticTask, ...old.tasks]
+        };
+      });
+
+      return { previousTasks };
+    },
+    onError: (err, newTask, context) => {
+      // If the mutation fails, use the context to roll back
+      if (context?.previousTasks) {
+        queryClient.setQueryData(['tasks'], context.previousTasks);
+      }
+    },
+    onSuccess: (createdTask) => {
+      // Update the cache with the real server response
+      queryClient.setQueryData(['tasks'], (old: any) => {
+        if (!old) return { tasks: [createdTask] };
+        
+        // Replace the optimistic entry with the real one
+        const updatedTasks = old.tasks.map((task: any) => 
+          task.id === createdTask.id || (typeof task.id === 'number' && task.id > 1000000000000) // temp ID check
+            ? createdTask
+            : task
+        );
+        
+        // If no optimistic entry was found, add the new task
+        const hasOptimistic = updatedTasks.some((task: any) => task.id === createdTask.id);
+        if (!hasOptimistic) {
+          updatedTasks.unshift(createdTask);
+        }
+        
+        return { tasks: updatedTasks };
+      });
+    },
+    onSettled: () => {
+      // Always refetch after error or success to ensure consistency
       queryClient.invalidateQueries({ queryKey: ['tasks'] });
+      
       setIsCreateDialogOpen(false);
       setTaskForm({
         propertyId: '',
@@ -77,14 +149,6 @@ export default function TasksPage() {
         description: "The task has been created successfully.",
       });
     },
-    onError: (error: any) => {
-      console.error('Create task error:', error);
-      toast({
-        variant: "destructive",
-        title: "Failed to create task",
-        description: error.message || "Please try again.",
-      });
-    },
   });
 
   const updateTaskStatusMutation = useMutation({
@@ -92,19 +156,41 @@ export default function TasksPage() {
       const backend = getAuthenticatedBackend();
       return backend.tasks.updateStatus({ id, status });
     },
-    onSuccess: () => {
+    onMutate: async ({ id, status }) => {
+      await queryClient.cancelQueries({ queryKey: ['tasks'] });
+      
+      const previousTasks = queryClient.getQueryData(['tasks']);
+      
+      // Optimistically update
+      queryClient.setQueryData(['tasks'], (old: any) => {
+        if (!old) return old;
+        
+        return {
+          tasks: old.tasks.map((task: any) =>
+            task.id === id
+              ? {
+                  ...task,
+                  status,
+                  completedAt: status === 'done' ? new Date().toISOString() : task.completedAt,
+                  updatedAt: new Date().toISOString(),
+                }
+              : task
+          )
+        };
+      });
+      
+      return { previousTasks };
+    },
+    onError: (err, variables, context) => {
+      if (context?.previousTasks) {
+        queryClient.setQueryData(['tasks'], context.previousTasks);
+      }
+    },
+    onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ['tasks'] });
       toast({
         title: "Task updated",
         description: "The task status has been updated.",
-      });
-    },
-    onError: (error: any) => {
-      console.error('Update task error:', error);
-      toast({
-        variant: "destructive",
-        title: "Failed to update task",
-        description: error.message || "Please try again.",
       });
     },
   });

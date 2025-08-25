@@ -230,17 +230,26 @@ CREATE INDEX IF NOT EXISTS idx_signup_tokens_token ON signup_tokens(token);
 CREATE INDEX IF NOT EXISTS idx_signup_tokens_expires_at ON signup_tokens(expires_at);
 
 -- Insert default organization and admin user (only if they don't exist)
-INSERT INTO organizations (name, subdomain_prefix, theme_json) 
-SELECT 'Example Company', 'example', '{"primaryColor": "#3b82f6", "brandName": "Example Company"}'
-WHERE NOT EXISTS (SELECT 1 FROM organizations WHERE subdomain_prefix = 'example');
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM organizations WHERE subdomain_prefix = 'example') THEN
+    INSERT INTO organizations (name, subdomain_prefix, theme_json) 
+    VALUES ('Example Company', 'example', '{"primaryColor": "#3b82f6", "brandName": "Example Company", "secondaryColor": "#64748b", "accentColor": "#10b981", "backgroundColor": "#ffffff", "textColor": "#1f2937", "currency": "USD", "dateFormat": "MM/DD/YYYY", "timeFormat": "12h"}');
+  END IF;
+END $$;
 
 -- Insert admin user with hashed password for "password123"
 -- This will be updated by the seed script to ensure consistency
-INSERT INTO users (org_id, email, password_hash, role, display_name) 
-SELECT 
-  1, 
-  'admin@example.com', 
-  '$2b$12$LQv3c1yqBWVHxkd0LHAkCOYz6TtxMQJqhN8/LewdBdXig/pjLw3jm', 
-  'ADMIN', 
-  'System Administrator'
-WHERE NOT EXISTS (SELECT 1 FROM users WHERE email = 'admin@example.com');
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM users WHERE email = 'admin@example.com') THEN
+    INSERT INTO users (org_id, email, password_hash, role, display_name) 
+    VALUES (
+      (SELECT id FROM organizations WHERE subdomain_prefix = 'example'),
+      'admin@example.com', 
+      '$2b$12$LQv3c1yqBWVHxkd0LHAkCOYz6TtxMQJqhN8/LewdBdXig/pjLw3jm', 
+      'ADMIN', 
+      'System Administrator'
+    );
+  END IF;
+END $$;

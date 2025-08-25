@@ -32,25 +32,69 @@ export default function SignupPage() {
     setIsLoading(true);
     setError('');
 
+    // Basic validation
+    if (!formData.email || !formData.password || !formData.displayName || !formData.organizationName || !formData.subdomainPrefix) {
+      setError('All fields are required');
+      setIsLoading(false);
+      return;
+    }
+
+    if (formData.password.length < 8) {
+      setError('Password must be at least 8 characters long');
+      setIsLoading(false);
+      return;
+    }
+
+    if (!/^[a-z0-9-]+$/.test(formData.subdomainPrefix)) {
+      setError('Subdomain can only contain lowercase letters, numbers, and hyphens');
+      setIsLoading(false);
+      return;
+    }
+
     try {
       // Create admin account
       const response = await backend.auth.signup(formData);
-      
-      // Auto-login after successful signup
-      await login(formData.email, formData.password);
       
       toast({
         title: "Account created successfully!",
         description: "Welcome to your new hospitality management platform.",
       });
-      navigate('/dashboard', { replace: true });
+      
+      // Auto-login after successful signup
+      try {
+        await login(formData.email, formData.password);
+        navigate('/dashboard', { replace: true });
+      } catch (loginError) {
+        console.error('Auto-login failed:', loginError);
+        // If auto-login fails, redirect to login page
+        navigate('/login', { replace: true });
+        toast({
+          title: "Account created",
+          description: "Please log in with your new credentials.",
+        });
+      }
     } catch (error: any) {
       console.error('Signup error:', error);
-      setError(error.message || 'Signup failed. Please try again.');
+      
+      let errorMessage = 'Signup failed. Please try again.';
+      
+      if (error.message) {
+        if (error.message.includes('subdomain')) {
+          errorMessage = 'This subdomain is already taken. Please choose a different one.';
+        } else if (error.message.includes('email')) {
+          errorMessage = 'This email address is already in use.';
+        } else if (error.message.includes('password')) {
+          errorMessage = 'Password must be at least 8 characters long.';
+        } else {
+          errorMessage = error.message;
+        }
+      }
+      
+      setError(errorMessage);
       toast({
         variant: "destructive",
         title: "Signup failed",
-        description: error.message || "Please check your information and try again.",
+        description: errorMessage,
       });
     } finally {
       setIsLoading(false);
@@ -59,6 +103,33 @@ export default function SignupPage() {
 
   const handleInputChange = (field: string, value: string) => {
     setFormData(prev => ({ ...prev, [field]: value }));
+    // Clear error when user starts typing
+    if (error) {
+      setError('');
+    }
+  };
+
+  const generateSubdomain = (orgName: string) => {
+    return orgName
+      .toLowerCase()
+      .replace(/[^a-z0-9\s-]/g, '') // Remove special characters
+      .replace(/\s+/g, '-') // Replace spaces with hyphens
+      .replace(/-+/g, '-') // Replace multiple hyphens with single
+      .replace(/^-|-$/g, ''); // Remove leading/trailing hyphens
+  };
+
+  const handleOrgNameChange = (value: string) => {
+    setFormData(prev => ({
+      ...prev,
+      organizationName: value,
+      // Auto-generate subdomain if it's empty or was auto-generated
+      subdomainPrefix: prev.subdomainPrefix === generateSubdomain(prev.organizationName) || !prev.subdomainPrefix
+        ? generateSubdomain(value)
+        : prev.subdomainPrefix
+    }));
+    if (error) {
+      setError('');
+    }
   };
 
   return (
@@ -137,7 +208,7 @@ export default function SignupPage() {
                   id="organizationName"
                   type="text"
                   value={formData.organizationName}
-                  onChange={(e) => handleInputChange('organizationName', e.target.value)}
+                  onChange={(e) => handleOrgNameChange(e.target.value)}
                   required
                   placeholder="Enter your organization name"
                   disabled={isLoading}
@@ -156,13 +227,15 @@ export default function SignupPage() {
                     placeholder="mycompany"
                     disabled={isLoading}
                     className="rounded-r-none"
+                    pattern="[a-z0-9-]+"
+                    title="Only lowercase letters, numbers, and hyphens allowed"
                   />
                   <span className="inline-flex items-center px-3 rounded-r-md border border-l-0 border-gray-300 bg-gray-50 text-gray-500 text-sm">
                     .hospitality.com
                   </span>
                 </div>
                 <p className="text-xs text-gray-500">
-                  Choose a unique subdomain for your organization
+                  Choose a unique subdomain for your organization (lowercase letters, numbers, and hyphens only)
                 </p>
               </div>
 

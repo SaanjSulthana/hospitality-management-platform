@@ -8,7 +8,8 @@ const refreshSecret = secret("RefreshSecret");
 
 export async function hashPassword(password: string): Promise<string> {
   try {
-    return await bcrypt.hash(password, 12);
+    const saltRounds = 12;
+    return await bcrypt.hash(password, saltRounds);
   } catch (error) {
     console.error('Password hashing error:', error);
     throw new Error('Failed to hash password');
@@ -80,7 +81,8 @@ export function verifyRefreshToken(token: string): any {
 
 export async function hashRefreshToken(token: string): Promise<string> {
   try {
-    return await bcrypt.hash(token, 10);
+    const saltRounds = 10;
+    return await bcrypt.hash(token, saltRounds);
   } catch (error) {
     console.error('Refresh token hashing error:', error);
     throw new Error('Failed to hash refresh token');

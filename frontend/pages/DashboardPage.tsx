@@ -5,6 +5,8 @@ import { useTheme } from '../contexts/ThemeContext';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { useToast } from '@/components/ui/use-toast';
+import { useNavigate } from 'react-router-dom';
 import { 
   Building2, 
   Users, 
@@ -16,12 +18,15 @@ import {
   Clock,
   Shield,
   UserCheck,
-  Plus
+  Plus,
+  LogOut
 } from 'lucide-react';
 
 export default function DashboardPage() {
-  const { user, getAuthenticatedBackend } = useAuth();
+  const { user, getAuthenticatedBackend, logout } = useAuth();
   const { theme } = useTheme();
+  const { toast } = useToast();
+  const navigate = useNavigate();
 
   const { data: analytics, isLoading: analyticsLoading } = useQuery({
     queryKey: ['analytics', 'overview'],
@@ -29,7 +34,7 @@ export default function DashboardPage() {
       const backend = getAuthenticatedBackend();
       return backend.analytics.overview();
     },
-    enabled: user?.role === 'ADMIN', // Only load analytics for admins
+    enabled: user?.role === 'ADMIN',
   });
 
   const { data: properties, isLoading: propertiesLoading } = useQuery({
@@ -54,7 +59,7 @@ export default function DashboardPage() {
       const backend = getAuthenticatedBackend();
       return backend.users.list();
     },
-    enabled: user?.role === 'ADMIN', // Only load users for admins
+    enabled: user?.role === 'ADMIN',
   });
 
   const getRoleDisplayName = (role: string) => {
@@ -78,17 +83,43 @@ export default function DashboardPage() {
 
   const managersCreated = users?.users.filter(u => u.role === 'MANAGER') || [];
 
+  const handleLogout = async () => {
+    try {
+      await logout();
+      toast({
+        title: "Logged out",
+        description: "You have been signed out.",
+      });
+      navigate('/login', { replace: true });
+    } catch (err) {
+      console.error('Logout error:', err);
+      toast({
+        variant: 'destructive',
+        title: 'Logout failed',
+        description: 'Please try again.',
+      });
+    }
+  };
+
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div>
-        <h1 className="text-3xl font-bold text-gray-900">
-          {getGreeting()}, {user?.displayName}
-        </h1>
-        <p className="text-gray-600 flex items-center gap-2">
-          <Shield className="h-4 w-4" />
-          {getRoleDisplayName(user?.role || '')} Dashboard
-        </p>
+      <div className="flex items-start justify-between">
+        <div>
+          <h1 className="text-3xl font-bold text-gray-900">
+            {getGreeting()}, {user?.displayName}
+          </h1>
+          <p className="text-gray-600 flex items-center gap-2">
+            <Shield className="h-4 w-4" />
+            {getRoleDisplayName(user?.role || '')} Dashboard
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" onClick={handleLogout}>
+            <LogOut className="h-4 w-4 mr-2" />
+            Sign out
+          </Button>
+        </div>
       </div>
 
       {/* Key Metrics */}

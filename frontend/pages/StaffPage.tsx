@@ -34,7 +34,7 @@ export default function StaffPage() {
   const [isLeaveDialogOpen, setIsLeaveDialogOpen] = useState(false);
   const [staffForm, setStaffForm] = useState({
     userId: '',
-    propertyId: '',
+    propertyId: 'none',
     department: '',
     hourlyRateCents: '',
     hireDate: '',
@@ -103,7 +103,7 @@ export default function StaffPage() {
       return backend.staff.create({
         ...data,
         userId: parseInt(data.userId),
-        propertyId: data.propertyId ? parseInt(data.propertyId) : undefined,
+        propertyId: data.propertyId === 'none' ? undefined : parseInt(data.propertyId),
         hourlyRateCents: data.hourlyRateCents ? parseInt(data.hourlyRateCents) : 0,
         hireDate: data.hireDate ? new Date(data.hireDate) : undefined,
       });
@@ -113,7 +113,7 @@ export default function StaffPage() {
       setIsStaffDialogOpen(false);
       setStaffForm({
         userId: '',
-        propertyId: '',
+        propertyId: 'none',
         department: '',
         hourlyRateCents: '',
         hireDate: '',
@@ -485,7 +485,7 @@ export default function StaffPage() {
                           <SelectValue placeholder="Select property" />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="">No specific property</SelectItem>
+                          <SelectItem value="none">No specific property</SelectItem>
                           {properties?.properties.map((property) => (
                             <SelectItem key={property.id} value={property.id.toString()}>
                               {property.name}

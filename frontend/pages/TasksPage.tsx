@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../contexts/AuthContext';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -11,7 +11,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { useToast } from '@/components/ui/use-toast';
-import { CheckSquare, Clock, AlertCircle, Plus, Search, User, Calendar } from 'lucide-react';
+import { CheckSquare, Clock, AlertCircle, Plus, Search, User, Calendar, Loader2 } from 'lucide-react';
 
 export default function TasksPage() {
   const { getAuthenticatedBackend } = useAuth();
@@ -29,6 +29,7 @@ export default function TasksPage() {
     priority: 'med' as 'low' | 'med' | 'high',
     dueAt: '',
     estimatedHours: '',
+    assigneeStaffId: 'none' as string | 'none',
   });
 
   const { data: tasks, isLoading } = useQuery({
@@ -51,6 +52,17 @@ export default function TasksPage() {
     gcTime: 300000,
   });
 
+  // Load staff options for selected property in the create dialog
+  const { data: createStaffOptions, isLoading: isCreateStaffLoading } = useQuery({
+    queryKey: ['staff', 'by-property', taskForm.propertyId || 'none'],
+    queryFn: async () => {
+      const backend = getAuthenticatedBackend();
+      if (!taskForm.propertyId) return { staff: [] as any[] };
+      return backend.staff.list({ propertyId: parseInt(taskForm.propertyId) });
+    },
+    enabled: !!taskForm.propertyId,
+  });
+
   const createTaskMutation = useMutation({
     mutationFn: async (data: any) => {
       const backend = getAuthenticatedBackend();
@@ -62,6 +74,7 @@ export default function TasksPage() {
         priority: data.priority,
         dueAt: data.dueAt ? new Date(data.dueAt) : undefined,
         estimatedHours: data.estimatedHours ? parseFloat(data.estimatedHours) : undefined,
+        assigneeStaffId: data.assigneeStaffId && data.assigneeStaffId !== 'none' ? parseInt(data.assigneeStaffId) : undefined,
       });
     },
     onSuccess: (newTask) => {
@@ -90,6 +103,7 @@ export default function TasksPage() {
         priority: 'med',
         dueAt: '',
         estimatedHours: '',
+        assigneeStaffId: 'none',
       });
       toast({
         title: "Task created",
@@ -143,6 +157,43 @@ export default function TasksPage() {
       toast({
         variant: "destructive",
         title: "Failed to update task",
+        description: error.message || "Please try again.",
+      });
+    },
+  });
+
+  // Assignment mutation
+  const assignMutation = useMutation({
+    mutationFn: async ({ id, staffId }: { id: number; staffId?: number }) => {
+      const backend = getAuthenticatedBackend();
+      return backend.tasks.assign({ id, staffId });
+    },
+    onSuccess: (_res, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['tasks'] });
+      queryClient.setQueryData(['tasks'], (old: any) => {
+        if (!old) return old;
+        return {
+          tasks: old.tasks.map((t: any) =>
+            t.id === variables.id
+              ? {
+                  ...t,
+                  assigneeStaffId: variables.staffId,
+                  assigneeName: undefined, // will be refreshed via invalidate
+                }
+              : t
+          ),
+        };
+      });
+      toast({
+        title: variables.staffId ? "Task assigned" : "Task unassigned",
+        description: variables.staffId ? "The task has been assigned successfully." : "The task has been unassigned.",
+      });
+    },
+    onError: (error: any) => {
+      console.error('Assign task error:', error);
+      toast({
+        variant: "destructive",
+        title: "Failed to update assignment",
         description: error.message || "Please try again.",
       });
     },
@@ -221,6 +272,123 @@ export default function TasksPage() {
     updateTaskStatusMutation.mutate({ id: taskId, status: newStatus });
   };
 
+  // Cache staff lists per property to avoid many queries
+  const staffQueries: Record<number, { staff: any[]; isLoading: boolean }> = {};
+  const StaffSelect = ({ propertyId, value, onChange, disabled }: { propertyId: number; value?: number | null; onChange: (v: number | null) => void; disabled?: boolean }) => {
+    const { data, isLoading: loadingStaff } = useQuery({
+      queryKey: ['staff', 'by-property', propertyId],
+      queryFn: async () => {
+        const backend = getAuthenticatedBackend();
+        return backend.staff.list({ propertyId });
+      },
+    });
+    const staff = data?.staff || [];
+    return (
+      <Select
+        value={value ? String(value) : 'none'}
+        onValueChange={(v) => onChange(v === 'none' ? null : parseInt(v))}
+        disabled={disabled || loadingStaff}
+      >
+        <SelectTrigger className="w-48">
+          <SelectValue placeholder={loadingStaff ? 'Loading staff...' : 'Assign staff'} />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="none">Unassigned</SelectItem>
+          {staff.map((s: any) => (
+            <SelectItem key={s.id} value={String(s.id)}>
+              {s.userName} {s.department ? `· ${s.department}` : ''}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    );
+  };
+
+  const TaskCard = ({ task }: { task: any }) => {
+    const [localAssigning, setLocalAssigning] = useState(false);
+    const onAssign = async (staffId: number | null) => {
+      setLocalAssigning(true);
+      try {
+        await assignMutation.mutateAsync({ id: task.id, staffId: staffId ?? undefined });
+      } finally {
+        setLocalAssigning(false);
+      }
+    };
+
+    return (
+      <Card className={`hover:shadow-md transition-shadow ${
+        task.dueAt && isOverdue(task.dueAt) && task.status !== 'done' ? 'border-red-200 bg-red-50' : ''
+      }`}>
+        <CardHeader className="pb-3">
+          <div className="flex items-start justify-between">
+            <div className="flex items-start space-x-2 flex-1">
+              <span className="text-lg">{getTypeIcon(task.type)}</span>
+              <div className="flex-1 min-w-0">
+                <CardTitle className="text-base leading-tight">{task.title}</CardTitle>
+                <CardDescription className="text-sm mt-1">
+                  {task.propertyName}
+                </CardDescription>
+              </div>
+            </div>
+            <Badge className={getPriorityColor(task.priority)}>
+              {task.priority}
+            </Badge>
+          </div>
+        </CardHeader>
+        <CardContent className="pt-0">
+          <div className="space-y-3">
+            {task.description && (
+              <p className="text-sm text-gray-600 line-clamp-2">{task.description}</p>
+            )}
+            
+            <div className="flex items-center justify-between text-xs text-gray-500">
+              <div className="flex items-center space-x-4">
+                <div className="flex items-center">
+                  <User className="h-3 w-3 mr-1" />
+                  <span>{task.assigneeName || 'Unassigned'}</span>
+                </div>
+                {task.dueAt && (
+                  <div className={`flex items-center ${
+                    isOverdue(task.dueAt) && task.status !== 'done' ? 'text-red-600' : ''
+                  }`}>
+                    <Calendar className="h-3 w-3 mr-1" />
+                    <span>{formatDate(task.dueAt)}</span>
+                    {isOverdue(task.dueAt) && task.status !== 'done' && (
+                      <AlertCircle className="h-3 w-3 ml-1 text-red-500" />
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between">
+              <Select value={task.status} onValueChange={(value) => handleStatusChange(task.id, value)}>
+                <SelectTrigger className="w-32">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="open">Open</SelectItem>
+                  <SelectItem value="in_progress">In Progress</SelectItem>
+                  <SelectItem value="blocked">Blocked</SelectItem>
+                  <SelectItem value="done">Done</SelectItem>
+                </SelectContent>
+              </Select>
+              <div className="flex items-center gap-2">
+                <StaffSelect
+                  propertyId={task.propertyId}
+                  value={task.assigneeStaffId ?? null}
+                  onChange={onAssign}
+                  disabled={localAssigning || assignMutation.isPending}
+                />
+                {localAssigning || assignMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+              </div>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  };
+
   if (isLoading) {
     return (
       <div className="space-y-6">
@@ -247,75 +415,6 @@ export default function TasksPage() {
     );
   }
 
-  const TaskCard = ({ task }: { task: any }) => (
-    <Card className={`hover:shadow-md transition-shadow ${
-      task.dueAt && isOverdue(task.dueAt) && task.status !== 'done' ? 'border-red-200 bg-red-50' : ''
-    }`}>
-      <CardHeader className="pb-3">
-        <div className="flex items-start justify-between">
-          <div className="flex items-start space-x-2 flex-1">
-            <span className="text-lg">{getTypeIcon(task.type)}</span>
-            <div className="flex-1 min-w-0">
-              <CardTitle className="text-base leading-tight">{task.title}</CardTitle>
-              <CardDescription className="text-sm mt-1">
-                {task.propertyName}
-              </CardDescription>
-            </div>
-          </div>
-          <Badge className={getPriorityColor(task.priority)}>
-            {task.priority}
-          </Badge>
-        </div>
-      </CardHeader>
-      <CardContent className="pt-0">
-        <div className="space-y-3">
-          {task.description && (
-            <p className="text-sm text-gray-600 line-clamp-2">{task.description}</p>
-          )}
-          
-          <div className="flex items-center justify-between text-xs text-gray-500">
-            <div className="flex items-center space-x-4">
-              {task.assigneeName && (
-                <div className="flex items-center">
-                  <User className="h-3 w-3 mr-1" />
-                  <span>{task.assigneeName}</span>
-                </div>
-              )}
-              {task.dueAt && (
-                <div className={`flex items-center ${
-                  isOverdue(task.dueAt) && task.status !== 'done' ? 'text-red-600' : ''
-                }`}>
-                  <Calendar className="h-3 w-3 mr-1" />
-                  <span>{formatDate(task.dueAt)}</span>
-                  {isOverdue(task.dueAt) && task.status !== 'done' && (
-                    <AlertCircle className="h-3 w-3 ml-1 text-red-500" />
-                  )}
-                </div>
-              )}
-            </div>
-          </div>
-
-          <div className="flex items-center justify-between">
-            <Select value={task.status} onValueChange={(value) => handleStatusChange(task.id, value)}>
-              <SelectTrigger className="w-32">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="open">Open</SelectItem>
-                <SelectItem value="in_progress">In Progress</SelectItem>
-                <SelectItem value="blocked">Blocked</SelectItem>
-                <SelectItem value="done">Done</SelectItem>
-              </SelectContent>
-            </Select>
-            <Button variant="outline" size="sm">
-              View Details
-            </Button>
-          </div>
-        </div>
-      </CardContent>
-    </Card>
-  );
-
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -341,7 +440,7 @@ export default function TasksPage() {
             <div className="space-y-4">
               <div className="space-y-2">
                 <Label htmlFor="property">Property *</Label>
-                <Select value={taskForm.propertyId} onValueChange={(value) => setTaskForm(prev => ({ ...prev, propertyId: value }))}>
+                <Select value={taskForm.propertyId} onValueChange={(value) => setTaskForm(prev => ({ ...prev, propertyId: value, assigneeStaffId: 'none' }))}>
                   <SelectTrigger>
                     <SelectValue placeholder="Select property" />
                   </SelectTrigger>
@@ -354,6 +453,29 @@ export default function TasksPage() {
                   </SelectContent>
                 </Select>
               </div>
+
+              {/* Assignee */}
+              <div className="space-y-2">
+                <Label>Assignee</Label>
+                <Select
+                  value={taskForm.assigneeStaffId}
+                  onValueChange={(value) => setTaskForm(prev => ({ ...prev, assigneeStaffId: value }))}
+                  disabled={!taskForm.propertyId || isCreateStaffLoading}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder={isCreateStaffLoading ? 'Loading staff...' : 'Select assignee (optional)'} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">Unassigned</SelectItem>
+                    {(createStaffOptions?.staff || []).map((s: any) => (
+                      <SelectItem key={s.id} value={s.id.toString()}>
+                        {s.userName} {s.department ? `· ${s.department}` : ''}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="type">Type</Label>
@@ -431,7 +553,14 @@ export default function TasksPage() {
                 onClick={handleCreateTask}
                 disabled={createTaskMutation.isPending || !taskForm.propertyId || !taskForm.title}
               >
-                {createTaskMutation.isPending ? 'Creating...' : 'Create Task'}
+                {createTaskMutation.isPending ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Creating...
+                  </>
+                ) : (
+                  'Create Task'
+                )}
               </Button>
             </DialogFooter>
           </DialogContent>

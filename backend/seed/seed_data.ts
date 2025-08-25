@@ -278,6 +278,61 @@ export const seedData = api<void, SeedDataResponse>(
         }
       }
 
+      // Ensure MANAGER users have property access (user_properties) so they can create/see tasks
+      const managerUser = await seedDB.queryRow`SELECT id FROM users WHERE email = 'manager@example.com'`;
+      const propertyManagerUser = await seedDB.queryRow`SELECT id FROM users WHERE email = 'property@example.com'`;
+      const deptUser = await seedDB.queryRow`SELECT id FROM users WHERE email = 'dept@example.com'`;
+      const staff1User = await seedDB.queryRow`SELECT id FROM users WHERE email = 'staff1@example.com'`;
+      const staff2User = await seedDB.queryRow`SELECT id FROM users WHERE email = 'staff2@example.com'`;
+
+      if (downtownHotel?.id) {
+        for (const u of [managerUser, propertyManagerUser, deptUser, staff1User, staff2User]) {
+          if (u) {
+            await seedDB.exec`
+              INSERT INTO user_properties (user_id, property_id)
+              VALUES (${u.id}, ${downtownHotel.id})
+              ON CONFLICT DO NOTHING
+            `;
+          }
+        }
+      }
+      if (beachResort?.id) {
+        for (const u of [managerUser, propertyManagerUser]) {
+          if (u) {
+            await seedDB.exec`
+              INSERT INTO user_properties (user_id, property_id)
+              VALUES (${u.id}, ${beachResort.id})
+              ON CONFLICT DO NOTHING
+            `;
+          }
+        }
+      }
+
+      // Seed Staff records for assignment UX
+      // Create staff records for staff1 and staff2 (and optionally manager as staff) to allow task assignment
+      if (staff1User && downtownHotel?.id) {
+        await seedDB.exec`
+          INSERT INTO staff (org_id, user_id, property_id, department, hourly_rate_cents, status)
+          VALUES (${orgId}, ${staff1User.id}, ${downtownHotel.id}, 'frontdesk', 1800, 'active')
+          ON CONFLICT DO NOTHING
+        `;
+      }
+      if (staff2User && downtownHotel?.id) {
+        await seedDB.exec`
+          INSERT INTO staff (org_id, user_id, property_id, department, hourly_rate_cents, status)
+          VALUES (${orgId}, ${staff2User.id}, ${downtownHotel.id}, 'housekeeping', 1600, 'active')
+          ON CONFLICT DO NOTHING
+        `;
+      }
+      // Optionally add manager as staff record for assignment
+      if (managerUser && beachResort?.id) {
+        await seedDB.exec`
+          INSERT INTO staff (org_id, user_id, property_id, department, hourly_rate_cents, status)
+          VALUES (${orgId}, ${managerUser.id}, ${beachResort.id}, 'admin', 0, 'active')
+          ON CONFLICT DO NOTHING
+        `;
+      }
+
       log.info("Database seeding completed successfully");
 
       return {

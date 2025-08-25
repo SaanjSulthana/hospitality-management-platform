@@ -37,9 +37,6 @@ export const auth = authHandler<AuthParams, AuthData>(
   }
 );
 
-// Configure the API gateway to use the auth handler
-export const gateway = new Gateway({ authHandler: auth });
-
 export function requireRole(...allowedRoles: UserRole[]) {
   return (authData: AuthData) => {
     if (!allowedRoles.includes(authData.role)) {

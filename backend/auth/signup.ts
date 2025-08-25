@@ -37,6 +37,11 @@ export const signup = api<SignupRequest, SignupResponse>(
       throw APIError.invalidArgument("Organization name and subdomain prefix are required");
     }
 
+    // Validate subdomain prefix format
+    if (!/^[a-z0-9-]+$/.test(subdomainPrefix)) {
+      throw APIError.invalidArgument("Subdomain prefix can only contain lowercase letters, numbers, and hyphens");
+    }
+
     // Check if subdomain is already taken
     const existingOrg = await authDB.queryRow`
       SELECT id FROM organizations WHERE subdomain_prefix = ${subdomainPrefix}
@@ -57,57 +62,76 @@ export const signup = api<SignupRequest, SignupResponse>(
 
     const passwordHash = await hashPassword(password);
 
-    // Create organization
-    const orgRow = await authDB.queryRow`
-      INSERT INTO organizations (name, subdomain_prefix, theme_json)
-      VALUES (${organizationName}, ${subdomainPrefix}, '{}')
-      RETURNING id, name, subdomain_prefix, theme_json, created_at
-    `;
+    try {
+      // Create organization
+      const orgRow = await authDB.queryRow`
+        INSERT INTO organizations (name, subdomain_prefix, theme_json)
+        VALUES (${organizationName}, ${subdomainPrefix}, '{"primaryColor": "#3b82f6", "brandName": ${organizationName}}')
+        RETURNING id, name, subdomain_prefix, theme_json, created_at
+      `;
 
-    // Create first user as ADMIN
-    const insertedUser = await authDB.queryRow`
-      INSERT INTO users (org_id, email, password_hash, role, display_name)
-      VALUES (${orgRow.id}, ${email}, ${passwordHash}, 'ADMIN', ${displayName})
-      RETURNING id, org_id, email, role, display_name, created_by_user_id, created_at, last_login_at
-    `;
+      if (!orgRow) {
+        throw APIError.internal("Failed to create organization");
+      }
 
-    // Update last login
-    await authDB.exec`
-      UPDATE users SET last_login_at = NOW() WHERE id = ${insertedUser.id}
-    `;
+      // Create first user as ADMIN
+      const insertedUser = await authDB.queryRow`
+        INSERT INTO users (org_id, email, password_hash, role, display_name)
+        VALUES (${orgRow.id}, ${email}, ${passwordHash}, 'ADMIN', ${displayName})
+        RETURNING id, org_id, email, role, display_name, created_by_user_id, created_at, last_login_at
+      `;
 
-    const user: User = {
-      id: insertedUser.id,
-      orgId: insertedUser.org_id,
-      email: insertedUser.email,
-      role: insertedUser.role as UserRole,
-      displayName: insertedUser.display_name,
-      createdByUserId: insertedUser.created_by_user_id ?? undefined,
-      createdAt: insertedUser.created_at,
-      lastLoginAt: insertedUser.last_login_at ?? undefined,
-    };
+      if (!insertedUser) {
+        throw APIError.internal("Failed to create user");
+      }
 
-    // Generate tokens
-    const accessToken = generateAccessToken(user);
-    const refreshToken = generateRefreshToken(user.id);
-    const refreshTokenHash = await hashRefreshToken(refreshToken);
+      // Update last login
+      await authDB.exec`
+        UPDATE users SET last_login_at = NOW() WHERE id = ${insertedUser.id}
+      `;
 
-    // Store refresh token
-    await authDB.exec`
-      INSERT INTO sessions (user_id, refresh_token_hash, expires_at)
-      VALUES (${user.id}, ${refreshTokenHash}, NOW() + INTERVAL '7 days')
-    `;
+      const user: User = {
+        id: insertedUser.id,
+        orgId: insertedUser.org_id,
+        email: insertedUser.email,
+        role: insertedUser.role as UserRole,
+        displayName: insertedUser.display_name,
+        createdByUserId: insertedUser.created_by_user_id ?? undefined,
+        createdAt: insertedUser.created_at,
+        lastLoginAt: new Date(),
+      };
 
-    return {
-      accessToken,
-      refreshToken,
-      user: {
-        id: user.id,
-        email: user.email,
-        displayName: user.displayName,
-        role: user.role,
-        orgId: user.orgId,
-      },
-    };
+      // Generate tokens
+      const accessToken = generateAccessToken(user);
+      const refreshToken = generateRefreshToken(user.id);
+      const refreshTokenHash = await hashRefreshToken(refreshToken);
+
+      // Store refresh token
+      await authDB.exec`
+        INSERT INTO sessions (user_id, refresh_token_hash, expires_at)
+        VALUES (${user.id}, ${refreshTokenHash}, NOW() + INTERVAL '7 days')
+      `;
+
+      return {
+        accessToken,
+        refreshToken,
+        user: {
+          id: user.id,
+          email: user.email,
+          displayName: user.displayName,
+          role: user.role,
+          orgId: user.orgId,
+        },
+      };
+    } catch (error) {
+      // If it's already an APIError, re-throw it
+      if (error instanceof Error && error.name === 'APIError') {
+        throw error;
+      }
+      
+      // Log the actual error for debugging
+      console.error('Signup error:', error);
+      throw APIError.internal("Failed to create account. Please try again.");
+    }
   }
 );

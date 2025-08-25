@@ -1,5 +1,5 @@
 -- Organizations table
-CREATE TABLE organizations (
+CREATE TABLE IF NOT EXISTS organizations (
   id BIGSERIAL PRIMARY KEY,
   name TEXT NOT NULL,
   primary_domain TEXT,
@@ -9,7 +9,7 @@ CREATE TABLE organizations (
 );
 
 -- Users table with simplified roles
-CREATE TABLE users (
+CREATE TABLE IF NOT EXISTS users (
   id BIGSERIAL PRIMARY KEY,
   org_id BIGINT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
   email TEXT NOT NULL,
@@ -23,7 +23,7 @@ CREATE TABLE users (
 );
 
 -- Sessions table
-CREATE TABLE sessions (
+CREATE TABLE IF NOT EXISTS sessions (
   id BIGSERIAL PRIMARY KEY,
   user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   refresh_token_hash TEXT NOT NULL,
@@ -32,14 +32,14 @@ CREATE TABLE sessions (
 );
 
 -- Regions table
-CREATE TABLE regions (
+CREATE TABLE IF NOT EXISTS regions (
   id BIGSERIAL PRIMARY KEY,
   org_id BIGINT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
   name TEXT NOT NULL
 );
 
 -- Properties table
-CREATE TABLE properties (
+CREATE TABLE IF NOT EXISTS properties (
   id BIGSERIAL PRIMARY KEY,
   org_id BIGINT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
   region_id BIGINT REFERENCES regions(id),
@@ -53,7 +53,7 @@ CREATE TABLE properties (
 );
 
 -- Rooms table
-CREATE TABLE rooms (
+CREATE TABLE IF NOT EXISTS rooms (
   id BIGSERIAL PRIMARY KEY,
   org_id BIGINT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
   property_id BIGINT NOT NULL REFERENCES properties(id) ON DELETE CASCADE,
@@ -64,7 +64,7 @@ CREATE TABLE rooms (
 );
 
 -- Beds or units table
-CREATE TABLE beds_or_units (
+CREATE TABLE IF NOT EXISTS beds_or_units (
   id BIGSERIAL PRIMARY KEY,
   org_id BIGINT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
   room_id BIGINT REFERENCES rooms(id),
@@ -75,7 +75,7 @@ CREATE TABLE beds_or_units (
 );
 
 -- Staff table
-CREATE TABLE staff (
+CREATE TABLE IF NOT EXISTS staff (
   id BIGSERIAL PRIMARY KEY,
   org_id BIGINT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
   user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -86,7 +86,7 @@ CREATE TABLE staff (
 );
 
 -- Guests table
-CREATE TABLE guests (
+CREATE TABLE IF NOT EXISTS guests (
   id BIGSERIAL PRIMARY KEY,
   org_id BIGINT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
   primary_contact_json JSONB DEFAULT '{}',
@@ -94,7 +94,7 @@ CREATE TABLE guests (
 );
 
 -- Bookings table
-CREATE TABLE bookings (
+CREATE TABLE IF NOT EXISTS bookings (
   id BIGSERIAL PRIMARY KEY,
   org_id BIGINT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
   guest_id BIGINT NOT NULL REFERENCES guests(id) ON DELETE CASCADE,
@@ -109,7 +109,7 @@ CREATE TABLE bookings (
 );
 
 -- Tasks table
-CREATE TABLE tasks (
+CREATE TABLE IF NOT EXISTS tasks (
   id BIGSERIAL PRIMARY KEY,
   org_id BIGINT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
   property_id BIGINT NOT NULL REFERENCES properties(id) ON DELETE CASCADE,
@@ -126,7 +126,7 @@ CREATE TABLE tasks (
 );
 
 -- Approvals table
-CREATE TABLE approvals (
+CREATE TABLE IF NOT EXISTS approvals (
   id BIGSERIAL PRIMARY KEY,
   org_id BIGINT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
   type TEXT NOT NULL CHECK (type IN ('leave', 'expense', 'task')),
@@ -140,7 +140,7 @@ CREATE TABLE approvals (
 );
 
 -- Expenses table
-CREATE TABLE expenses (
+CREATE TABLE IF NOT EXISTS expenses (
   id BIGSERIAL PRIMARY KEY,
   org_id BIGINT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
   property_id BIGINT NOT NULL REFERENCES properties(id) ON DELETE CASCADE,
@@ -153,7 +153,7 @@ CREATE TABLE expenses (
 );
 
 -- Revenues table
-CREATE TABLE revenues (
+CREATE TABLE IF NOT EXISTS revenues (
   id BIGSERIAL PRIMARY KEY,
   org_id BIGINT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
   property_id BIGINT NOT NULL REFERENCES properties(id) ON DELETE CASCADE,
@@ -165,7 +165,7 @@ CREATE TABLE revenues (
 );
 
 -- Notifications table
-CREATE TABLE notifications (
+CREATE TABLE IF NOT EXISTS notifications (
   id BIGSERIAL PRIMARY KEY,
   org_id BIGINT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
   user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -176,14 +176,14 @@ CREATE TABLE notifications (
 );
 
 -- User properties junction table
-CREATE TABLE user_properties (
+CREATE TABLE IF NOT EXISTS user_properties (
   user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   property_id BIGINT NOT NULL REFERENCES properties(id) ON DELETE CASCADE,
   PRIMARY KEY (user_id, property_id)
 );
 
 -- Signup tokens table
-CREATE TABLE signup_tokens (
+CREATE TABLE IF NOT EXISTS signup_tokens (
   id BIGSERIAL PRIMARY KEY,
   org_id BIGINT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
   email TEXT NOT NULL,
@@ -194,52 +194,53 @@ CREATE TABLE signup_tokens (
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- Indexes
-CREATE INDEX idx_users_org_id ON users(org_id);
-CREATE INDEX idx_users_email ON users(email);
-CREATE INDEX idx_users_created_by ON users(created_by_user_id);
-CREATE INDEX idx_sessions_user_id ON sessions(user_id);
-CREATE INDEX idx_sessions_expires_at ON sessions(expires_at);
-CREATE INDEX idx_regions_org_id ON regions(org_id);
-CREATE INDEX idx_properties_org_id ON properties(org_id);
-CREATE INDEX idx_properties_region_id ON properties(region_id);
-CREATE INDEX idx_rooms_org_id ON rooms(org_id);
-CREATE INDEX idx_rooms_property_id ON rooms(property_id);
-CREATE INDEX idx_beds_or_units_org_id ON beds_or_units(org_id);
-CREATE INDEX idx_beds_or_units_property_id ON beds_or_units(property_id);
-CREATE INDEX idx_staff_org_id ON staff(org_id);
-CREATE INDEX idx_staff_user_id ON staff(user_id);
-CREATE INDEX idx_staff_property_id ON staff(property_id);
-CREATE INDEX idx_guests_org_id ON guests(org_id);
-CREATE INDEX idx_bookings_org_id ON bookings(org_id);
-CREATE INDEX idx_bookings_property_id ON bookings(property_id);
-CREATE INDEX idx_bookings_guest_id ON bookings(guest_id);
-CREATE INDEX idx_bookings_dates ON bookings(checkin_date, checkout_date);
-CREATE INDEX idx_tasks_org_id ON tasks(org_id);
-CREATE INDEX idx_tasks_property_id ON tasks(property_id);
-CREATE INDEX idx_tasks_assignee ON tasks(assignee_staff_id);
-CREATE INDEX idx_tasks_status ON tasks(status);
-CREATE INDEX idx_approvals_org_id ON approvals(org_id);
-CREATE INDEX idx_expenses_org_id ON expenses(org_id);
-CREATE INDEX idx_expenses_property_id ON expenses(property_id);
-CREATE INDEX idx_revenues_org_id ON revenues(org_id);
-CREATE INDEX idx_revenues_property_id ON revenues(property_id);
-CREATE INDEX idx_notifications_org_id ON notifications(org_id);
-CREATE INDEX idx_notifications_user_id ON notifications(user_id);
-CREATE INDEX idx_signup_tokens_token ON signup_tokens(token);
-CREATE INDEX idx_signup_tokens_expires_at ON signup_tokens(expires_at);
+-- Indexes (only create if they don't exist)
+CREATE INDEX IF NOT EXISTS idx_users_org_id ON users(org_id);
+CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
+CREATE INDEX IF NOT EXISTS idx_users_created_by ON users(created_by_user_id);
+CREATE INDEX IF NOT EXISTS idx_sessions_user_id ON sessions(user_id);
+CREATE INDEX IF NOT EXISTS idx_sessions_expires_at ON sessions(expires_at);
+CREATE INDEX IF NOT EXISTS idx_regions_org_id ON regions(org_id);
+CREATE INDEX IF NOT EXISTS idx_properties_org_id ON properties(org_id);
+CREATE INDEX IF NOT EXISTS idx_properties_region_id ON properties(region_id);
+CREATE INDEX IF NOT EXISTS idx_rooms_org_id ON rooms(org_id);
+CREATE INDEX IF NOT EXISTS idx_rooms_property_id ON rooms(property_id);
+CREATE INDEX IF NOT EXISTS idx_beds_or_units_org_id ON beds_or_units(org_id);
+CREATE INDEX IF NOT EXISTS idx_beds_or_units_property_id ON beds_or_units(property_id);
+CREATE INDEX IF NOT EXISTS idx_staff_org_id ON staff(org_id);
+CREATE INDEX IF NOT EXISTS idx_staff_user_id ON staff(user_id);
+CREATE INDEX IF NOT EXISTS idx_staff_property_id ON staff(property_id);
+CREATE INDEX IF NOT EXISTS idx_guests_org_id ON guests(org_id);
+CREATE INDEX IF NOT EXISTS idx_bookings_org_id ON bookings(org_id);
+CREATE INDEX IF NOT EXISTS idx_bookings_property_id ON bookings(property_id);
+CREATE INDEX IF NOT EXISTS idx_bookings_guest_id ON bookings(guest_id);
+CREATE INDEX IF NOT EXISTS idx_bookings_dates ON bookings(checkin_date, checkout_date);
+CREATE INDEX IF NOT EXISTS idx_tasks_org_id ON tasks(org_id);
+CREATE INDEX IF NOT EXISTS idx_tasks_property_id ON tasks(property_id);
+CREATE INDEX IF NOT EXISTS idx_tasks_assignee ON tasks(assignee_staff_id);
+CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status);
+CREATE INDEX IF NOT EXISTS idx_approvals_org_id ON approvals(org_id);
+CREATE INDEX IF NOT EXISTS idx_expenses_org_id ON expenses(org_id);
+CREATE INDEX IF NOT EXISTS idx_expenses_property_id ON expenses(property_id);
+CREATE INDEX IF NOT EXISTS idx_revenues_org_id ON revenues(org_id);
+CREATE INDEX IF NOT EXISTS idx_revenues_property_id ON revenues(property_id);
+CREATE INDEX IF NOT EXISTS idx_notifications_org_id ON notifications(org_id);
+CREATE INDEX IF NOT EXISTS idx_notifications_user_id ON notifications(user_id);
+CREATE INDEX IF NOT EXISTS idx_signup_tokens_token ON signup_tokens(token);
+CREATE INDEX IF NOT EXISTS idx_signup_tokens_expires_at ON signup_tokens(expires_at);
 
--- Insert default organization and admin user
+-- Insert default organization and admin user (only if they don't exist)
 INSERT INTO organizations (name, subdomain_prefix, theme_json) 
-VALUES ('Example Company', 'example', '{"primaryColor": "#3b82f6", "brandName": "Example Company"}');
+SELECT 'Example Company', 'example', '{"primaryColor": "#3b82f6", "brandName": "Example Company"}'
+WHERE NOT EXISTS (SELECT 1 FROM organizations WHERE subdomain_prefix = 'example');
 
 -- Insert admin user with hashed password for "password123"
 -- This will be updated by the seed script to ensure consistency
 INSERT INTO users (org_id, email, password_hash, role, display_name) 
-VALUES (
+SELECT 
   1, 
   'admin@example.com', 
   '$2b$12$LQv3c1yqBWVHxkd0LHAkCOYz6TtxMQJqhN8/LewdBdXig/pjLw3jm', 
   'ADMIN', 
   'System Administrator'
-);
+WHERE NOT EXISTS (SELECT 1 FROM users WHERE email = 'admin@example.com');

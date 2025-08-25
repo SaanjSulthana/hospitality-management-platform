@@ -4,6 +4,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { 
   Building2, 
   Users, 
@@ -14,7 +15,8 @@ import {
   AlertCircle,
   Clock,
   Shield,
-  UserCheck
+  UserCheck,
+  Plus
 } from 'lucide-react';
 
 export default function DashboardPage() {
@@ -173,6 +175,60 @@ export default function DashboardPage() {
         </Card>
       </div>
 
+      {/* Getting Started Section for New Organizations */}
+      {user?.role === 'ADMIN' && (!properties?.properties.length || properties.properties.length === 0) && (
+        <Card className="border-blue-200 bg-blue-50">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-blue-900">
+              <Building2 className="h-5 w-5" />
+              Welcome to Your Hospitality Platform!
+            </CardTitle>
+            <CardDescription className="text-blue-700">
+              Get started by setting up your first property and inviting team members
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="text-center p-4 bg-white rounded-lg border border-blue-200">
+                <Building2 className="h-8 w-8 mx-auto mb-2 text-blue-600" />
+                <h3 className="font-medium text-blue-900 mb-2">Add Your First Property</h3>
+                <p className="text-sm text-blue-700 mb-3">
+                  Set up your hotel, hostel, resort, or apartment
+                </p>
+                <Button size="sm" className="bg-blue-600 hover:bg-blue-700">
+                  <Plus className="mr-2 h-4 w-4" />
+                  Add Property
+                </Button>
+              </div>
+              
+              <div className="text-center p-4 bg-white rounded-lg border border-blue-200">
+                <Users className="h-8 w-8 mx-auto mb-2 text-blue-600" />
+                <h3 className="font-medium text-blue-900 mb-2">Invite Managers</h3>
+                <p className="text-sm text-blue-700 mb-3">
+                  Create manager accounts for your team
+                </p>
+                <Button size="sm" variant="outline" className="border-blue-600 text-blue-600 hover:bg-blue-50">
+                  <Plus className="mr-2 h-4 w-4" />
+                  Create Manager
+                </Button>
+              </div>
+              
+              <div className="text-center p-4 bg-white rounded-lg border border-blue-200">
+                <CheckSquare className="h-8 w-8 mx-auto mb-2 text-blue-600" />
+                <h3 className="font-medium text-blue-900 mb-2">Create Tasks</h3>
+                <p className="text-sm text-blue-700 mb-3">
+                  Start managing operations and workflows
+                </p>
+                <Button size="sm" variant="outline" className="border-blue-600 text-blue-600 hover:bg-blue-50">
+                  <Plus className="mr-2 h-4 w-4" />
+                  Create Task
+                </Button>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Role-specific content */}
       {user?.role === 'ADMIN' ? (
         <>
@@ -191,7 +247,14 @@ export default function DashboardPage() {
               </CardHeader>
               <CardContent>
                 {managersCreated.length === 0 ? (
-                  <p className="text-sm text-gray-500">No managers created yet</p>
+                  <div className="text-center py-6">
+                    <Users className="h-8 w-8 text-gray-400 mx-auto mb-2" />
+                    <p className="text-sm text-gray-500 mb-3">No managers created yet</p>
+                    <Button size="sm" variant="outline">
+                      <Plus className="mr-2 h-4 w-4" />
+                      Create First Manager
+                    </Button>
+                  </div>
                 ) : (
                   <div className="space-y-3">
                     {managersCreated.slice(0, 5).map((manager) => (
@@ -224,7 +287,14 @@ export default function DashboardPage() {
               </CardHeader>
               <CardContent>
                 {urgentTasks.length === 0 ? (
-                  <p className="text-sm text-gray-500">No urgent tasks at the moment</p>
+                  <div className="text-center py-6">
+                    <CheckSquare className="h-8 w-8 text-gray-400 mx-auto mb-2" />
+                    <p className="text-sm text-gray-500 mb-3">No urgent tasks at the moment</p>
+                    <Button size="sm" variant="outline">
+                      <Plus className="mr-2 h-4 w-4" />
+                      Create Task
+                    </Button>
+                  </div>
                 ) : (
                   <div className="space-y-3">
                     {urgentTasks.slice(0, 5).map((task) => (
@@ -299,7 +369,14 @@ export default function DashboardPage() {
               </CardHeader>
               <CardContent>
                 {tasks?.tasks.length === 0 ? (
-                  <p className="text-sm text-gray-500">No tasks assigned yet</p>
+                  <div className="text-center py-6">
+                    <CheckSquare className="h-8 w-8 text-gray-400 mx-auto mb-2" />
+                    <p className="text-sm text-gray-500 mb-3">No tasks assigned yet</p>
+                    <Button size="sm" variant="outline">
+                      <Plus className="mr-2 h-4 w-4" />
+                      Create Task
+                    </Button>
+                  </div>
                 ) : (
                   <div className="space-y-3">
                     {tasks?.tasks.slice(0, 5).map((task) => (
@@ -331,7 +408,10 @@ export default function DashboardPage() {
               </CardHeader>
               <CardContent>
                 {overdueTasks.length === 0 ? (
-                  <p className="text-sm text-gray-500">No overdue tasks</p>
+                  <div className="text-center py-6">
+                    <Clock className="h-8 w-8 text-gray-400 mx-auto mb-2" />
+                    <p className="text-sm text-gray-500">No overdue tasks</p>
+                  </div>
                 ) : (
                   <div className="space-y-3">
                     {overdueTasks.slice(0, 5).map((task) => (

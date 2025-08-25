@@ -6,7 +6,6 @@ import { UserRole } from "./types";
 export interface LoginRequest {
   email: string;
   password: string;
-  orgSubdomain?: string;
 }
 
 export interface LoginResponse {
@@ -25,36 +24,14 @@ export interface LoginResponse {
 export const login = api<LoginRequest, LoginResponse>(
   { expose: true, method: "POST", path: "/auth/login" },
   async (req) => {
-    const { email, password, orgSubdomain } = req;
+    const { email, password } = req;
 
-    let userRow;
-
-    if (orgSubdomain) {
-      // Login with specific organization subdomain
-      userRow = await authDB.queryRow`
-        SELECT u.id, u.org_id, u.email, u.password_hash, u.role, u.display_name, u.region_id, u.created_at, u.last_login_at
-        FROM users u
-        JOIN organizations o ON u.org_id = o.id
-        WHERE u.email = ${email} AND o.subdomain_prefix = ${orgSubdomain}
-      `;
-    } else {
-      // Login without subdomain - find user by email (could be multiple orgs)
-      const users = await authDB.queryAll`
-        SELECT u.id, u.org_id, u.email, u.password_hash, u.role, u.display_name, u.region_id, u.created_at, u.last_login_at
-        FROM users u
-        WHERE u.email = ${email}
-      `;
-
-      if (users.length === 0) {
-        throw APIError.unauthenticated("Invalid email or password");
-      }
-
-      if (users.length > 1) {
-        throw APIError.invalidArgument("Multiple accounts found. Please specify organization subdomain");
-      }
-
-      userRow = users[0];
-    }
+    // Find user by email
+    const userRow = await authDB.queryRow`
+      SELECT u.id, u.org_id, u.email, u.password_hash, u.role, u.display_name, u.created_by_user_id, u.created_at, u.last_login_at
+      FROM users u
+      WHERE u.email = ${email}
+    `;
 
     if (!userRow) {
       throw APIError.unauthenticated("Invalid email or password");

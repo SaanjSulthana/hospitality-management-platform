@@ -4,7 +4,7 @@ import type { AuthData } from '~backend/auth/types';
 
 interface AuthContextType {
   user: AuthData | null;
-  login: (email: string, password: string, orgSubdomain?: string) => Promise<void>;
+  login: (email: string, password: string) => Promise<void>;
   logout: () => void;
   isLoading: boolean;
   getAuthenticatedBackend: () => typeof backend;
@@ -38,9 +38,9 @@ export function AuthProvider({ children }: AuthProviderProps) {
     return backend;
   };
 
-  const login = async (email: string, password: string, orgSubdomain?: string) => {
+  const login = async (email: string, password: string) => {
     try {
-      const response = await backend.auth.login({ email, password, orgSubdomain });
+      const response = await backend.auth.login({ email, password });
       
       // Store tokens
       localStorage.setItem('accessToken', response.accessToken);

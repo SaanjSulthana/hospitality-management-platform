@@ -8,15 +8,15 @@ CREATE TABLE organizations (
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- Users table
+-- Users table with simplified roles
 CREATE TABLE users (
   id BIGSERIAL PRIMARY KEY,
   org_id BIGINT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
   email TEXT NOT NULL,
   password_hash TEXT NOT NULL,
-  role TEXT NOT NULL CHECK (role IN ('CORP_ADMIN', 'REGIONAL_MANAGER', 'PROPERTY_MANAGER', 'DEPT_HEAD', 'STAFF')),
+  role TEXT NOT NULL CHECK (role IN ('ADMIN', 'MANAGER')),
   display_name TEXT NOT NULL,
-  region_id BIGINT,
+  created_by_user_id BIGINT REFERENCES users(id),
   created_at TIMESTAMPTZ DEFAULT NOW(),
   last_login_at TIMESTAMPTZ,
   UNIQUE(org_id, email)
@@ -197,6 +197,7 @@ CREATE TABLE signup_tokens (
 -- Indexes
 CREATE INDEX idx_users_org_id ON users(org_id);
 CREATE INDEX idx_users_email ON users(email);
+CREATE INDEX idx_users_created_by ON users(created_by_user_id);
 CREATE INDEX idx_sessions_user_id ON sessions(user_id);
 CREATE INDEX idx_sessions_expires_at ON sessions(expires_at);
 CREATE INDEX idx_regions_org_id ON regions(org_id);
@@ -228,5 +229,17 @@ CREATE INDEX idx_notifications_user_id ON notifications(user_id);
 CREATE INDEX idx_signup_tokens_token ON signup_tokens(token);
 CREATE INDEX idx_signup_tokens_expires_at ON signup_tokens(expires_at);
 
--- Add foreign key for region_id in users table
-ALTER TABLE users ADD CONSTRAINT fk_users_region_id FOREIGN KEY (region_id) REFERENCES regions(id);
+-- Insert default organization and admin user
+INSERT INTO organizations (name, subdomain_prefix, theme_json) 
+VALUES ('Example Company', 'example', '{"primaryColor": "#3b82f6", "brandName": "Example Company"}');
+
+-- Insert admin user with hashed password for "AdminPass123"
+-- Password hash for "AdminPass123" using bcrypt with salt rounds 12
+INSERT INTO users (org_id, email, password_hash, role, display_name) 
+VALUES (
+  1, 
+  'admin@example.com', 
+  '$2b$12$LQv3c1yqBWVHxkd0LHAkCOYz6TtxMQJqhN8/LewdBdXig/pjLw3jm', 
+  'ADMIN', 
+  'System Administrator'
+);

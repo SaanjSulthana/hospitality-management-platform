@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
+import { useNavigate, useLocation, Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { Button } from '@/components/ui/button';
@@ -49,30 +49,14 @@ export default function LoginPage() {
     }
   };
 
-  const handleDemoLogin = async () => {
-    setEmail('admin@demo.com');
-    setPassword('password123');
-    setIsLoading(true);
-    setError('');
+  const handleAdminDemo = () => {
+    setEmail('admin@example.com');
+    setPassword('AdminPass123');
+  };
 
-    try {
-      await login('admin@demo.com', 'password123');
-      toast({
-        title: "Demo login successful!",
-        description: "You are now logged in as a demo admin.",
-      });
-      navigate(from, { replace: true });
-    } catch (error: any) {
-      console.error('Demo login error:', error);
-      setError('Demo login failed. Please ensure the demo data has been seeded.');
-      toast({
-        variant: "destructive",
-        title: "Demo login failed",
-        description: "Please ensure the demo data has been seeded first.",
-      });
-    } finally {
-      setIsLoading(false);
-    }
+  const handleManagerDemo = () => {
+    setEmail('manager1@example.com');
+    setPassword('ManagerPass123');
   };
 
   return (
@@ -154,23 +138,48 @@ export default function LoginPage() {
                   <div className="w-full border-t border-gray-300" />
                 </div>
                 <div className="relative flex justify-center text-sm">
-                  <span className="px-2 bg-white text-gray-500">Or try demo</span>
+                  <span className="px-2 bg-white text-gray-500">Demo accounts</span>
                 </div>
               </div>
 
-              <Button
-                variant="outline"
-                className="w-full mt-4"
-                onClick={handleDemoLogin}
-                disabled={isLoading}
-              >
-                Demo Login (admin@demo.com)
-              </Button>
+              <div className="mt-4 space-y-2">
+                <Button
+                  variant="outline"
+                  className="w-full"
+                  onClick={handleAdminDemo}
+                  disabled={isLoading}
+                >
+                  Demo Admin Login
+                </Button>
+                <Button
+                  variant="outline"
+                  className="w-full"
+                  onClick={handleManagerDemo}
+                  disabled={isLoading}
+                >
+                  Demo Manager Login
+                </Button>
+              </div>
             </div>
 
             <div className="mt-6 text-center">
+              <p className="text-xs text-gray-500 mb-2">
+                Demo credentials:
+              </p>
               <p className="text-xs text-gray-500">
-                Demo credentials: admin@demo.com / password123
+                Admin: admin@example.com / AdminPass123
+              </p>
+              <p className="text-xs text-gray-500">
+                Manager: manager1@example.com / ManagerPass123
+              </p>
+            </div>
+
+            <div className="mt-6 text-center">
+              <p className="text-sm text-gray-600">
+                Don't have an account?{' '}
+                <Link to="/signup" className="font-medium text-blue-600 hover:text-blue-500">
+                  Sign up as Admin
+                </Link>
               </p>
             </div>
           </CardContent>

@@ -28,7 +28,7 @@ export const auth = authHandler<AuthParams, AuthData>(
         role: payload.role,
         email: payload.email,
         displayName: payload.displayName,
-        regionId: payload.regionId,
+        createdByUserId: payload.createdByUserId,
       };
     } catch (error) {
       throw APIError.unauthenticated("Invalid token");

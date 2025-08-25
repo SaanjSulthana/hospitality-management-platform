@@ -14,7 +14,8 @@ import {
   Settings, 
   Menu,
   LogOut,
-  User
+  User,
+  Shield
 } from 'lucide-react';
 
 interface LayoutProps {
@@ -22,13 +23,13 @@ interface LayoutProps {
 }
 
 const navigation = [
-  { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
-  { name: 'Properties', href: '/properties', icon: Building2 },
-  { name: 'Tasks', href: '/tasks', icon: CheckSquare },
-  { name: 'Bookings', href: '/bookings', icon: Calendar },
-  { name: 'Users', href: '/users', icon: Users },
-  { name: 'Analytics', href: '/analytics', icon: BarChart3 },
-  { name: 'Settings', href: '/settings', icon: Settings },
+  { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard, roles: ['ADMIN', 'MANAGER'] },
+  { name: 'Properties', href: '/properties', icon: Building2, roles: ['ADMIN', 'MANAGER'] },
+  { name: 'Tasks', href: '/tasks', icon: CheckSquare, roles: ['ADMIN', 'MANAGER'] },
+  { name: 'Bookings', href: '/bookings', icon: Calendar, roles: ['ADMIN', 'MANAGER'] },
+  { name: 'Users', href: '/users', icon: Users, roles: ['ADMIN'] },
+  { name: 'Analytics', href: '/analytics', icon: BarChart3, roles: ['ADMIN'] },
+  { name: 'Settings', href: '/settings', icon: Settings, roles: ['ADMIN'] },
 ];
 
 export default function Layout({ children }: LayoutProps) {
@@ -44,15 +45,16 @@ export default function Layout({ children }: LayoutProps) {
   };
 
   const filteredNavigation = navigation.filter(item => {
-    // Hide certain pages based on role
-    if (item.href === '/users' && !['CORP_ADMIN', 'REGIONAL_MANAGER', 'PROPERTY_MANAGER'].includes(user?.role || '')) {
-      return false;
-    }
-    if (item.href === '/settings' && user?.role !== 'CORP_ADMIN') {
-      return false;
-    }
-    return true;
+    return item.roles.includes(user?.role || '');
   });
+
+  const getRoleDisplayName = (role: string) => {
+    return role.charAt(0) + role.slice(1).toLowerCase();
+  };
+
+  const getRoleIcon = (role: string) => {
+    return role === 'ADMIN' ? Shield : User;
+  };
 
   const Sidebar = ({ mobile = false }: { mobile?: boolean }) => (
     <div className="flex flex-col h-full">
@@ -95,13 +97,13 @@ export default function Layout({ children }: LayoutProps) {
 
       <div className="px-4 py-4 border-t">
         <div className="flex items-center space-x-3 px-3 py-2 mb-2">
-          <User className="h-5 w-5 text-gray-500" />
+          {React.createElement(getRoleIcon(user?.role || ''), { className: "h-5 w-5 text-gray-500" })}
           <div className="flex-1 min-w-0">
             <p className="text-sm font-medium text-gray-900 truncate">
               {user?.displayName}
             </p>
             <p className="text-xs text-gray-500 truncate">
-              {user?.role.replace('_', ' ')}
+              {getRoleDisplayName(user?.role || '')}
             </p>
           </div>
         </div>
@@ -152,7 +154,8 @@ export default function Layout({ children }: LayoutProps) {
           <div className="flex-1 px-4 flex justify-between items-center">
             <div className="flex-1" />
             <div className="ml-4 flex items-center md:ml-6">
-              <span className="text-sm text-gray-500">
+              <span className="text-sm text-gray-500 flex items-center gap-2">
+                {React.createElement(getRoleIcon(user?.role || ''), { className: "h-4 w-4" })}
                 Welcome back, {user?.displayName}
               </span>
             </div>

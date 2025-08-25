@@ -1,4 +1,4 @@
-export type UserRole = 'CORP_ADMIN' | 'REGIONAL_MANAGER' | 'PROPERTY_MANAGER' | 'DEPT_HEAD' | 'STAFF';
+export type UserRole = 'ADMIN' | 'MANAGER';
 
 export interface User {
   id: number;
@@ -6,7 +6,7 @@ export interface User {
   email: string;
   role: UserRole;
   displayName: string;
-  regionId?: number;
+  createdByUserId?: number;
   createdAt: Date;
   lastLoginAt?: Date;
 }
@@ -34,7 +34,7 @@ export interface AuthData {
   role: UserRole;
   email: string;
   displayName: string;
-  regionId?: number;
+  createdByUserId?: number;
 }
 
 export interface JWTPayload {
@@ -43,7 +43,7 @@ export interface JWTPayload {
   role: UserRole;
   email: string;
   displayName: string;
-  regionId?: number;
+  createdByUserId?: number;
   exp: number;
   iat: number;
 }

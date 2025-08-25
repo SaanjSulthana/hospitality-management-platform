@@ -46,118 +46,116 @@ export const create = api<CreateTaskRequest, CreateTaskResponse>(
 
     const { propertyId, type, title, description, priority, assigneeStaffId, dueAt, estimatedHours } = req;
 
-    // Check property access
-    const propertyRow = await tasksDB.queryRow`
-      SELECT p.id, p.org_id, p.name
-      FROM properties p
-      WHERE p.id = ${propertyId} AND p.org_id = ${authData.orgId}
-    `;
-
-    if (!propertyRow) {
-      throw APIError.notFound("Property not found");
-    }
-
-    if (authData.role === "MANAGER") {
-      const accessCheck = await tasksDB.queryRow`
-        SELECT 1 FROM user_properties WHERE user_id = ${parseInt(authData.userID)} AND property_id = ${propertyId}
-      `;
-      if (!accessCheck) {
-        throw APIError.permissionDenied("No access to this property");
-      }
-    }
-
-    // Validate assignee if provided
-    if (assigneeStaffId) {
-      const staffRow = await tasksDB.queryRow`
-        SELECT id FROM staff 
-        WHERE id = ${assigneeStaffId} AND org_id = ${authData.orgId} AND property_id = ${propertyId} AND status = 'active'
-      `;
-      if (!staffRow) {
-        throw APIError.invalidArgument("Invalid assignee staff ID or staff not assigned to this property");
-      }
-    }
-
+    const tx = await tasksDB.begin();
     try {
-      const tx = await tasksDB.begin();
-      
-      try {
-        const taskRow = await tx.queryRow`
-          INSERT INTO tasks (org_id, property_id, type, title, description, priority, assignee_staff_id, due_at, estimated_hours, created_by_user_id)
-          VALUES (${authData.orgId}, ${propertyId}, ${type}, ${title}, ${description || null}, ${priority}, ${assigneeStaffId || null}, ${dueAt || null}, ${estimatedHours || null}, ${parseInt(authData.userID)})
-          RETURNING id, org_id, property_id, type, title, description, priority, status, assignee_staff_id, due_at, estimated_hours, created_by_user_id, created_at, updated_at
+      // Check property access with org scoping
+      const propertyRow = await tx.queryRow`
+        SELECT p.id, p.org_id, p.name
+        FROM properties p
+        WHERE p.id = ${propertyId} AND p.org_id = ${authData.orgId}
+      `;
+
+      if (!propertyRow) {
+        throw APIError.notFound("Property not found");
+      }
+
+      if (authData.role === "MANAGER") {
+        const accessCheck = await tx.queryRow`
+          SELECT 1 FROM user_properties WHERE user_id = ${parseInt(authData.userID)} AND property_id = ${propertyId}
         `;
-
-        if (!taskRow) {
-          throw new Error("Failed to create task");
+        if (!accessCheck) {
+          throw APIError.permissionDenied("No access to this property");
         }
+      }
 
-        // Get assignee name if assigned
-        let assigneeName: string | undefined;
-        if (assigneeStaffId) {
-          const staffUserRow = await tx.queryRow`
-            SELECT u.display_name
-            FROM staff s
-            JOIN users u ON s.user_id = u.id
-            WHERE s.id = ${assigneeStaffId}
+      // Validate assignee if provided
+      if (assigneeStaffId) {
+        const staffRow = await tx.queryRow`
+          SELECT id FROM staff 
+          WHERE id = ${assigneeStaffId} AND org_id = ${authData.orgId} AND property_id = ${propertyId} AND status = 'active'
+        `;
+        if (!staffRow) {
+          throw APIError.invalidArgument("Invalid assignee staff ID or staff not assigned to this property");
+        }
+      }
+
+      const taskRow = await tx.queryRow`
+        INSERT INTO tasks (org_id, property_id, type, title, description, priority, assignee_staff_id, due_at, estimated_hours, created_by_user_id)
+        VALUES (${authData.orgId}, ${propertyId}, ${type}, ${title}, ${description || null}, ${priority}, ${assigneeStaffId || null}, ${dueAt || null}, ${estimatedHours || null}, ${parseInt(authData.userID)})
+        RETURNING id, org_id, property_id, type, title, description, priority, status, assignee_staff_id, due_at, estimated_hours, created_by_user_id, created_at, updated_at
+      `;
+
+      if (!taskRow) {
+        throw new Error("Failed to create task");
+      }
+
+      // Get assignee name if assigned
+      let assigneeName: string | undefined;
+      if (assigneeStaffId) {
+        const staffUserRow = await tx.queryRow`
+          SELECT u.display_name
+          FROM staff s
+          JOIN users u ON s.user_id = u.id AND u.org_id = $1
+          WHERE s.id = ${assigneeStaffId} AND s.org_id = $1
+        `;
+        assigneeName = staffUserRow?.display_name;
+
+        // Create notification for assignee
+        if (staffUserRow) {
+          const staffUserIdRow = await tx.queryRow`
+            SELECT user_id FROM staff WHERE id = ${assigneeStaffId} AND org_id = ${authData.orgId}
           `;
-          assigneeName = staffUserRow?.display_name;
-
-          // Create notification for assignee
-          if (staffUserRow) {
-            const staffUserIdRow = await tx.queryRow`
-              SELECT user_id FROM staff WHERE id = ${assigneeStaffId}
+          
+          if (staffUserIdRow) {
+            await tx.exec`
+              INSERT INTO notifications (org_id, user_id, type, payload_json)
+              VALUES (
+                ${authData.orgId},
+                ${staffUserIdRow.user_id},
+                'task_assigned',
+                ${JSON.stringify({
+                  task_id: taskRow.id,
+                  task_title: title,
+                  property_name: propertyRow.name,
+                  assigned_by: authData.displayName,
+                  message: `You have been assigned to task: ${title}`
+                })}
+              )
             `;
-            
-            if (staffUserIdRow) {
-              await tx.exec`
-                INSERT INTO notifications (org_id, user_id, type, payload_json)
-                VALUES (
-                  ${authData.orgId},
-                  ${staffUserIdRow.user_id},
-                  'task_assigned',
-                  ${JSON.stringify({
-                    task_id: taskRow.id,
-                    task_title: title,
-                    property_name: propertyRow.name,
-                    assigned_by: authData.displayName,
-                    message: `You have been assigned to task: ${title}`
-                  })}
-                )
-              `;
-            }
           }
         }
-
-        await tx.commit();
-
-        return {
-          id: taskRow.id,
-          propertyId: taskRow.property_id,
-          propertyName: propertyRow.name,
-          type: taskRow.type as TaskType,
-          title: taskRow.title,
-          description: taskRow.description,
-          priority: taskRow.priority as TaskPriority,
-          status: taskRow.status,
-          assigneeStaffId: taskRow.assignee_staff_id,
-          assigneeName,
-          dueAt: taskRow.due_at,
-          estimatedHours: taskRow.estimated_hours ? parseFloat(taskRow.estimated_hours) : undefined,
-          createdByUserId: taskRow.created_by_user_id,
-          createdByName: authData.displayName,
-          createdAt: taskRow.created_at,
-          updatedAt: taskRow.updated_at,
-          completedAt: undefined,
-          actualHours: undefined,
-          attachmentCount: 0,
-        };
-      } catch (transactionError) {
-        await tx.rollback();
-        throw transactionError;
       }
+
+      await tx.commit();
+
+      return {
+        id: taskRow.id,
+        propertyId: taskRow.property_id,
+        propertyName: propertyRow.name,
+        type: taskRow.type as TaskType,
+        title: taskRow.title,
+        description: taskRow.description,
+        priority: taskRow.priority as TaskPriority,
+        status: taskRow.status,
+        assigneeStaffId: taskRow.assignee_staff_id,
+        assigneeName,
+        dueAt: taskRow.due_at,
+        estimatedHours: taskRow.estimated_hours ? parseFloat(taskRow.estimated_hours) : undefined,
+        createdByUserId: taskRow.created_by_user_id,
+        createdByName: authData.displayName,
+        createdAt: taskRow.created_at,
+        updatedAt: taskRow.updated_at,
+        completedAt: undefined,
+        actualHours: undefined,
+        attachmentCount: 0,
+      };
     } catch (error) {
+      await tx.rollback();
       console.error('Create task error:', error);
-      throw APIError.internal("Failed to create task", error as Error);
+      if (error instanceof Error && error.name === 'APIError') {
+        throw error;
+      }
+      throw APIError.internal("Failed to create task");
     }
   }
 );

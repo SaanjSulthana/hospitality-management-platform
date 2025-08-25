@@ -19,49 +19,61 @@ export const updateStatus = api<UpdateTaskStatusRequest, UpdateTaskStatusRespons
     const authData = getAuthData()!;
     const { id, status } = req;
 
-    // Get task and check access
-    const taskRow = await tasksDB.queryRow`
-      SELECT t.id, t.org_id, t.property_id, t.assignee_staff_id
-      FROM tasks t
-      WHERE t.id = ${id} AND t.org_id = ${authData.orgId}
-    `;
-
-    if (!taskRow) {
-      throw APIError.notFound("Task not found");
-    }
-
-    // Access rules: ADMIN can update any; MANAGER only if they have access to the property or are assigned
-    let hasAccess = false;
-
-    if (authData.role === "ADMIN") {
-      hasAccess = true;
-    } else if (authData.role === "MANAGER") {
-      // Check if manager has access to the property
-      const accessCheck = await tasksDB.queryRow`
-        SELECT 1 FROM user_properties WHERE user_id = ${parseInt(authData.userID)} AND property_id = ${taskRow.property_id}
+    const tx = await tasksDB.begin();
+    try {
+      // Get task and check access with org scoping
+      const taskRow = await tx.queryRow`
+        SELECT t.id, t.org_id, t.property_id, t.assignee_staff_id
+        FROM tasks t
+        WHERE t.id = ${id} AND t.org_id = ${authData.orgId}
       `;
+
+      if (!taskRow) {
+        throw APIError.notFound("Task not found");
+      }
+
+      // Access rules: ADMIN can update any; MANAGER only if they have access to the property or are assigned
+      let hasAccess = false;
+
+      if (authData.role === "ADMIN") {
+        hasAccess = true;
+      } else if (authData.role === "MANAGER") {
+        // Check if manager has access to the property
+        const accessCheck = await tx.queryRow`
+          SELECT 1 FROM user_properties WHERE user_id = ${parseInt(authData.userID)} AND property_id = ${taskRow.property_id}
+        `;
+        
+        // Or check if they are assigned to this task
+        const assigneeCheck = await tx.queryRow`
+          SELECT 1 FROM staff WHERE id = ${taskRow.assignee_staff_id} AND user_id = ${parseInt(authData.userID)} AND org_id = ${authData.orgId}
+        `;
+        
+        hasAccess = !!(accessCheck || assigneeCheck);
+      }
+
+      if (!hasAccess) {
+        throw APIError.permissionDenied("No access to this task");
+      }
+
+      // Update task status and completion time if marking as done
+      const completedAt = status === 'done' ? new Date() : null;
       
-      // Or check if they are assigned to this task
-      const assigneeCheck = await tasksDB.queryRow`
-        SELECT 1 FROM staff WHERE id = ${taskRow.assignee_staff_id} AND user_id = ${parseInt(authData.userID)}
+      await tx.exec`
+        UPDATE tasks 
+        SET status = ${status}, updated_at = NOW(), completed_at = ${completedAt}
+        WHERE id = ${id} AND org_id = ${authData.orgId}
       `;
-      
-      hasAccess = !!(accessCheck || assigneeCheck);
+
+      await tx.commit();
+
+      return { success: true };
+    } catch (error) {
+      await tx.rollback();
+      console.error('Update task status error:', error);
+      if (error instanceof Error && error.name === 'APIError') {
+        throw error;
+      }
+      throw APIError.internal("Failed to update task status");
     }
-
-    if (!hasAccess) {
-      throw APIError.permissionDenied("No access to this task");
-    }
-
-    // Update task status and completion time if marking as done
-    const completedAt = status === 'done' ? new Date() : null;
-    
-    await tasksDB.exec`
-      UPDATE tasks 
-      SET status = ${status}, updated_at = NOW(), completed_at = ${completedAt}
-      WHERE id = ${id}
-    `;
-
-    return { success: true };
   }
 );

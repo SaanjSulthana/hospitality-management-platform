@@ -24,19 +24,21 @@ export const assignProperties = api<AssignPropertiesRequest, AssignPropertiesRes
 
     const { id, propertyIds } = req;
 
-    // Validate user belongs to org and is MANAGER
-    const userRow = await usersDB.queryRow`
-      SELECT id, org_id, role FROM users WHERE id = ${id} AND org_id = ${authData.orgId}
-    `;
-    if (!userRow) {
-      throw APIError.notFound("User not found");
-    }
-    if (userRow.role !== "MANAGER") {
-      throw APIError.invalidArgument("Only MANAGER users can be assigned properties");
-    }
-
     const tx = await usersDB.begin();
     try {
+      // Validate user belongs to org and is MANAGER
+      const userRow = await tx.queryRow`
+        SELECT id, org_id, role FROM users WHERE id = ${id} AND org_id = ${authData.orgId}
+      `;
+      
+      if (!userRow) {
+        throw APIError.notFound("User not found");
+      }
+      
+      if (userRow.role !== "MANAGER") {
+        throw APIError.invalidArgument("Only MANAGER users can be assigned properties");
+      }
+
       // Remove existing assignments
       await tx.exec`
         DELETE FROM user_properties WHERE user_id = ${id}
@@ -67,9 +69,13 @@ export const assignProperties = api<AssignPropertiesRequest, AssignPropertiesRes
       await tx.commit();
 
       return { success: true, userId: id, propertyIds: toAssign };
-    } catch (err) {
+    } catch (error) {
       await tx.rollback();
-      throw APIError.internal("Failed to update property assignments", err as Error);
+      console.error('Assign properties error:', error);
+      if (error instanceof Error && error.name === 'APIError') {
+        throw error;
+      }
+      throw APIError.internal("Failed to update property assignments");
     }
   }
 );

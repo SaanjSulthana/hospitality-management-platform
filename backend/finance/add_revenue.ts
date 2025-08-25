@@ -35,48 +35,65 @@ export const addRevenue = api<AddRevenueRequest, AddRevenueResponse>(
 
     const { propertyId, source, amountCents, currency = "USD", description, receiptUrl, occurredAt } = req;
 
-    // Check property access
-    const propertyRow = await financeDB.queryRow`
-      SELECT p.id, p.org_id
-      FROM properties p
-      WHERE p.id = ${propertyId} AND p.org_id = ${authData.orgId}
-    `;
-
-    if (!propertyRow) {
-      throw APIError.notFound("Property not found");
-    }
-
-    if (authData.role === "MANAGER") {
-      const accessCheck = await financeDB.queryRow`
-        SELECT 1 FROM user_properties WHERE user_id = ${parseInt(authData.userID)} AND property_id = ${propertyId}
-      `;
-      if (!accessCheck) {
-        throw APIError.permissionDenied("No access to this property");
-      }
-    }
-
     if (amountCents <= 0) {
       throw APIError.invalidArgument("Amount must be greater than zero");
     }
 
-    // Create revenue record
-    const revenueRow = await financeDB.queryRow`
-      INSERT INTO revenues (org_id, property_id, source, amount_cents, currency, description, receipt_url, occurred_at, created_by_user_id)
-      VALUES (${authData.orgId}, ${propertyId}, ${source}, ${amountCents}, ${currency}, ${description || null}, ${receiptUrl || null}, ${occurredAt}, ${parseInt(authData.userID)})
-      RETURNING id, property_id, source, amount_cents, currency, description, receipt_url, occurred_at, created_by_user_id, created_at
-    `;
+    const tx = await financeDB.begin();
+    try {
+      // Check property access with org scoping
+      const propertyRow = await tx.queryRow`
+        SELECT p.id, p.org_id
+        FROM properties p
+        WHERE p.id = ${propertyId} AND p.org_id = ${authData.orgId}
+      `;
 
-    return {
-      id: revenueRow.id,
-      propertyId: revenueRow.property_id,
-      source: revenueRow.source,
-      amountCents: revenueRow.amount_cents,
-      currency: revenueRow.currency,
-      description: revenueRow.description,
-      receiptUrl: revenueRow.receipt_url,
-      occurredAt: revenueRow.occurred_at,
-      createdByUserId: revenueRow.created_by_user_id,
-      createdAt: revenueRow.created_at,
-    };
+      if (!propertyRow) {
+        throw APIError.notFound("Property not found");
+      }
+
+      if (authData.role === "MANAGER") {
+        const accessCheck = await tx.queryRow`
+          SELECT 1 FROM user_properties 
+          WHERE user_id = ${parseInt(authData.userID)} AND property_id = ${propertyId}
+        `;
+        if (!accessCheck) {
+          throw APIError.permissionDenied("No access to this property");
+        }
+      }
+
+      // Create revenue record
+      const revenueRow = await tx.queryRow`
+        INSERT INTO revenues (org_id, property_id, source, amount_cents, currency, description, receipt_url, occurred_at, created_by_user_id)
+        VALUES (${authData.orgId}, ${propertyId}, ${source}, ${amountCents}, ${currency}, ${description || null}, ${receiptUrl || null}, ${occurredAt}, ${parseInt(authData.userID)})
+        RETURNING id, property_id, source, amount_cents, currency, description, receipt_url, occurred_at, created_by_user_id, created_at
+      `;
+
+      if (!revenueRow) {
+        throw new Error("Failed to create revenue record");
+      }
+
+      await tx.commit();
+
+      return {
+        id: revenueRow.id,
+        propertyId: revenueRow.property_id,
+        source: revenueRow.source,
+        amountCents: revenueRow.amount_cents,
+        currency: revenueRow.currency,
+        description: revenueRow.description,
+        receiptUrl: revenueRow.receipt_url,
+        occurredAt: revenueRow.occurred_at,
+        createdByUserId: revenueRow.created_by_user_id,
+        createdAt: revenueRow.created_at,
+      };
+    } catch (error) {
+      await tx.rollback();
+      console.error('Add revenue error:', error);
+      if (error instanceof Error && error.name === 'APIError') {
+        throw error;
+      }
+      throw APIError.internal("Failed to add revenue");
+    }
   }
 );

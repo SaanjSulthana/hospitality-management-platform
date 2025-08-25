@@ -40,67 +40,61 @@ export const create = api<CreateUserRequest, CreateUserResponse>(
       throw APIError.invalidArgument("Password must be at least 8 characters");
     }
 
-    // Check if user already exists
-    const existingUser = await usersDB.queryRow`
-      SELECT id FROM users WHERE org_id = ${authData.orgId} AND email = ${email}
-    `;
-
-    if (existingUser) {
-      throw APIError.alreadyExists("User already exists in this organization");
-    }
-
-    const passwordHash = await hashPassword(password);
-
+    const tx = await usersDB.begin();
     try {
-      // Create user in a transaction and optionally assign properties
-      const tx = await usersDB.begin();
-      
-      try {
-        const userRow = await tx.queryRow`
-          INSERT INTO users (org_id, email, password_hash, role, display_name, created_by_user_id)
-          VALUES (${authData.orgId}, ${email}, ${passwordHash}, ${role}, ${displayName}, ${parseInt(authData.userID)})
-          RETURNING id, email, role, display_name, created_by_user_id
-        `;
+      // Check if user already exists in this organization
+      const existingUser = await tx.queryRow`
+        SELECT id FROM users WHERE org_id = ${authData.orgId} AND email = ${email}
+      `;
 
-        if (!userRow) {
-          throw new Error("Failed to create user");
-        }
-
-        // Assign properties if provided
-        if (propertyIds && propertyIds.length > 0) {
-          // Validate properties belong to org using a dynamically constructed IN clause
-          const placeholders = propertyIds.map((_, i) => `$${i + 2}`).join(", ");
-          const sql = `
-            SELECT id FROM properties
-            WHERE org_id = $1 AND id IN (${placeholders})
-          `;
-          const props = await tx.rawQueryAll<{ id: number }>(sql, authData.orgId, ...propertyIds);
-          const validIds = new Set(props.map(p => p.id));
-          const toAssign = propertyIds.filter(id => validIds.has(id));
-          for (const pid of toAssign) {
-            await tx.exec`
-              INSERT INTO user_properties (user_id, property_id)
-              VALUES (${userRow.id}, ${pid})
-              ON CONFLICT DO NOTHING
-            `;
-          }
-        }
-
-        // Commit the transaction
-        await tx.commit();
-
-        return {
-          id: userRow.id,
-          email: userRow.email,
-          role: userRow.role as UserRole,
-          displayName: userRow.display_name,
-          createdByUserId: userRow.created_by_user_id,
-        };
-      } catch (transactionError) {
-        await tx.rollback();
-        throw transactionError;
+      if (existingUser) {
+        throw APIError.alreadyExists("User already exists in this organization");
       }
+
+      const passwordHash = await hashPassword(password);
+
+      const userRow = await tx.queryRow`
+        INSERT INTO users (org_id, email, password_hash, role, display_name, created_by_user_id)
+        VALUES (${authData.orgId}, ${email}, ${passwordHash}, ${role}, ${displayName}, ${parseInt(authData.userID)})
+        RETURNING id, email, role, display_name, created_by_user_id
+      `;
+
+      if (!userRow) {
+        throw new Error("Failed to create user");
+      }
+
+      // Assign properties if provided
+      if (propertyIds && propertyIds.length > 0) {
+        // Validate properties belong to org using a dynamically constructed IN clause
+        const placeholders = propertyIds.map((_, i) => `$${i + 2}`).join(", ");
+        const sql = `
+          SELECT id FROM properties
+          WHERE org_id = $1 AND id IN (${placeholders})
+        `;
+        const props = await tx.rawQueryAll<{ id: number }>(sql, authData.orgId, ...propertyIds);
+        const validIds = new Set(props.map(p => p.id));
+        const toAssign = propertyIds.filter(id => validIds.has(id));
+        
+        for (const pid of toAssign) {
+          await tx.exec`
+            INSERT INTO user_properties (user_id, property_id)
+            VALUES (${userRow.id}, ${pid})
+            ON CONFLICT DO NOTHING
+          `;
+        }
+      }
+
+      await tx.commit();
+
+      return {
+        id: userRow.id,
+        email: userRow.email,
+        role: userRow.role as UserRole,
+        displayName: userRow.display_name,
+        createdByUserId: userRow.created_by_user_id,
+      };
     } catch (error) {
+      await tx.rollback();
       console.error('Create user error:', error);
       
       // Check for specific database errors
@@ -120,7 +114,11 @@ export const create = api<CreateUserRequest, CreateUserResponse>(
         }
       }
       
-      throw APIError.internal("Failed to create user", error as Error);
+      if (error instanceof Error && error.name === 'APIError') {
+        throw error;
+      }
+      
+      throw APIError.internal("Failed to create user");
     }
   }
 );

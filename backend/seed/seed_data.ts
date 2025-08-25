@@ -12,11 +12,12 @@ export interface SeedDataResponse {
 export const seedData = api<SeedDataResponse, void>(
   { expose: true, method: "POST", path: "/seed/data" },
   async () => {
+    const tx = await seedDB.begin();
     try {
       log.info("Starting database seeding...");
 
       // Get the default organization (should already exist from migration)
-      const orgRow = await seedDB.queryRow`
+      const orgRow = await tx.queryRow`
         SELECT id FROM organizations WHERE subdomain_prefix = 'example'
       `;
 
@@ -28,23 +29,23 @@ export const seedData = api<SeedDataResponse, void>(
       log.info(`Using organization with ID: ${orgId}`);
 
       // Check if admin user already exists
-      const existingAdmin = await seedDB.queryRow`
-        SELECT id FROM users WHERE email = 'admin@example.com'
+      const existingAdmin = await tx.queryRow`
+        SELECT id FROM users WHERE email = 'admin@example.com' AND org_id = ${orgId}
       `;
 
       if (existingAdmin) {
         log.info("Admin user already exists, updating password to match demo");
         // Update admin password to match demo credentials
         const adminPasswordHash = await hashPassword("password123");
-        await seedDB.exec`
+        await tx.exec`
           UPDATE users 
           SET password_hash = ${adminPasswordHash}
-          WHERE email = 'admin@example.com'
+          WHERE email = 'admin@example.com' AND org_id = ${orgId}
         `;
       } else {
         // Create admin user with demo password
         const adminPasswordHash = await hashPassword("password123");
-        await seedDB.exec`
+        await tx.exec`
           INSERT INTO users (org_id, email, password_hash, role, display_name)
           VALUES (${orgId}, 'admin@example.com', ${adminPasswordHash}, 'ADMIN', 'Demo Administrator')
         `;
@@ -53,17 +54,17 @@ export const seedData = api<SeedDataResponse, void>(
       // Create manager user with demo password
       const managerPasswordHash = await hashPassword("password123");
       
-      const existingManager = await seedDB.queryRow`
-        SELECT id FROM users WHERE email = 'manager@example.com'
+      const existingManager = await tx.queryRow`
+        SELECT id FROM users WHERE email = 'manager@example.com' AND org_id = ${orgId}
       `;
 
       if (!existingManager) {
-        const adminUser = await seedDB.queryRow`
-          SELECT id FROM users WHERE email = 'admin@example.com'
+        const adminUser = await tx.queryRow`
+          SELECT id FROM users WHERE email = 'admin@example.com' AND org_id = ${orgId}
         `;
 
         if (adminUser) {
-          await seedDB.exec`
+          await tx.exec`
             INSERT INTO users (org_id, email, password_hash, role, display_name, created_by_user_id)
             VALUES (${orgId}, 'manager@example.com', ${managerPasswordHash}, 'MANAGER', 'Demo Manager', ${adminUser.id})
             ON CONFLICT (org_id, email) DO UPDATE SET
@@ -74,10 +75,10 @@ export const seedData = api<SeedDataResponse, void>(
         }
       } else {
         // Update existing manager password
-        await seedDB.exec`
+        await tx.exec`
           UPDATE users 
           SET password_hash = ${managerPasswordHash}, display_name = 'Demo Manager'
-          WHERE email = 'manager@example.com'
+          WHERE email = 'manager@example.com' AND org_id = ${orgId}
         `;
         log.info("Updated demo manager user");
       }
@@ -90,13 +91,13 @@ export const seedData = api<SeedDataResponse, void>(
         { email: 'staff2@example.com', name: 'Housekeeping Staff Demo', role: 'MANAGER' },
       ];
 
-      const adminUser = await seedDB.queryRow`
-        SELECT id FROM users WHERE email = 'admin@example.com'
+      const adminUser = await tx.queryRow`
+        SELECT id FROM users WHERE email = 'admin@example.com' AND org_id = ${orgId}
       `;
 
       for (const user of additionalUsers) {
         const userPasswordHash = await hashPassword("password123");
-        await seedDB.exec`
+        await tx.exec`
           INSERT INTO users (org_id, email, password_hash, role, display_name, created_by_user_id)
           VALUES (${orgId}, ${user.email}, ${userPasswordHash}, ${user.role}, ${user.name}, ${adminUser?.id})
           ON CONFLICT (org_id, email) DO UPDATE SET
@@ -106,14 +107,14 @@ export const seedData = api<SeedDataResponse, void>(
       }
 
       // Create regions
-      const region1 = await seedDB.queryRow`
+      const region1 = await tx.queryRow`
         INSERT INTO regions (org_id, name)
         VALUES (${orgId}, 'North Region')
         ON CONFLICT DO NOTHING
         RETURNING id
       `;
 
-      const region2 = await seedDB.queryRow`
+      const region2 = await tx.queryRow`
         INSERT INTO regions (org_id, name)
         VALUES (${orgId}, 'South Region')
         ON CONFLICT DO NOTHING
@@ -121,15 +122,15 @@ export const seedData = api<SeedDataResponse, void>(
       `;
 
       // Get existing regions if they weren't just created
-      const northRegion = region1 || await seedDB.queryRow`
+      const northRegion = region1 || await tx.queryRow`
         SELECT id FROM regions WHERE org_id = ${orgId} AND name = 'North Region'
       `;
-      const southRegion = region2 || await seedDB.queryRow`
+      const southRegion = region2 || await tx.queryRow`
         SELECT id FROM regions WHERE org_id = ${orgId} AND name = 'South Region'
       `;
 
       // Create properties with unique constraint handling
-      let downtownHotel = await seedDB.queryRow`
+      let downtownHotel = await tx.queryRow`
         SELECT id FROM properties WHERE org_id = ${orgId} AND name = 'Downtown Hotel'
       `;
 
@@ -150,7 +151,7 @@ export const seedData = api<SeedDataResponse, void>(
           maxGuests: 150
         });
 
-        downtownHotel = await seedDB.queryRow`
+        downtownHotel = await tx.queryRow`
           INSERT INTO properties (org_id, region_id, name, type, address_json, amenities_json, capacity_json)
           VALUES (
             ${orgId}, 
@@ -165,7 +166,7 @@ export const seedData = api<SeedDataResponse, void>(
         `;
       }
 
-      let beachResort = await seedDB.queryRow`
+      let beachResort = await tx.queryRow`
         SELECT id FROM properties WHERE org_id = ${orgId} AND name = 'Beach Resort'
       `;
 
@@ -186,7 +187,7 @@ export const seedData = api<SeedDataResponse, void>(
           maxGuests: 400
         });
 
-        beachResort = await seedDB.queryRow`
+        beachResort = await tx.queryRow`
           INSERT INTO properties (org_id, region_id, name, type, address_json, amenities_json, capacity_json)
           VALUES (
             ${orgId}, 
@@ -208,7 +209,7 @@ export const seedData = api<SeedDataResponse, void>(
             bed_type: "queen",
             view: "city"
           });
-          await seedDB.exec`
+          await tx.exec`
             INSERT INTO rooms (org_id, property_id, name, type, capacity, attributes_json)
             VALUES (${orgId}, ${downtownHotel.id}, ${'Room ' + i}, 'standard', 2, ${attributesJson})
             ON CONFLICT (org_id, property_id, name) DO NOTHING
@@ -220,7 +221,7 @@ export const seedData = api<SeedDataResponse, void>(
       if (downtownHotel?.id) {
         for (let i = 1; i <= 20; i++) {
           const metaJson = JSON.stringify({});
-          await seedDB.exec`
+          await tx.exec`
             INSERT INTO beds_or_units (org_id, property_id, label, status, meta_json)
             VALUES (${orgId}, ${downtownHotel.id}, ${'Unit ' + i}, ${i <= 5 ? 'occupied' : 'available'}, ${metaJson})
             ON CONFLICT (org_id, property_id, label) DO NOTHING
@@ -229,7 +230,7 @@ export const seedData = api<SeedDataResponse, void>(
       }
 
       // Create sample guests and bookings
-      let johnDoe = await seedDB.queryRow`
+      let johnDoe = await tx.queryRow`
         SELECT id FROM guests WHERE org_id = ${orgId} AND primary_contact_json->>'email' = 'john@example.com'
       `;
 
@@ -239,14 +240,14 @@ export const seedData = api<SeedDataResponse, void>(
           email: "john@example.com",
           phone: "+1234567890"
         });
-        johnDoe = await seedDB.queryRow`
+        johnDoe = await tx.queryRow`
           INSERT INTO guests (org_id, primary_contact_json, notes_text)
           VALUES (${orgId}, ${contactJson}, 'VIP guest')
           RETURNING id
         `;
       }
 
-      let janeSmith = await seedDB.queryRow`
+      let janeSmith = await tx.queryRow`
         SELECT id FROM guests WHERE org_id = ${orgId} AND primary_contact_json->>'email' = 'jane@example.com'
       `;
 
@@ -256,7 +257,7 @@ export const seedData = api<SeedDataResponse, void>(
           email: "jane@example.com", 
           phone: "+1234567891"
         });
-        janeSmith = await seedDB.queryRow`
+        janeSmith = await tx.queryRow`
           INSERT INTO guests (org_id, primary_contact_json, notes_text)
           VALUES (${orgId}, ${contactJson}, 'Business traveler')
           RETURNING id
@@ -265,7 +266,7 @@ export const seedData = api<SeedDataResponse, void>(
 
       // Create bookings
       if (johnDoe?.id && downtownHotel?.id) {
-        await seedDB.exec`
+        await tx.exec`
           INSERT INTO bookings (org_id, guest_id, property_id, checkin_date, checkout_date, status, price_cents, currency, channel)
           VALUES (${orgId}, ${johnDoe.id}, ${downtownHotel.id}, CURRENT_DATE, CURRENT_DATE + INTERVAL '3 days', 'checked_in', 15000, 'USD', 'direct')
           ON CONFLICT DO NOTHING
@@ -273,7 +274,7 @@ export const seedData = api<SeedDataResponse, void>(
       }
 
       if (janeSmith?.id && downtownHotel?.id) {
-        await seedDB.exec`
+        await tx.exec`
           INSERT INTO bookings (org_id, guest_id, property_id, checkin_date, checkout_date, status, price_cents, currency, channel)
           VALUES (${orgId}, ${janeSmith.id}, ${downtownHotel.id}, CURRENT_DATE + INTERVAL '1 day', CURRENT_DATE + INTERVAL '4 days', 'confirmed', 12000, 'USD', 'ota')
           ON CONFLICT DO NOTHING
@@ -281,21 +282,19 @@ export const seedData = api<SeedDataResponse, void>(
       }
 
       // Create sample revenues and expenses with explicit JSON casting
-      if (downtownHotel?.id) {
+      if (downtownHotel?.id && adminUser) {
         const revenueMetaJson = JSON.stringify({ source: "demo" });
-        await seedDB.exec`
-          INSERT INTO revenues (org_id, property_id, source, amount_cents, currency, occurred_at, meta_json)
-          VALUES (${orgId}, ${downtownHotel.id}, 'room', 15000, 'USD', CURRENT_DATE - INTERVAL '1 day', ${revenueMetaJson})
+        await tx.exec`
+          INSERT INTO revenues (org_id, property_id, source, amount_cents, currency, occurred_at, meta_json, created_by_user_id)
+          VALUES (${orgId}, ${downtownHotel.id}, 'room', 15000, 'USD', CURRENT_DATE - INTERVAL '1 day', ${revenueMetaJson}, ${adminUser.id})
           ON CONFLICT DO NOTHING
         `;
 
-        if (adminUser) {
-          await seedDB.exec`
-            INSERT INTO expenses (org_id, property_id, category, amount_cents, currency, created_by_user_id, expense_date)
-            VALUES (${orgId}, ${downtownHotel.id}, 'supplies', 5000, 'USD', ${adminUser.id}, CURRENT_DATE)
-            ON CONFLICT DO NOTHING
-          `;
-        }
+        await tx.exec`
+          INSERT INTO expenses (org_id, property_id, category, amount_cents, currency, created_by_user_id, expense_date, status)
+          VALUES (${orgId}, ${downtownHotel.id}, 'supplies', 5000, 'USD', ${adminUser.id}, CURRENT_DATE, 'approved')
+          ON CONFLICT DO NOTHING
+        `;
       }
 
       // Create sample tasks with unique constraint handling
@@ -322,7 +321,7 @@ export const seedData = api<SeedDataResponse, void>(
         ];
 
         for (const task of sampleTasks) {
-          await seedDB.exec`
+          await tx.exec`
             INSERT INTO tasks (org_id, property_id, type, title, description, priority, status, created_by_user_id)
             VALUES (${orgId}, ${downtownHotel.id}, ${task.type}, ${task.title}, ${task.description}, ${task.priority}, 'open', ${adminUser.id})
             ON CONFLICT DO NOTHING
@@ -331,16 +330,16 @@ export const seedData = api<SeedDataResponse, void>(
       }
 
       // Ensure MANAGER users have property access (user_properties) so they can create/see tasks
-      const managerUser = await seedDB.queryRow`SELECT id FROM users WHERE email = 'manager@example.com'`;
-      const propertyManagerUser = await seedDB.queryRow`SELECT id FROM users WHERE email = 'property@example.com'`;
-      const deptUser = await seedDB.queryRow`SELECT id FROM users WHERE email = 'dept@example.com'`;
-      const staff1User = await seedDB.queryRow`SELECT id FROM users WHERE email = 'staff1@example.com'`;
-      const staff2User = await seedDB.queryRow`SELECT id FROM users WHERE email = 'staff2@example.com'`;
+      const managerUser = await tx.queryRow`SELECT id FROM users WHERE email = 'manager@example.com' AND org_id = ${orgId}`;
+      const propertyManagerUser = await tx.queryRow`SELECT id FROM users WHERE email = 'property@example.com' AND org_id = ${orgId}`;
+      const deptUser = await tx.queryRow`SELECT id FROM users WHERE email = 'dept@example.com' AND org_id = ${orgId}`;
+      const staff1User = await tx.queryRow`SELECT id FROM users WHERE email = 'staff1@example.com' AND org_id = ${orgId}`;
+      const staff2User = await tx.queryRow`SELECT id FROM users WHERE email = 'staff2@example.com' AND org_id = ${orgId}`;
 
       if (downtownHotel?.id) {
         for (const u of [managerUser, propertyManagerUser, deptUser, staff1User, staff2User]) {
           if (u) {
-            await seedDB.exec`
+            await tx.exec`
               INSERT INTO user_properties (user_id, property_id)
               VALUES (${u.id}, ${downtownHotel.id})
               ON CONFLICT DO NOTHING
@@ -351,7 +350,7 @@ export const seedData = api<SeedDataResponse, void>(
       if (beachResort?.id) {
         for (const u of [managerUser, propertyManagerUser]) {
           if (u) {
-            await seedDB.exec`
+            await tx.exec`
               INSERT INTO user_properties (user_id, property_id)
               VALUES (${u.id}, ${beachResort.id})
               ON CONFLICT DO NOTHING
@@ -362,14 +361,14 @@ export const seedData = api<SeedDataResponse, void>(
 
       // Seed Staff records for assignment UX with unique constraint handling
       if (staff1User && downtownHotel?.id) {
-        await seedDB.exec`
+        await tx.exec`
           INSERT INTO staff (org_id, user_id, property_id, department, hourly_rate_cents, status)
           VALUES (${orgId}, ${staff1User.id}, ${downtownHotel.id}, 'frontdesk', 1800, 'active')
           ON CONFLICT (org_id, user_id, property_id) DO NOTHING
         `;
       }
       if (staff2User && downtownHotel?.id) {
-        await seedDB.exec`
+        await tx.exec`
           INSERT INTO staff (org_id, user_id, property_id, department, hourly_rate_cents, status)
           VALUES (${orgId}, ${staff2User.id}, ${downtownHotel.id}, 'housekeeping', 1600, 'active')
           ON CONFLICT (org_id, user_id, property_id) DO NOTHING
@@ -377,13 +376,14 @@ export const seedData = api<SeedDataResponse, void>(
       }
       // Optionally add manager as staff record for assignment
       if (managerUser && beachResort?.id) {
-        await seedDB.exec`
+        await tx.exec`
           INSERT INTO staff (org_id, user_id, property_id, department, hourly_rate_cents, status)
           VALUES (${orgId}, ${managerUser.id}, ${beachResort.id}, 'admin', 0, 'active')
           ON CONFLICT (org_id, user_id, property_id) DO NOTHING
         `;
       }
 
+      await tx.commit();
       log.info("Database seeding completed successfully");
 
       return {
@@ -391,6 +391,7 @@ export const seedData = api<SeedDataResponse, void>(
         message: "Demo data seeded successfully. Login credentials: admin@example.com / password123, manager@example.com / password123",
       };
     } catch (error) {
+      await tx.rollback();
       log.error("Database seeding failed:", error);
       throw error;
     }

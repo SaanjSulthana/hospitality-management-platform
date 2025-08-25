@@ -60,7 +60,24 @@ export default function PropertiesPage() {
         },
       });
     },
-    onSuccess: () => {
+    onSuccess: (created: any) => {
+      // Optimistically update the cache so the new property appears immediately
+      queryClient.setQueryData(['properties'], (old: any) => {
+        const prev = old?.properties ?? [];
+        const newItem = {
+          id: created.id,
+          name: created.name,
+          type: created.type,
+          regionId: created.regionId,
+          addressJson: created.addressJson,
+          amenitiesJson: created.amenitiesJson,
+          capacityJson: created.capacityJson,
+          status: created.status,
+          createdAt: created.createdAt,
+        };
+        return { properties: [newItem, ...prev] };
+      });
+      // Also invalidate to ensure server truth wins
       queryClient.invalidateQueries({ queryKey: ['properties'] });
       setIsCreateDialogOpen(false);
       setPropertyForm({
@@ -95,7 +112,7 @@ export default function PropertiesPage() {
     },
   });
 
-  const filteredProperties = properties?.properties.filter(property => {
+  const filteredProperties = properties?.properties.filter((property: any) => {
     const matchesSearch = property.name.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesType = typeFilter === 'all' || property.type === typeFilter;
     return matchesSearch && matchesType;
@@ -417,7 +434,7 @@ export default function PropertiesPage() {
         </Card>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {filteredProperties.map((property) => (
+          {filteredProperties.map((property: any) => (
             <Card key={property.id} className="hover:shadow-lg transition-shadow cursor-pointer">
               <CardHeader>
                 <div className="flex items-start justify-between">

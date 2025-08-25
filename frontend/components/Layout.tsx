@@ -3,7 +3,7 @@ import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { Button } from '@/components/ui/button';
-import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet';
 import { useToast } from '@/components/ui/use-toast';
 import { 
   LayoutDashboard, 
@@ -158,6 +158,10 @@ export default function Layout({ children }: LayoutProps) {
       {/* Mobile sidebar */}
       <Sheet open={sidebarOpen} onOpenChange={setSidebarOpen}>
         <SheetContent side="left" className="p-0 w-64">
+          <SheetHeader className="sr-only">
+            <SheetTitle>Navigation</SheetTitle>
+            <SheetDescription>Main menu</SheetDescription>
+          </SheetHeader>
           <Sidebar mobile />
         </SheetContent>
       </Sheet>
@@ -166,17 +170,15 @@ export default function Layout({ children }: LayoutProps) {
       <div className="lg:pl-64 flex flex-col flex-1">
         {/* Top bar */}
         <div className="sticky top-0 z-10 flex-shrink-0 flex h-16 bg-white border-b border-gray-200">
-          <Sheet open={sidebarOpen} onOpenChange={setSidebarOpen}>
-            <SheetTrigger asChild>
-              <Button
-                variant="ghost"
-                size="sm"
-                className="lg:hidden ml-4"
-              >
-                <Menu className="h-6 w-6" />
-              </Button>
-            </SheetTrigger>
-          </Sheet>
+          <div className="lg:hidden ml-4 flex items-center">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setSidebarOpen(true)}
+            >
+              <Menu className="h-6 w-6" />
+            </Button>
+          </div>
           
           <div className="flex-1 px-4 flex justify-between items-center">
             <div className="flex-1" />

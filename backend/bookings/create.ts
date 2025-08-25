@@ -36,9 +36,9 @@ export const create = api<CreateBookingRequest, CreateBookingResponse>(
   { auth: true, expose: true, method: "POST", path: "/bookings" },
   async (req) => {
     const authData = getAuthData()!;
-    requireRole('CORP_ADMIN', 'REGIONAL_MANAGER', 'PROPERTY_MANAGER', 'DEPT_HEAD', 'STAFF')(authData);
+    requireRole("ADMIN", "MANAGER")(authData);
 
-    const { propertyId, guestContact, checkinDate, checkoutDate, priceCents, currency = 'USD', channel = 'direct', notes } = req;
+    const { propertyId, guestContact, checkinDate, checkoutDate, priceCents, currency = "USD", channel = "direct", notes } = req;
 
     // Validate dates
     if (new Date(checkinDate) >= new Date(checkoutDate)) {
@@ -47,7 +47,7 @@ export const create = api<CreateBookingRequest, CreateBookingResponse>(
 
     // Check property access
     const propertyRow = await bookingsDB.queryRow`
-      SELECT p.id, p.org_id, p.region_id
+      SELECT p.id, p.org_id
       FROM properties p
       WHERE p.id = ${propertyId} AND p.org_id = ${authData.orgId}
     `;
@@ -56,12 +56,8 @@ export const create = api<CreateBookingRequest, CreateBookingResponse>(
       throw APIError.notFound("Property not found");
     }
 
-    // Check role-based access
-    if (authData.role === 'REGIONAL_MANAGER' && authData.regionId && propertyRow.region_id !== authData.regionId) {
-      throw APIError.permissionDenied("No access to this property");
-    }
-
-    if (['PROPERTY_MANAGER', 'DEPT_HEAD', 'STAFF'].includes(authData.role)) {
+    // Managers must have access to the property
+    if (authData.role === "MANAGER") {
       const accessCheck = await bookingsDB.queryRow`
         SELECT 1 FROM user_properties WHERE user_id = ${parseInt(authData.userID)} AND property_id = ${propertyId}
       `;

@@ -1,6 +1,7 @@
 import { api, APIError } from "encore.dev/api";
 import { authDB } from "./db";
 import { verifyRefreshToken, verifyRefreshTokenHash, generateAccessToken, generateRefreshToken, hashRefreshToken } from "./utils";
+import type { User, UserRole } from "./types";
 
 export interface RefreshRequest {
   refreshToken: string;
@@ -28,7 +29,7 @@ export const refresh = api<RefreshRequest, RefreshResponse>(
         WHERE user_id = ${userId} AND expires_at > NOW()
       `;
 
-      let validSession = null;
+      let validSession: any = null;
       for (const session of sessions) {
         const isValid = await verifyRefreshTokenHash(refreshToken, session.refresh_token_hash);
         if (isValid) {
@@ -43,7 +44,7 @@ export const refresh = api<RefreshRequest, RefreshResponse>(
 
       // Get user data
       const userRow = await authDB.queryRow`
-        SELECT id, org_id, email, role, display_name, region_id, created_at, last_login_at
+        SELECT id, org_id, email, role, display_name, created_by_user_id, created_at, last_login_at
         FROM users
         WHERE id = ${userId}
       `;
@@ -52,9 +53,20 @@ export const refresh = api<RefreshRequest, RefreshResponse>(
         throw APIError.unauthenticated("User not found");
       }
 
+      const user: User = {
+        id: userRow.id,
+        orgId: userRow.org_id,
+        email: userRow.email,
+        role: userRow.role as UserRole,
+        displayName: userRow.display_name,
+        createdByUserId: userRow.created_by_user_id ?? undefined,
+        createdAt: userRow.created_at,
+        lastLoginAt: userRow.last_login_at ?? undefined,
+      };
+
       // Generate new tokens
-      const newAccessToken = generateAccessToken(userRow);
-      const newRefreshToken = generateRefreshToken(userRow.id);
+      const newAccessToken = generateAccessToken(user);
+      const newRefreshToken = generateRefreshToken(user.id);
       const newRefreshTokenHash = await hashRefreshToken(newRefreshToken);
 
       // Update session with new refresh token

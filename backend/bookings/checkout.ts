@@ -18,15 +18,14 @@ export const checkout = api<CheckoutRequest, CheckoutResponse>(
   { auth: true, expose: true, method: "POST", path: "/bookings/:id/checkout" },
   async (req) => {
     const authData = getAuthData()!;
-    requireRole('CORP_ADMIN', 'REGIONAL_MANAGER', 'PROPERTY_MANAGER', 'DEPT_HEAD', 'STAFF')(authData);
+    requireRole("ADMIN", "MANAGER")(authData);
 
     const { id } = req;
 
     // Get booking and check access
     const bookingRow = await bookingsDB.queryRow`
-      SELECT b.id, b.org_id, b.property_id, b.status, b.checkout_date, p.region_id
+      SELECT b.id, b.org_id, b.property_id, b.status, b.checkout_date
       FROM bookings b
-      JOIN properties p ON b.property_id = p.id
       WHERE b.id = ${id} AND b.org_id = ${authData.orgId}
     `;
 
@@ -34,12 +33,8 @@ export const checkout = api<CheckoutRequest, CheckoutResponse>(
       throw APIError.notFound("Booking not found");
     }
 
-    // Check role-based access
-    if (authData.role === 'REGIONAL_MANAGER' && authData.regionId && bookingRow.region_id !== authData.regionId) {
-      throw APIError.permissionDenied("No access to this booking");
-    }
-
-    if (['PROPERTY_MANAGER', 'DEPT_HEAD', 'STAFF'].includes(authData.role)) {
+    // Managers must have access to the property
+    if (authData.role === "MANAGER") {
       const accessCheck = await bookingsDB.queryRow`
         SELECT 1 FROM user_properties WHERE user_id = ${parseInt(authData.userID)} AND property_id = ${bookingRow.property_id}
       `;
@@ -49,7 +44,7 @@ export const checkout = api<CheckoutRequest, CheckoutResponse>(
     }
 
     // Validate booking status
-    if (bookingRow.status !== 'checked_in') {
+    if (bookingRow.status !== "checked_in") {
       throw APIError.failedPrecondition(`Cannot check out booking with status: ${bookingRow.status}`);
     }
 
@@ -63,7 +58,7 @@ export const checkout = api<CheckoutRequest, CheckoutResponse>(
     return {
       success: true,
       bookingId: id,
-      status: 'checked_out',
+      status: "checked_out",
     };
   }
 );

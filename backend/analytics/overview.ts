@@ -46,25 +46,25 @@ export const overview = api<OverviewRequest, OverviewResponse>(
     const periodStart = startDate || defaultStartDate;
     const periodEnd = endDate || defaultEndDate;
 
-    // Build property filter based on role
-    let propertyFilter = '';
+    // Build property filter based on role and filters
+    let propertyFilter = "";
     const params: any[] = [authData.orgId, periodStart, periodEnd];
     let paramIndex = 4;
 
     if (propertyId) {
-      propertyFilter = ` AND p.id = $${paramIndex}`;
+      propertyFilter += ` AND p.id = $${paramIndex}`;
       params.push(propertyId);
       paramIndex++;
-    } else if (regionId) {
-      propertyFilter = ` AND p.region_id = $${paramIndex}`;
+    }
+
+    if (regionId) {
+      propertyFilter += ` AND p.region_id = $${paramIndex}`;
       params.push(regionId);
       paramIndex++;
-    } else if (authData.role === 'REGIONAL_MANAGER' && authData.regionId) {
-      propertyFilter = ` AND p.region_id = $${paramIndex}`;
-      params.push(authData.regionId);
-      paramIndex++;
-    } else if (['PROPERTY_MANAGER', 'DEPT_HEAD', 'STAFF'].includes(authData.role)) {
-      propertyFilter = ` AND p.id IN (
+    }
+
+    if (authData.role === "MANAGER") {
+      propertyFilter += ` AND p.id IN (
         SELECT property_id FROM user_properties WHERE user_id = $${paramIndex}
       )`;
       params.push(parseInt(authData.userID));
@@ -140,8 +140,8 @@ export const overview = api<OverviewRequest, OverviewResponse>(
     const adr = totalBookings > 0 ? totalRevenue / totalBookings : 0;
     const revpar = totalUnits > 0 ? totalRevenue / totalUnits : 0;
 
-    // Staff utilization (simplified calculation)
-    const staffUtilization = 75; // Placeholder - would need more complex calculation
+    // Staff utilization (placeholder)
+    const staffUtilization = 75;
 
     return {
       metrics: {

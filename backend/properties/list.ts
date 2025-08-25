@@ -39,14 +39,8 @@ export const list = api<ListPropertiesRequest, ListPropertiesResponse>(
     const params: any[] = [authData.orgId];
     let paramIndex = 2;
 
-    // Apply role-based access control
-    if (authData.role === 'REGIONAL_MANAGER' && authData.regionId) {
-      query += ` AND p.region_id = $${paramIndex}`;
-      params.push(authData.regionId);
-      paramIndex++;
-    }
-
-    if (authData.role === 'PROPERTY_MANAGER' || authData.role === 'DEPT_HEAD' || authData.role === 'STAFF') {
+    // Managers can only see properties they have access to
+    if (authData.role === "MANAGER") {
       query += ` AND p.id IN (
         SELECT property_id FROM user_properties WHERE user_id = $${paramIndex}
       )`;
@@ -72,7 +66,7 @@ export const list = api<ListPropertiesRequest, ListPropertiesResponse>(
     const properties = await propertiesDB.rawQueryAll(query, ...params);
 
     return {
-      properties: properties.map(property => ({
+      properties: properties.map((property) => ({
         id: property.id,
         name: property.name,
         type: property.type as PropertyType,

@@ -34,13 +34,13 @@ export const create = api<CreateTaskRequest, CreateTaskResponse>(
   { auth: true, expose: true, method: "POST", path: "/tasks" },
   async (req) => {
     const authData = getAuthData()!;
-    requireRole('CORP_ADMIN', 'REGIONAL_MANAGER', 'PROPERTY_MANAGER', 'DEPT_HEAD')(authData);
+    requireRole("ADMIN", "MANAGER")(authData);
 
     const { propertyId, type, title, description, priority, assigneeStaffId, dueAt } = req;
 
     // Check property access
     const propertyRow = await tasksDB.queryRow`
-      SELECT p.id, p.org_id, p.region_id
+      SELECT p.id, p.org_id
       FROM properties p
       WHERE p.id = ${propertyId} AND p.org_id = ${authData.orgId}
     `;
@@ -49,12 +49,7 @@ export const create = api<CreateTaskRequest, CreateTaskResponse>(
       throw APIError.notFound("Property not found");
     }
 
-    // Check role-based access
-    if (authData.role === 'REGIONAL_MANAGER' && authData.regionId && propertyRow.region_id !== authData.regionId) {
-      throw APIError.permissionDenied("No access to this property");
-    }
-
-    if (['PROPERTY_MANAGER', 'DEPT_HEAD'].includes(authData.role)) {
+    if (authData.role === "MANAGER") {
       const accessCheck = await tasksDB.queryRow`
         SELECT 1 FROM user_properties WHERE user_id = ${parseInt(authData.userID)} AND property_id = ${propertyId}
       `;

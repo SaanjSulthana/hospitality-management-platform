@@ -21,9 +21,8 @@ export const updateStatus = api<UpdateTaskStatusRequest, UpdateTaskStatusRespons
 
     // Get task and check access
     const taskRow = await tasksDB.queryRow`
-      SELECT t.id, t.org_id, t.property_id, t.assignee_staff_id, p.region_id
+      SELECT t.id, t.org_id, t.property_id
       FROM tasks t
-      JOIN properties p ON t.property_id = p.id
       WHERE t.id = ${id} AND t.org_id = ${authData.orgId}
     `;
 
@@ -31,24 +30,16 @@ export const updateStatus = api<UpdateTaskStatusRequest, UpdateTaskStatusRespons
       throw APIError.notFound("Task not found");
     }
 
-    // Check role-based access
+    // Access rules: ADMIN can update any; MANAGER only if they have access to the property
     let hasAccess = false;
 
-    if (authData.role === 'CORP_ADMIN') {
+    if (authData.role === "ADMIN") {
       hasAccess = true;
-    } else if (authData.role === 'REGIONAL_MANAGER' && authData.regionId === taskRow.region_id) {
-      hasAccess = true;
-    } else if (['PROPERTY_MANAGER', 'DEPT_HEAD'].includes(authData.role)) {
+    } else if (authData.role === "MANAGER") {
       const accessCheck = await tasksDB.queryRow`
         SELECT 1 FROM user_properties WHERE user_id = ${parseInt(authData.userID)} AND property_id = ${taskRow.property_id}
       `;
       hasAccess = !!accessCheck;
-    } else if (authData.role === 'STAFF') {
-      // Staff can only update tasks assigned to them
-      const staffRow = await tasksDB.queryRow`
-        SELECT 1 FROM staff WHERE user_id = ${parseInt(authData.userID)} AND id = ${taskRow.assignee_staff_id}
-      `;
-      hasAccess = !!staffRow;
     }
 
     if (!hasAccess) {

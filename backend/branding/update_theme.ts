@@ -25,7 +25,7 @@ export const updateTheme = api<UpdateThemeRequest, UpdateThemeResponse>(
   { auth: true, expose: true, method: "PATCH", path: "/branding/theme" },
   async (req) => {
     const authData = getAuthData()!;
-    requireRole('CORP_ADMIN')(authData);
+    requireRole("ADMIN")(authData);
 
     // Get current theme
     const orgRow = await brandingDB.queryRow`

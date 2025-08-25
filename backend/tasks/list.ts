@@ -57,14 +57,8 @@ export const list = api<ListTasksRequest, ListTasksResponse>(
     const params: any[] = [authData.orgId];
     let paramIndex = 2;
 
-    // Apply role-based access control
-    if (authData.role === 'REGIONAL_MANAGER' && authData.regionId) {
-      query += ` AND p.region_id = $${paramIndex}`;
-      params.push(authData.regionId);
-      paramIndex++;
-    }
-
-    if (['PROPERTY_MANAGER', 'DEPT_HEAD', 'STAFF'].includes(authData.role)) {
+    // Managers can only see tasks for properties they have access to
+    if (authData.role === "MANAGER") {
       query += ` AND p.id IN (
         SELECT property_id FROM user_properties WHERE user_id = $${paramIndex}
       )`;
@@ -97,7 +91,7 @@ export const list = api<ListTasksRequest, ListTasksResponse>(
       paramIndex++;
     }
 
-    if (assignee === 'me') {
+    if (assignee === "me") {
       query += ` AND s.user_id = $${paramIndex}`;
       params.push(parseInt(authData.userID));
       paramIndex++;
@@ -108,7 +102,7 @@ export const list = api<ListTasksRequest, ListTasksResponse>(
     const tasks = await tasksDB.rawQueryAll(query, ...params);
 
     return {
-      tasks: tasks.map(task => ({
+      tasks: tasks.map((task) => ({
         id: task.id,
         propertyId: task.property_id,
         propertyName: task.property_name,

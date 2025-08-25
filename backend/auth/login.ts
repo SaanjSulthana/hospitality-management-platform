@@ -1,7 +1,7 @@
 import { api, APIError } from "encore.dev/api";
 import { authDB } from "./db";
 import { verifyPassword, generateAccessToken, generateRefreshToken, hashRefreshToken } from "./utils";
-import { UserRole } from "./types";
+import { UserRole, User } from "./types";
 
 export interface LoginRequest {
   email: string;
@@ -47,26 +47,38 @@ export const login = api<LoginRequest, LoginResponse>(
       UPDATE users SET last_login_at = NOW() WHERE id = ${userRow.id}
     `;
 
+    // Map to User type for JWT
+    const user: User = {
+      id: userRow.id,
+      orgId: userRow.org_id,
+      email: userRow.email,
+      role: userRow.role as UserRole,
+      displayName: userRow.display_name,
+      createdByUserId: userRow.created_by_user_id ?? undefined,
+      createdAt: userRow.created_at,
+      lastLoginAt: userRow.last_login_at ?? undefined,
+    };
+
     // Generate tokens
-    const accessToken = generateAccessToken(userRow);
-    const refreshToken = generateRefreshToken(userRow.id);
+    const accessToken = generateAccessToken(user);
+    const refreshToken = generateRefreshToken(user.id);
     const refreshTokenHash = await hashRefreshToken(refreshToken);
 
     // Store refresh token
     await authDB.exec`
       INSERT INTO sessions (user_id, refresh_token_hash, expires_at)
-      VALUES (${userRow.id}, ${refreshTokenHash}, NOW() + INTERVAL '7 days')
+      VALUES (${user.id}, ${refreshTokenHash}, NOW() + INTERVAL '7 days')
     `;
 
     return {
       accessToken,
       refreshToken,
       user: {
-        id: userRow.id,
-        email: userRow.email,
-        displayName: userRow.display_name,
-        role: userRow.role as UserRole,
-        orgId: userRow.org_id,
+        id: user.id,
+        email: user.email,
+        displayName: user.displayName,
+        role: user.role,
+        orgId: user.orgId,
       },
     };
   }

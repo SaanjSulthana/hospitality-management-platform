@@ -39,17 +39,8 @@ export const getOccupancy = api<GetOccupancyRequest, GetOccupancyResponse>(
       throw APIError.notFound("Property not found");
     }
 
-    // Check role-based access
-    if (authData.role === 'REGIONAL_MANAGER' && authData.regionId) {
-      const regionCheck = await propertiesDB.queryRow`
-        SELECT 1 FROM properties WHERE id = ${id} AND region_id = ${authData.regionId}
-      `;
-      if (!regionCheck) {
-        throw APIError.permissionDenied("No access to this property");
-      }
-    }
-
-    if (['PROPERTY_MANAGER', 'DEPT_HEAD', 'STAFF'].includes(authData.role)) {
+    // Managers must have access to the property
+    if (authData.role === "MANAGER") {
       const accessCheck = await propertiesDB.queryRow`
         SELECT 1 FROM user_properties WHERE user_id = ${parseInt(authData.userID)} AND property_id = ${id}
       `;

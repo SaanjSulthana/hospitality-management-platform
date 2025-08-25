@@ -15,22 +15,17 @@ export interface InviteUserResponse {
   token: string;
 }
 
-// Invites a user to join the organization
+// Invites a user to join the organization (Admin only, invites MANAGERs)
 export const invite = api<InviteUserRequest, InviteUserResponse>(
   { auth: true, expose: true, method: "POST", path: "/orgs/invite" },
   async (req) => {
     const authData = getAuthData()!;
-    requireRole('CORP_ADMIN', 'REGIONAL_MANAGER', 'PROPERTY_MANAGER')(authData);
+    requireRole("ADMIN")(authData);
 
     const { email, role } = req;
 
-    // Validate role permissions
-    if (authData.role === 'REGIONAL_MANAGER' && !['PROPERTY_MANAGER', 'DEPT_HEAD', 'STAFF'].includes(role)) {
-      throw APIError.permissionDenied("Regional managers can only invite property managers, department heads, and staff");
-    }
-
-    if (authData.role === 'PROPERTY_MANAGER' && !['DEPT_HEAD', 'STAFF'].includes(role)) {
-      throw APIError.permissionDenied("Property managers can only invite department heads and staff");
+    if (role !== "MANAGER") {
+      throw APIError.invalidArgument("Only MANAGER role can be invited");
     }
 
     // Check if user already exists in organization
@@ -53,7 +48,7 @@ export const invite = api<InviteUserRequest, InviteUserResponse>(
     }
 
     // Generate signup token
-    const token = crypto.randomBytes(32).toString('hex');
+    const token = crypto.randomBytes(32).toString("hex");
     const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days
 
     await orgsDB.exec`

@@ -58,15 +58,15 @@ export default function SettingsPage() {
     { name: 'Pink', value: '#ec4899' },
   ];
 
-  // Only show settings page to Corp Admins
-  if (user?.role !== 'CORP_ADMIN') {
+  // Only show settings page to Admins
+  if (user?.role !== 'ADMIN') {
     return (
       <div className="space-y-6">
         <div className="text-center py-12">
           <Settings className="h-12 w-12 text-gray-400 mx-auto mb-4" />
           <h3 className="text-lg font-medium text-gray-900 mb-2">Access Restricted</h3>
           <p className="text-gray-500">
-            Only Corporate Administrators can access organization settings.
+            Only Administrators can access organization settings.
           </p>
         </div>
       </div>

@@ -18,12 +18,12 @@ export interface CreateOrgResponse {
   createdAt: Date;
 }
 
-// Creates a new organization (Corp Admin only)
+// Creates a new organization (Admin only)
 export const create = api<CreateOrgRequest, CreateOrgResponse>(
   { auth: true, expose: true, method: "POST", path: "/orgs" },
   async (req) => {
     const authData = getAuthData()!;
-    requireRole('CORP_ADMIN')(authData);
+    requireRole("ADMIN")(authData);
 
     const { name, subdomainPrefix, primaryDomain } = req;
 

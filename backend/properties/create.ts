@@ -40,14 +40,9 @@ export const create = api<CreatePropertyRequest, CreatePropertyResponse>(
   { auth: true, expose: true, method: "POST", path: "/properties" },
   async (req) => {
     const authData = getAuthData()!;
-    requireRole('CORP_ADMIN', 'REGIONAL_MANAGER')(authData);
+    requireRole("ADMIN", "MANAGER")(authData);
 
     const { name, type, regionId, address, amenities, capacity } = req;
-
-    // Validate region access for regional managers
-    if (authData.role === 'REGIONAL_MANAGER' && regionId && regionId !== authData.regionId) {
-      throw APIError.permissionDenied("Regional managers can only create properties in their assigned region");
-    }
 
     const addressJson = address || {};
     const amenitiesJson = { amenities: amenities || [] };

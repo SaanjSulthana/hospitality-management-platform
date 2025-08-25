@@ -18,15 +18,14 @@ export const checkin = api<CheckinRequest, CheckinResponse>(
   { auth: true, expose: true, method: "POST", path: "/bookings/:id/checkin" },
   async (req) => {
     const authData = getAuthData()!;
-    requireRole('CORP_ADMIN', 'REGIONAL_MANAGER', 'PROPERTY_MANAGER', 'DEPT_HEAD', 'STAFF')(authData);
+    requireRole("ADMIN", "MANAGER")(authData);
 
     const { id } = req;
 
     // Get booking and check access
     const bookingRow = await bookingsDB.queryRow`
-      SELECT b.id, b.org_id, b.property_id, b.status, b.checkin_date, p.region_id
+      SELECT b.id, b.org_id, b.property_id, b.status, b.checkin_date
       FROM bookings b
-      JOIN properties p ON b.property_id = p.id
       WHERE b.id = ${id} AND b.org_id = ${authData.orgId}
     `;
 
@@ -34,12 +33,8 @@ export const checkin = api<CheckinRequest, CheckinResponse>(
       throw APIError.notFound("Booking not found");
     }
 
-    // Check role-based access
-    if (authData.role === 'REGIONAL_MANAGER' && authData.regionId && bookingRow.region_id !== authData.regionId) {
-      throw APIError.permissionDenied("No access to this booking");
-    }
-
-    if (['PROPERTY_MANAGER', 'DEPT_HEAD', 'STAFF'].includes(authData.role)) {
+    // Managers must have access to the property
+    if (authData.role === "MANAGER") {
       const accessCheck = await bookingsDB.queryRow`
         SELECT 1 FROM user_properties WHERE user_id = ${parseInt(authData.userID)} AND property_id = ${bookingRow.property_id}
       `;
@@ -49,7 +44,7 @@ export const checkin = api<CheckinRequest, CheckinResponse>(
     }
 
     // Validate booking status
-    if (bookingRow.status !== 'confirmed') {
+    if (bookingRow.status !== "confirmed") {
       throw APIError.failedPrecondition(`Cannot check in booking with status: ${bookingRow.status}`);
     }
 
@@ -73,7 +68,7 @@ export const checkin = api<CheckinRequest, CheckinResponse>(
     return {
       success: true,
       bookingId: id,
-      status: 'checked_in',
+      status: "checked_in",
     };
   }
 );

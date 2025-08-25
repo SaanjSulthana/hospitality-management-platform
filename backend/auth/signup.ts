@@ -1,7 +1,7 @@
 import { api, APIError } from "encore.dev/api";
 import { authDB } from "./db";
 import { hashPassword, generateAccessToken, generateRefreshToken, hashRefreshToken } from "./utils";
-import { UserRole } from "./types";
+import { UserRole, User } from "./types";
 
 export interface SignupRequest {
   email: string;
@@ -65,7 +65,7 @@ export const signup = api<SignupRequest, SignupResponse>(
     `;
 
     // Create first user as ADMIN
-    const userRow = await authDB.queryRow`
+    const insertedUser = await authDB.queryRow`
       INSERT INTO users (org_id, email, password_hash, role, display_name)
       VALUES (${orgRow.id}, ${email}, ${passwordHash}, 'ADMIN', ${displayName})
       RETURNING id, org_id, email, role, display_name, created_by_user_id, created_at, last_login_at
@@ -73,29 +73,40 @@ export const signup = api<SignupRequest, SignupResponse>(
 
     // Update last login
     await authDB.exec`
-      UPDATE users SET last_login_at = NOW() WHERE id = ${userRow.id}
+      UPDATE users SET last_login_at = NOW() WHERE id = ${insertedUser.id}
     `;
 
+    const user: User = {
+      id: insertedUser.id,
+      orgId: insertedUser.org_id,
+      email: insertedUser.email,
+      role: insertedUser.role as UserRole,
+      displayName: insertedUser.display_name,
+      createdByUserId: insertedUser.created_by_user_id ?? undefined,
+      createdAt: insertedUser.created_at,
+      lastLoginAt: insertedUser.last_login_at ?? undefined,
+    };
+
     // Generate tokens
-    const accessToken = generateAccessToken(userRow);
-    const refreshToken = generateRefreshToken(userRow.id);
+    const accessToken = generateAccessToken(user);
+    const refreshToken = generateRefreshToken(user.id);
     const refreshTokenHash = await hashRefreshToken(refreshToken);
 
     // Store refresh token
     await authDB.exec`
       INSERT INTO sessions (user_id, refresh_token_hash, expires_at)
-      VALUES (${userRow.id}, ${refreshTokenHash}, NOW() + INTERVAL '7 days')
+      VALUES (${user.id}, ${refreshTokenHash}, NOW() + INTERVAL '7 days')
     `;
 
     return {
       accessToken,
       refreshToken,
       user: {
-        id: userRow.id,
-        email: userRow.email,
-        displayName: userRow.display_name,
-        role: userRow.role as UserRole,
-        orgId: userRow.org_id,
+        id: user.id,
+        email: user.email,
+        displayName: user.displayName,
+        role: user.role,
+        orgId: user.orgId,
       },
     };
   }

@@ -4,6 +4,7 @@ import { usersDB } from "./db";
 import { requireRole } from "../auth/middleware";
 import { UserRole } from "../auth/types";
 import { hashPassword } from "../auth/utils";
+import log from "encore.dev/log";
 
 export interface CreateUserRequest {
   email: string;
@@ -42,6 +43,14 @@ export const create = api<CreateUserRequest, CreateUserResponse>(
 
     const tx = await usersDB.begin();
     try {
+      log.info("Creating user", { 
+        email, 
+        displayName, 
+        role,
+        orgId: authData.orgId, 
+        createdBy: authData.userID 
+      });
+
       // Check if user already exists in this organization
       const existingUser = await tx.queryRow`
         SELECT id FROM users WHERE org_id = ${authData.orgId} AND email = ${email}
@@ -82,9 +91,20 @@ export const create = api<CreateUserRequest, CreateUserResponse>(
             ON CONFLICT DO NOTHING
           `;
         }
+
+        log.info("Assigned properties to user", { 
+          userId: userRow.id, 
+          propertyIds: toAssign 
+        });
       }
 
       await tx.commit();
+      log.info("User created successfully", { 
+        userId: userRow.id, 
+        email, 
+        role,
+        orgId: authData.orgId 
+      });
 
       return {
         id: userRow.id,
@@ -95,7 +115,14 @@ export const create = api<CreateUserRequest, CreateUserResponse>(
       };
     } catch (error) {
       await tx.rollback();
-      console.error('Create user error:', error);
+      log.error('Create user error', { 
+        error: error instanceof Error ? error.message : String(error),
+        email,
+        displayName,
+        role,
+        orgId: authData.orgId,
+        createdBy: authData.userID
+      });
       
       // Check for specific database errors
       if (error instanceof Error) {

@@ -2,6 +2,7 @@ import { api, APIError } from "encore.dev/api";
 import { getAuthData } from "~encore/auth";
 import { tasksDB } from "./db";
 import { TaskStatus } from "./types";
+import log from "encore.dev/log";
 
 export interface UpdateTaskStatusRequest {
   id: number;
@@ -21,9 +22,16 @@ export const updateStatus = api<UpdateTaskStatusRequest, UpdateTaskStatusRespons
 
     const tx = await tasksDB.begin();
     try {
+      log.info("Updating task status", { 
+        taskId: id, 
+        newStatus: status,
+        userId: authData.userID,
+        orgId: authData.orgId 
+      });
+
       // Get task and check access with org scoping
       const taskRow = await tx.queryRow`
-        SELECT t.id, t.org_id, t.property_id, t.assignee_staff_id
+        SELECT t.id, t.org_id, t.property_id, t.assignee_staff_id, t.status as current_status
         FROM tasks t
         WHERE t.id = ${id} AND t.org_id = ${authData.orgId}
       `;
@@ -65,14 +73,29 @@ export const updateStatus = api<UpdateTaskStatusRequest, UpdateTaskStatusRespons
       `;
 
       await tx.commit();
+      log.info("Task status updated successfully", { 
+        taskId: id, 
+        oldStatus: taskRow.current_status,
+        newStatus: status,
+        userId: authData.userID,
+        orgId: authData.orgId 
+      });
 
       return { success: true };
     } catch (error) {
       await tx.rollback();
-      console.error('Update task status error:', error);
+      log.error('Update task status error', { 
+        error: error instanceof Error ? error.message : String(error),
+        taskId: id,
+        status,
+        userId: authData.userID,
+        orgId: authData.orgId
+      });
+      
       if (error instanceof Error && error.name === 'APIError') {
         throw error;
       }
+      
       throw APIError.internal("Failed to update task status");
     }
   }

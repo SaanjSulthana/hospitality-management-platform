@@ -57,6 +57,10 @@ export default function UsersPage() {
     gcTime: 300000, // 5 minutes
     refetchOnMount: true,
     refetchOnWindowFocus: true,
+    retry: (failureCount, error) => {
+      console.error('Users query failed:', error);
+      return failureCount < 2;
+    },
   });
 
   const { data: properties } = useQuery({
@@ -72,53 +76,42 @@ export default function UsersPage() {
 
   const createUserMutation = useMutation({
     mutationFn: async (userData: typeof newUser) => {
+      console.log('Creating user with data:', userData);
       const backend = getAuthenticatedBackend();
       return backend.users.create(userData);
     },
-    onSuccess: (createdUser) => {
-      // Force refetch to ensure we have the latest data
-      refetchUsers();
-      
-      // Also update the cache immediately with the new user
+    onMutate: async (newUserData) => {
+      console.log('User creation mutation starting...');
+      // Cancel any outgoing refetches
+      await queryClient.cancelQueries({ queryKey: ['users'] });
+
+      // Snapshot the previous value
+      const previousUsers = queryClient.getQueryData<ListUsersResponse>(['users']);
+
+      // Optimistically update to the new value
       queryClient.setQueryData<ListUsersResponse>(['users'], (old) => {
-        if (!old) return { users: [createdUser] };
+        if (!old) return { users: [] };
         
-        // Check if user already exists to avoid duplicates
-        const exists = old.users.some((u) => u.id === createdUser.id || u.email === createdUser.email);
-        if (exists) return old;
-        
-        const newUserData = {
-          id: createdUser.id,
-          email: createdUser.email,
-          role: createdUser.role,
-          displayName: createdUser.displayName,
-          createdByUserId: createdUser.createdByUserId,
+        const optimisticUser = {
+          id: Date.now(), // temporary ID
+          email: newUserData.email,
+          role: newUserData.role,
+          displayName: newUserData.displayName,
+          createdByUserId: user?.id,
           createdByName: user?.displayName,
           createdAt: new Date(),
           lastLoginAt: undefined,
         };
         
-        return { users: [newUserData, ...old.users] };
+        return { users: [optimisticUser, ...old.users] };
       });
 
-      setIsCreateDialogOpen(false);
-      setNewUser({
-        email: '',
-        password: '',
-        displayName: '',
-        role: 'MANAGER',
-        propertyIds: [],
-      });
-      toast({
-        title: "Manager created successfully",
-        description: "The new manager account has been created.",
-      });
+      return { previousUsers };
     },
-    onError: (error: any) => {
-      console.error('Create user error:', error);
-      
-      // Force refetch to ensure UI is in sync with database
-      refetchUsers();
+    onError: (error: any, newUserData, context) => {
+      console.error('User creation failed:', error);
+      // Roll back to the previous state
+      queryClient.setQueryData(['users'], context?.previousUsers);
       
       let errorMessage = "Please try again.";
       if (error.message) {
@@ -139,44 +132,87 @@ export default function UsersPage() {
         description: errorMessage,
       });
     },
+    onSuccess: (createdUser) => {
+      console.log('User created successfully:', createdUser);
+      
+      // Update the cache with the real data from the server
+      queryClient.setQueryData<ListUsersResponse>(['users'], (old) => {
+        if (!old) return { users: [createdUser] };
+        
+        // Remove the optimistic update and add the real data
+        const filteredUsers = old.users.filter((u) => typeof u.id === 'number' && u.id > 1000000);
+        
+        const newUserData = {
+          id: createdUser.id,
+          email: createdUser.email,
+          role: createdUser.role,
+          displayName: createdUser.displayName,
+          createdByUserId: createdUser.createdByUserId,
+          createdByName: user?.displayName,
+          createdAt: new Date(),
+          lastLoginAt: undefined,
+        };
+        
+        return { users: [newUserData, ...filteredUsers] };
+      });
+
+      setIsCreateDialogOpen(false);
+      setNewUser({
+        email: '',
+        password: '',
+        displayName: '',
+        role: 'MANAGER',
+        propertyIds: [],
+      });
+      toast({
+        title: "Manager created successfully",
+        description: "The new manager account has been created.",
+      });
+    },
+    onSettled: () => {
+      console.log('User creation mutation settled, invalidating queries...');
+      // Always refetch after error or success to ensure we have the latest data
+      refetchUsers();
+    },
   });
 
   const updateUserMutation = useMutation({
     mutationFn: async (payload: { id: number; displayName?: string; email?: string; password?: string }) => {
+      console.log('Updating user with data:', payload);
       const backend = getAuthenticatedBackend();
       return backend.users.update(payload);
     },
-    onSuccess: (result, variables) => {
-      // Force refetch to ensure we have the latest data
-      refetchUsers();
-      
-      // Update the specific user in cache
+    onMutate: async (updatedUser) => {
+      console.log('User update mutation starting...');
+      // Cancel any outgoing refetches
+      await queryClient.cancelQueries({ queryKey: ['users'] });
+
+      // Snapshot the previous value
+      const previousUsers = queryClient.getQueryData<ListUsersResponse>(['users']);
+
+      // Optimistically update to the new value
       queryClient.setQueryData<ListUsersResponse>(['users'], (old) => {
         if (!old) return old;
         
         return {
           users: old.users.map((u) =>
-            u.id === variables.id
+            u.id === updatedUser.id
               ? {
                   ...u,
-                  displayName: variables.displayName ?? u.displayName,
-                  email: variables.email ?? u.email,
+                  displayName: updatedUser.displayName ?? u.displayName,
+                  email: updatedUser.email ?? u.email,
                 }
               : u
           ),
         };
       });
 
-      toast({
-        title: "User updated",
-        description: "Manager details have been updated.",
-      });
+      return { previousUsers };
     },
-    onError: (error: any) => {
-      console.error('Update user error:', error);
-      
-      // Force refetch on error
-      refetchUsers();
+    onError: (error: any, variables, context) => {
+      console.error('User update failed:', error);
+      // Roll back to the previous state
+      queryClient.setQueryData(['users'], context?.previousUsers);
       
       let errorMessage = "Please try again.";
       if (error.message && error.message.includes('already exists')) {
@@ -191,28 +227,43 @@ export default function UsersPage() {
         description: errorMessage,
       });
     },
+    onSuccess: () => {
+      console.log('User updated successfully');
+      toast({
+        title: "User updated",
+        description: "Manager details have been updated.",
+      });
+    },
+    onSettled: () => {
+      console.log('User update mutation settled, invalidating queries...');
+      refetchUsers();
+    },
   });
 
   const assignPropertiesMutation = useMutation({
     mutationFn: async (payload: { id: number; propertyIds: number[] }) => {
+      console.log('Assigning properties with data:', payload);
       const backend = getAuthenticatedBackend();
       return backend.users.assignProperties(payload);
     },
-    onSuccess: () => {
-      refetchUsers();
-      toast({
-        title: "Assignments updated",
-        description: "Property assignments have been saved.",
-      });
-    },
     onError: (error: any) => {
-      console.error('Assign properties error:', error);
-      refetchUsers();
+      console.error('Property assignment failed:', error);
       toast({
         variant: "destructive",
         title: "Failed to update assignments",
         description: error.message || "Please try again.",
       });
+    },
+    onSuccess: () => {
+      console.log('Properties assigned successfully');
+      toast({
+        title: "Assignments updated",
+        description: "Property assignments have been saved.",
+      });
+    },
+    onSettled: () => {
+      console.log('Property assignment mutation settled, invalidating queries...');
+      refetchUsers();
     },
   });
 

@@ -3,6 +3,7 @@ import { getAuthData } from "~encore/auth";
 import { propertiesDB } from "./db";
 import { requireRole } from "../auth/middleware";
 import { PropertyType } from "./types";
+import log from "encore.dev/log";
 
 export interface CreatePropertyRequest {
   name: string;
@@ -48,51 +49,72 @@ export const create = api<CreatePropertyRequest, CreatePropertyResponse>(
     const amenitiesJson = { amenities: amenities || [] };
     const capacityJson = capacity || {};
 
+    const tx = await propertiesDB.begin();
     try {
-      // Use a transaction to ensure data consistency
-      const tx = await propertiesDB.begin();
-      
-      try {
-        const propertyRow = await tx.queryRow`
-          INSERT INTO properties (org_id, region_id, name, type, address_json, amenities_json, capacity_json, status)
-          VALUES (${authData.orgId}, ${regionId || null}, ${name}, ${type}, ${JSON.stringify(addressJson)}, ${JSON.stringify(amenitiesJson)}, ${JSON.stringify(capacityJson)}, 'active')
-          RETURNING id, org_id, region_id, name, type, address_json, amenities_json, capacity_json, status, created_at
-        `;
+      log.info("Creating property", { 
+        name, 
+        type, 
+        orgId: authData.orgId, 
+        userId: authData.userID,
+        role: authData.role 
+      });
 
-        if (!propertyRow) {
-          throw new Error("Failed to create property");
-        }
+      const propertyRow = await tx.queryRow`
+        INSERT INTO properties (org_id, region_id, name, type, address_json, amenities_json, capacity_json, status)
+        VALUES (${authData.orgId}, ${regionId || null}, ${name}, ${type}, ${JSON.stringify(addressJson)}, ${JSON.stringify(amenitiesJson)}, ${JSON.stringify(capacityJson)}, 'active')
+        RETURNING id, org_id, region_id, name, type, address_json, amenities_json, capacity_json, status, created_at
+      `;
 
-        // If a MANAGER creates a property, automatically grant them access to it.
-        if (authData.role === "MANAGER") {
-          await tx.exec`
-            INSERT INTO user_properties (user_id, property_id)
-            VALUES (${parseInt(authData.userID)}, ${propertyRow.id})
-            ON CONFLICT DO NOTHING
-          `;
-        }
-
-        // Commit the transaction
-        await tx.commit();
-
-        return {
-          id: propertyRow.id,
-          name: propertyRow.name,
-          type: propertyRow.type as PropertyType,
-          regionId: propertyRow.region_id,
-          addressJson: propertyRow.address_json,
-          amenitiesJson: propertyRow.amenities_json,
-          capacityJson: propertyRow.capacity_json,
-          status: propertyRow.status,
-          createdAt: propertyRow.created_at,
-        };
-      } catch (err) {
-        await tx.rollback();
-        throw err;
+      if (!propertyRow) {
+        throw new Error("Failed to create property");
       }
-    } catch (err) {
-      console.error('Create property error:', err);
-      throw APIError.internal("Failed to create property", err as Error);
+
+      // If a MANAGER creates a property, automatically grant them access to it.
+      if (authData.role === "MANAGER") {
+        await tx.exec`
+          INSERT INTO user_properties (user_id, property_id)
+          VALUES (${parseInt(authData.userID)}, ${propertyRow.id})
+          ON CONFLICT DO NOTHING
+        `;
+        log.info("Granted property access to manager", { 
+          userId: authData.userID, 
+          propertyId: propertyRow.id 
+        });
+      }
+
+      await tx.commit();
+      log.info("Property created successfully", { 
+        propertyId: propertyRow.id, 
+        name, 
+        orgId: authData.orgId 
+      });
+
+      return {
+        id: propertyRow.id,
+        name: propertyRow.name,
+        type: propertyRow.type as PropertyType,
+        regionId: propertyRow.region_id,
+        addressJson: propertyRow.address_json,
+        amenitiesJson: propertyRow.amenities_json,
+        capacityJson: propertyRow.capacity_json,
+        status: propertyRow.status,
+        createdAt: propertyRow.created_at,
+      };
+    } catch (error) {
+      await tx.rollback();
+      log.error('Create property error', { 
+        error: error instanceof Error ? error.message : String(error),
+        name,
+        type,
+        orgId: authData.orgId,
+        userId: authData.userID
+      });
+      
+      if (error instanceof Error && error.name === 'APIError') {
+        throw error;
+      }
+      
+      throw APIError.internal("Failed to create property", error as Error);
     }
   }
 );

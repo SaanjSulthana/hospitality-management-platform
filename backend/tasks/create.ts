@@ -3,6 +3,7 @@ import { getAuthData } from "~encore/auth";
 import { tasksDB } from "./db";
 import { requireRole } from "../auth/middleware";
 import { TaskType, TaskPriority } from "./types";
+import log from "encore.dev/log";
 
 export interface CreateTaskRequest {
   propertyId: number;
@@ -48,6 +49,16 @@ export const create = api<CreateTaskRequest, CreateTaskResponse>(
 
     const tx = await tasksDB.begin();
     try {
+      log.info("Creating task", { 
+        title, 
+        type, 
+        priority,
+        propertyId,
+        assigneeStaffId,
+        orgId: authData.orgId, 
+        userId: authData.userID 
+      });
+
       // Check property access with org scoping
       const propertyRow = await tx.queryRow`
         SELECT p.id, p.org_id, p.name
@@ -127,6 +138,13 @@ export const create = api<CreateTaskRequest, CreateTaskResponse>(
       }
 
       await tx.commit();
+      log.info("Task created successfully", { 
+        taskId: taskRow.id, 
+        title, 
+        propertyId,
+        assigneeStaffId,
+        orgId: authData.orgId 
+      });
 
       return {
         id: taskRow.id,
@@ -151,10 +169,18 @@ export const create = api<CreateTaskRequest, CreateTaskResponse>(
       };
     } catch (error) {
       await tx.rollback();
-      console.error('Create task error:', error);
+      log.error('Create task error', { 
+        error: error instanceof Error ? error.message : String(error),
+        title,
+        propertyId,
+        orgId: authData.orgId,
+        userId: authData.userID
+      });
+      
       if (error instanceof Error && error.name === 'APIError') {
         throw error;
       }
+      
       throw APIError.internal("Failed to create task");
     }
   }

@@ -45,9 +45,11 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
   const login = async (email: string, password: string) => {
     try {
+      console.log('Starting login process...');
       const response = await backend.auth.login({ email, password });
       
       // Clear any previous cached data to avoid stale views after user switch
+      console.log('Clearing query cache after login...');
       queryClient.clear();
 
       // Store tokens
@@ -59,6 +61,8 @@ export function AuthProvider({ children }: AuthProviderProps) {
       const authenticatedBackend = getAuthenticatedBackend();
       const meResponse = await authenticatedBackend.auth.me();
       setUser(meResponse.user);
+      
+      console.log('Login successful, user set:', meResponse.user);
     } catch (error) {
       console.error('Login failed:', error);
       throw error;
@@ -85,6 +89,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
       setAccessToken(null);
       setUser(null);
       // Clear all cached queries so the next user/session gets fresh data
+      console.log('Clearing query cache after logout...');
       queryClient.clear();
     }
   };
@@ -125,6 +130,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
           const authenticatedBackend = getAuthenticatedBackend();
           const meResponse = await authenticatedBackend.auth.me();
           setUser(meResponse.user);
+          console.log('Auth initialized with existing token, user:', meResponse.user);
         } catch (error) {
           // Token might be expired, try to refresh
           try {
@@ -132,6 +138,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
             const authenticatedBackend = getAuthenticatedBackend();
             const meResponse = await authenticatedBackend.auth.me();
             setUser(meResponse.user);
+            console.log('Auth initialized after token refresh, user:', meResponse.user);
           } catch (refreshError) {
             console.error('Auth initialization failed:', refreshError);
             await logout();
@@ -150,16 +157,20 @@ export function AuthProvider({ children }: AuthProviderProps) {
   // When user becomes available (login/refresh), invalidate key queries to ensure fresh data.
   useEffect(() => {
     if (user) {
-      queryClient.invalidateQueries({ queryKey: ['properties'] });
-      queryClient.invalidateQueries({ queryKey: ['tasks'] });
-      queryClient.invalidateQueries({ queryKey: ['users'] });
-      queryClient.invalidateQueries({ queryKey: ['expenses'] });
-      queryClient.invalidateQueries({ queryKey: ['revenues'] });
-      queryClient.invalidateQueries({ queryKey: ['profit-loss'] });
-      queryClient.invalidateQueries({ queryKey: ['staff'] });
-      queryClient.invalidateQueries({ queryKey: ['schedules'] });
-      queryClient.invalidateQueries({ queryKey: ['leave-requests'] });
-      queryClient.invalidateQueries({ queryKey: ['analytics', 'overview'] });
+      console.log('User available, invalidating queries for fresh data...');
+      // Use a small delay to ensure the auth context is fully updated
+      setTimeout(() => {
+        queryClient.invalidateQueries({ queryKey: ['properties'] });
+        queryClient.invalidateQueries({ queryKey: ['tasks'] });
+        queryClient.invalidateQueries({ queryKey: ['users'] });
+        queryClient.invalidateQueries({ queryKey: ['expenses'] });
+        queryClient.invalidateQueries({ queryKey: ['revenues'] });
+        queryClient.invalidateQueries({ queryKey: ['profit-loss'] });
+        queryClient.invalidateQueries({ queryKey: ['staff'] });
+        queryClient.invalidateQueries({ queryKey: ['schedules'] });
+        queryClient.invalidateQueries({ queryKey: ['leave-requests'] });
+        queryClient.invalidateQueries({ queryKey: ['analytics', 'overview'] });
+      }, 100);
     }
   }, [user, queryClient]);
 

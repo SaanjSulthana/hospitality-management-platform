@@ -40,6 +40,10 @@ export default function TasksPage() {
     },
     staleTime: 30000, // 30 seconds
     gcTime: 300000, // 5 minutes
+    retry: (failureCount, error) => {
+      console.error('Tasks query failed:', error);
+      return failureCount < 2;
+    },
   });
 
   const { data: properties } = useQuery({
@@ -65,6 +69,7 @@ export default function TasksPage() {
 
   const createTaskMutation = useMutation({
     mutationFn: async (data: any) => {
+      console.log('Creating task with data:', data);
       const backend = getAuthenticatedBackend();
       return backend.tasks.create({
         propertyId: parseInt(data.propertyId),
@@ -77,20 +82,70 @@ export default function TasksPage() {
         assigneeStaffId: data.assigneeStaffId && data.assigneeStaffId !== 'none' ? parseInt(data.assigneeStaffId) : undefined,
       });
     },
-    onSuccess: (newTask) => {
-      // Invalidate and refetch tasks
-      queryClient.invalidateQueries({ queryKey: ['tasks'] });
+    onMutate: async (newTask) => {
+      console.log('Task creation mutation starting...');
+      // Cancel any outgoing refetches
+      await queryClient.cancelQueries({ queryKey: ['tasks'] });
+
+      // Snapshot the previous value
+      const previousTasks = queryClient.getQueryData(['tasks']);
+
+      // Optimistically update to the new value
+      queryClient.setQueryData(['tasks'], (old: any) => {
+        if (!old) return { tasks: [] };
+        
+        const optimisticTask = {
+          id: Date.now(), // temporary ID
+          propertyId: parseInt(newTask.propertyId),
+          propertyName: properties?.properties.find(p => p.id === parseInt(newTask.propertyId))?.name || 'Unknown',
+          type: newTask.type,
+          title: newTask.title,
+          description: newTask.description,
+          priority: newTask.priority,
+          status: 'open',
+          assigneeStaffId: newTask.assigneeStaffId && newTask.assigneeStaffId !== 'none' ? parseInt(newTask.assigneeStaffId) : undefined,
+          assigneeName: undefined,
+          dueAt: newTask.dueAt,
+          estimatedHours: newTask.estimatedHours ? parseFloat(newTask.estimatedHours) : undefined,
+          createdByUserId: 0,
+          createdByName: 'You',
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+          completedAt: undefined,
+          actualHours: undefined,
+          attachmentCount: 0,
+        };
+        
+        return {
+          tasks: [optimisticTask, ...old.tasks]
+        };
+      });
+
+      return { previousTasks };
+    },
+    onError: (error: any, newTask, context) => {
+      console.error('Task creation failed:', error);
+      // Roll back to the previous state
+      queryClient.setQueryData(['tasks'], context?.previousTasks);
       
-      // Update the cache immediately with the new task
+      toast({
+        variant: "destructive",
+        title: "Failed to create task",
+        description: error.message || "Please try again.",
+      });
+    },
+    onSuccess: (newTask) => {
+      console.log('Task created successfully:', newTask);
+      
+      // Update the cache with the real data from the server
       queryClient.setQueryData(['tasks'], (old: any) => {
         if (!old) return { tasks: [newTask] };
         
-        // Check if task already exists to avoid duplicates
-        const exists = old.tasks.some((t: any) => t.id === newTask.id);
-        if (exists) return old;
+        // Remove the optimistic update and add the real data
+        const filteredTasks = old.tasks.filter((t: any) => typeof t.id === 'number' && t.id > 1000000);
         
         return {
-          tasks: [newTask, ...old.tasks]
+          tasks: [newTask, ...filteredTasks]
         };
       });
 
@@ -110,36 +165,38 @@ export default function TasksPage() {
         description: "The task has been created successfully.",
       });
     },
-    onError: (error: any) => {
-      console.error('Create task error:', error);
-      toast({
-        variant: "destructive",
-        title: "Failed to create task",
-        description: error.message || "Please try again.",
-      });
+    onSettled: () => {
+      console.log('Task creation mutation settled, invalidating queries...');
+      // Always refetch after error or success
+      queryClient.invalidateQueries({ queryKey: ['tasks'] });
     },
   });
 
   const updateTaskStatusMutation = useMutation({
     mutationFn: async ({ id, status }: { id: number; status: string }) => {
+      console.log('Updating task status:', { id, status });
       const backend = getAuthenticatedBackend();
       return backend.tasks.updateStatus({ id, status });
     },
-    onSuccess: (result, variables) => {
-      // Invalidate and refetch tasks
-      queryClient.invalidateQueries({ queryKey: ['tasks'] });
-      
-      // Update the specific task in cache
+    onMutate: async ({ id, status }) => {
+      console.log('Task status update mutation starting...');
+      // Cancel any outgoing refetches
+      await queryClient.cancelQueries({ queryKey: ['tasks'] });
+
+      // Snapshot the previous value
+      const previousTasks = queryClient.getQueryData(['tasks']);
+
+      // Optimistically update to the new value
       queryClient.setQueryData(['tasks'], (old: any) => {
         if (!old) return old;
         
         return {
           tasks: old.tasks.map((task: any) =>
-            task.id === variables.id
+            task.id === id
               ? {
                   ...task,
-                  status: variables.status,
-                  completedAt: variables.status === 'done' ? new Date().toISOString() : task.completedAt,
+                  status: status,
+                  completedAt: status === 'done' ? new Date().toISOString() : task.completedAt,
                   updatedAt: new Date().toISOString(),
                 }
               : task
@@ -147,55 +204,88 @@ export default function TasksPage() {
         };
       });
 
-      toast({
-        title: "Task updated",
-        description: "The task status has been updated.",
-      });
+      return { previousTasks };
     },
-    onError: (error: any) => {
-      console.error('Update task status error:', error);
+    onError: (error: any, variables, context) => {
+      console.error('Task status update failed:', error);
+      // Roll back to the previous state
+      queryClient.setQueryData(['tasks'], context?.previousTasks);
+      
       toast({
         variant: "destructive",
         title: "Failed to update task",
         description: error.message || "Please try again.",
       });
     },
+    onSuccess: () => {
+      console.log('Task status updated successfully');
+      toast({
+        title: "Task updated",
+        description: "The task status has been updated.",
+      });
+    },
+    onSettled: () => {
+      console.log('Task status update mutation settled, invalidating queries...');
+      // Always refetch after error or success
+      queryClient.invalidateQueries({ queryKey: ['tasks'] });
+    },
   });
 
   // Assignment mutation
   const assignMutation = useMutation({
     mutationFn: async ({ id, staffId }: { id: number; staffId?: number }) => {
+      console.log('Assigning task:', { id, staffId });
       const backend = getAuthenticatedBackend();
       return backend.tasks.assign({ id, staffId });
     },
-    onSuccess: (_res, variables) => {
-      queryClient.invalidateQueries({ queryKey: ['tasks'] });
+    onMutate: async ({ id, staffId }) => {
+      console.log('Task assignment mutation starting...');
+      // Cancel any outgoing refetches
+      await queryClient.cancelQueries({ queryKey: ['tasks'] });
+
+      // Snapshot the previous value
+      const previousTasks = queryClient.getQueryData(['tasks']);
+
+      // Optimistically update to the new value
       queryClient.setQueryData(['tasks'], (old: any) => {
         if (!old) return old;
         return {
           tasks: old.tasks.map((t: any) =>
-            t.id === variables.id
+            t.id === id
               ? {
                   ...t,
-                  assigneeStaffId: variables.staffId,
+                  assigneeStaffId: staffId,
                   assigneeName: undefined, // will be refreshed via invalidate
                 }
               : t
           ),
         };
       });
-      toast({
-        title: variables.staffId ? "Task assigned" : "Task unassigned",
-        description: variables.staffId ? "The task has been assigned successfully." : "The task has been unassigned.",
-      });
+
+      return { previousTasks };
     },
-    onError: (error: any) => {
-      console.error('Assign task error:', error);
+    onError: (error: any, variables, context) => {
+      console.error('Task assignment failed:', error);
+      // Roll back to the previous state
+      queryClient.setQueryData(['tasks'], context?.previousTasks);
+      
       toast({
         variant: "destructive",
         title: "Failed to update assignment",
         description: error.message || "Please try again.",
       });
+    },
+    onSuccess: (result, variables) => {
+      console.log('Task assignment updated successfully');
+      toast({
+        title: variables.staffId ? "Task assigned" : "Task unassigned",
+        description: variables.staffId ? "The task has been assigned successfully." : "The task has been unassigned.",
+      });
+    },
+    onSettled: () => {
+      console.log('Task assignment mutation settled, invalidating queries...');
+      // Always refetch after error or success
+      queryClient.invalidateQueries({ queryKey: ['tasks'] });
     },
   });
 

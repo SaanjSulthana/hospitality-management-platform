@@ -3,6 +3,7 @@ import { getAuthData } from "~encore/auth";
 import { usersDB } from "./db";
 import { requireRole } from "../auth/middleware";
 import { hashPassword } from "../auth/utils";
+import log from "encore.dev/log";
 
 export interface UpdateUserRequest {
   id: number; // path param
@@ -27,9 +28,18 @@ export const update = api<UpdateUserRequest, UpdateUserResponse>(
 
     const tx = await usersDB.begin();
     try {
+      log.info("Updating user", { 
+        userId: id, 
+        displayName, 
+        email,
+        hasPassword: !!password,
+        orgId: authData.orgId, 
+        updatedBy: authData.userID 
+      });
+
       // Validate user in same org
       const userRow = await tx.queryRow`
-        SELECT id, org_id, role FROM users WHERE id = ${id} AND org_id = ${authData.orgId}
+        SELECT id, org_id, role, email as current_email FROM users WHERE id = ${id} AND org_id = ${authData.orgId}
       `;
       
       if (!userRow) {
@@ -74,6 +84,7 @@ export const update = api<UpdateUserRequest, UpdateUserResponse>(
 
       if (updates.length === 0) {
         await tx.commit();
+        log.info("No updates needed for user", { userId: id });
         return { success: true, id };
       }
 
@@ -87,14 +98,27 @@ export const update = api<UpdateUserRequest, UpdateUserResponse>(
 
       await tx.rawExec(query, ...params);
       await tx.commit();
+      
+      log.info("User updated successfully", { 
+        userId: id, 
+        updatedFields: updates.length,
+        orgId: authData.orgId 
+      });
 
       return { success: true, id };
     } catch (error) {
       await tx.rollback();
-      console.error('Update user error:', error);
+      log.error('Update user error', { 
+        error: error instanceof Error ? error.message : String(error),
+        userId: id,
+        orgId: authData.orgId,
+        updatedBy: authData.userID
+      });
+      
       if (error instanceof Error && error.name === 'APIError') {
         throw error;
       }
+      
       throw APIError.internal("Failed to update user");
     }
   }

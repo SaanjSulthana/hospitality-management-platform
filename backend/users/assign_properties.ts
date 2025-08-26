@@ -2,6 +2,7 @@ import { api, APIError } from "encore.dev/api";
 import { getAuthData } from "~encore/auth";
 import { usersDB } from "./db";
 import { requireRole } from "../auth/middleware";
+import log from "encore.dev/log";
 
 export interface AssignPropertiesRequest {
   id: number; // path param
@@ -26,6 +27,13 @@ export const assignProperties = api<AssignPropertiesRequest, AssignPropertiesRes
 
     const tx = await usersDB.begin();
     try {
+      log.info("Assigning properties to user", { 
+        userId: id, 
+        propertyIds,
+        orgId: authData.orgId, 
+        assignedBy: authData.userID 
+      });
+
       // Validate user belongs to org and is MANAGER
       const userRow = await tx.queryRow`
         SELECT id, org_id, role FROM users WHERE id = ${id} AND org_id = ${authData.orgId}
@@ -67,14 +75,27 @@ export const assignProperties = api<AssignPropertiesRequest, AssignPropertiesRes
       }
 
       await tx.commit();
+      log.info("Properties assigned successfully", { 
+        userId: id, 
+        assignedProperties: toAssign,
+        orgId: authData.orgId 
+      });
 
       return { success: true, userId: id, propertyIds: toAssign };
     } catch (error) {
       await tx.rollback();
-      console.error('Assign properties error:', error);
+      log.error('Assign properties error', { 
+        error: error instanceof Error ? error.message : String(error),
+        userId: id,
+        propertyIds,
+        orgId: authData.orgId,
+        assignedBy: authData.userID
+      });
+      
       if (error instanceof Error && error.name === 'APIError') {
         throw error;
       }
+      
       throw APIError.internal("Failed to update property assignments");
     }
   }

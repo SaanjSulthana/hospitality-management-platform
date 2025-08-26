@@ -93,7 +93,7 @@ export default function UsersPage() {
         if (!old) return { users: [] };
         
         const optimisticUser = {
-          id: Date.now(), // temporary ID
+          id: Date.now(), // temporary optimistic ID (13-digit)
           email: newUserData.email,
           role: newUserData.role,
           displayName: newUserData.displayName,
@@ -139,8 +139,8 @@ export default function UsersPage() {
       queryClient.setQueryData<ListUsersResponse>(['users'], (old) => {
         if (!old) return { users: [createdUser] };
         
-        // Remove the optimistic update and add the real data
-        const filteredUsers = old.users.filter((u) => typeof u.id === 'number' && u.id > 1000000);
+        // Remove optimistic updates (Date.now() ~ 13 digits)
+        const filteredUsers = old.users.filter((u: any) => !(typeof u.id === 'number' && u.id >= 1_000_000_000_000));
         
         const newUserData = {
           id: createdUser.id,

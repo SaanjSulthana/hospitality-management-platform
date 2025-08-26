@@ -5,7 +5,7 @@ import { requireRole } from "../auth/middleware";
 import { UserRole } from "../auth/types";
 
 export interface ListUsersRequest {
-  role?: Query<UserRole>;
+  role?: Query&lt;UserRole&gt;;
 }
 
 export interface UserInfo {
@@ -24,13 +24,13 @@ export interface ListUsersResponse {
 }
 
 // Lists users in the organization (Admin only)
-export const list = api<ListUsersRequest, ListUsersResponse>(
+export const list = api&lt;ListUsersRequest, ListUsersResponse&gt;(
   { auth: true, expose: true, method: "GET", path: "/users" },
-  async (req) => {
+  async (req) =&gt; {
     const authData = getAuthData()!;
     requireRole('ADMIN')(authData);
 
-    const { role } = req;
+    const { role } = req || {};
 
     try {
       let query = `
@@ -56,7 +56,7 @@ export const list = api<ListUsersRequest, ListUsersResponse>(
       const users = await usersDB.rawQueryAll(query, ...params);
 
       return {
-        users: users.map(user => ({
+        users: users.map(user =&gt; ({
           id: user.id,
           email: user.email,
           role: user.role as UserRole,

@@ -82,7 +82,7 @@ export default function PropertiesPage() {
         if (!old) return { properties: [] };
         
         const optimisticProperty = {
-          id: Date.now(), // temporary ID
+          id: Date.now(), // temporary optimistic ID (13-digit)
           name: newProperty.name,
           type: newProperty.type,
           addressJson: newProperty.address || {},
@@ -118,8 +118,8 @@ export default function PropertiesPage() {
       queryClient.setQueryData(['properties'], (old: any) => {
         if (!old) return { properties: [newProperty] };
         
-        // Remove the optimistic update and add the real data
-        const filteredProperties = old.properties.filter((p: any) => typeof p.id === 'number' && p.id > 1000000);
+        // Remove optimistic updates (Date.now() ~ 13 digits)
+        const filteredProperties = old.properties.filter((p: any) => !(typeof p.id === 'number' && p.id >= 1_000_000_000_000));
         
         return {
           properties: [newProperty, ...filteredProperties]

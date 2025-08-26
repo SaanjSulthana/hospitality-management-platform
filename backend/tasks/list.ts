@@ -4,12 +4,12 @@ import { tasksDB } from "./db";
 import { TaskType, TaskPriority, TaskStatus } from "./types";
 
 export interface ListTasksRequest {
-  propertyId?: Query<number>;
-  type?: Query<TaskType>;
-  priority?: Query<TaskPriority>;
-  status?: Query<TaskStatus>;
-  assignee?: Query<string>; // 'me' for current user's tasks
-  overdue?: Query<boolean>;
+  propertyId?: Query&lt;number&gt;;
+  type?: Query&lt;TaskType&gt;;
+  priority?: Query&lt;TaskPriority&gt;;
+  status?: Query&lt;TaskStatus&gt;;
+  assignee?: Query&lt;string&gt;; // 'me' for current user's tasks
+  overdue?: Query&lt;boolean&gt;;
 }
 
 export interface TaskInfo {
@@ -39,11 +39,11 @@ export interface ListTasksResponse {
 }
 
 // Lists tasks with role-based filtering
-export const list = api<ListTasksRequest, ListTasksResponse>(
+export const list = api&lt;ListTasksRequest, ListTasksResponse&gt;(
   { auth: true, expose: true, method: "GET", path: "/tasks" },
-  async (req) => {
+  async (req) =&gt; {
     const authData = getAuthData()!;
-    const { propertyId, type, priority, status, assignee, overdue } = req;
+    const { propertyId, type, priority, status, assignee, overdue } = req || {};
 
     try {
       let query = `
@@ -112,11 +112,11 @@ export const list = api<ListTasksRequest, ListTasksResponse>(
       }
 
       if (overdue) {
-        query += ` AND t.due_at < NOW() AND t.status != 'done'`;
+        query += ` AND t.due_at &lt; NOW() AND t.status != 'done'`;
       }
 
       query += ` ORDER BY 
-        CASE WHEN t.due_at < NOW() AND t.status != 'done' THEN 0 ELSE 1 END,
+        CASE WHEN t.due_at &lt; NOW() AND t.status != 'done' THEN 0 ELSE 1 END,
         CASE t.priority WHEN 'high' THEN 0 WHEN 'med' THEN 1 ELSE 2 END,
         t.created_at DESC
       `;
@@ -124,7 +124,7 @@ export const list = api<ListTasksRequest, ListTasksResponse>(
       const tasks = await tasksDB.rawQueryAll(query, ...params);
 
       return {
-        tasks: tasks.map((task) => ({
+        tasks: tasks.map((task) =&gt; ({
           id: task.id,
           propertyId: task.property_id,
           propertyName: task.property_name,

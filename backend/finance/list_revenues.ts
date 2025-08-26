@@ -3,10 +3,10 @@ import { getAuthData } from "~encore/auth";
 import { financeDB } from "./db";
 
 export interface ListRevenuesRequest {
-  propertyId?: Query<number>;
-  source?: Query<string>;
-  startDate?: Query<Date>;
-  endDate?: Query<Date>;
+  propertyId?: Query&lt;number&gt;;
+  source?: Query&lt;string&gt;;
+  startDate?: Query&lt;Date&gt;;
+  endDate?: Query&lt;Date&gt;;
 }
 
 export interface RevenueInfo {
@@ -30,11 +30,11 @@ export interface ListRevenuesResponse {
 }
 
 // Lists revenues with filtering
-export const listRevenues = api<ListRevenuesRequest, ListRevenuesResponse>(
+export const listRevenues = api&lt;ListRevenuesRequest, ListRevenuesResponse&gt;(
   { auth: true, expose: true, method: "GET", path: "/finance/revenues" },
-  async (req) => {
+  async (req) =&gt; {
     const authData = getAuthData()!;
-    const { propertyId, source, startDate, endDate } = req;
+    const { propertyId, source, startDate, endDate } = req || {};
 
     try {
       let query = `
@@ -73,13 +73,13 @@ export const listRevenues = api<ListRevenuesRequest, ListRevenuesResponse>(
       }
 
       if (startDate) {
-        query += ` AND r.occurred_at >= $${paramIndex}`;
+        query += ` AND r.occurred_at &gt;= $${paramIndex}`;
         params.push(startDate);
         paramIndex++;
       }
 
       if (endDate) {
-        query += ` AND r.occurred_at <= $${paramIndex}`;
+        query += ` AND r.occurred_at &lt;= $${paramIndex}`;
         params.push(endDate);
         paramIndex++;
       }
@@ -89,10 +89,10 @@ export const listRevenues = api<ListRevenuesRequest, ListRevenuesResponse>(
       const revenues = await financeDB.rawQueryAll(query, ...params);
 
       // Calculate total amount
-      const totalAmount = revenues.reduce((sum, revenue) => sum + (parseInt(revenue.amount_cents) || 0), 0);
+      const totalAmount = revenues.reduce((sum, revenue) =&gt; sum + (parseInt(revenue.amount_cents) || 0), 0);
 
       return {
-        revenues: revenues.map((revenue) => ({
+        revenues: revenues.map((revenue) =&gt; ({
           id: revenue.id,
           propertyId: revenue.property_id,
           propertyName: revenue.property_name,

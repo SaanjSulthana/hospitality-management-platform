@@ -54,7 +54,7 @@ export default function FinancePage() {
     queryKey: ['properties'],
     queryFn: async () => {
       const backend = getAuthenticatedBackend();
-      return backend.properties.list();
+      return backend.properties.list({});
     },
   });
 
@@ -62,7 +62,7 @@ export default function FinancePage() {
     queryKey: ['expenses'],
     queryFn: async () => {
       const backend = getAuthenticatedBackend();
-      return backend.finance.listExpenses();
+      return backend.finance.listExpenses({});
     },
   });
 
@@ -70,7 +70,7 @@ export default function FinancePage() {
     queryKey: ['revenues'],
     queryFn: async () => {
       const backend = getAuthenticatedBackend();
-      return backend.finance.listRevenues();
+      return backend.finance.listRevenues({});
     },
   });
 
@@ -78,7 +78,7 @@ export default function FinancePage() {
     queryKey: ['profit-loss'],
     queryFn: async () => {
       const backend = getAuthenticatedBackend();
-      return backend.finance.profitLoss();
+      return backend.finance.profitLoss({});
     },
   });
 

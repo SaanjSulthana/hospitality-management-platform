@@ -3,11 +3,11 @@ import { getAuthData } from "~encore/auth";
 import { staffDB } from "./db";
 
 export interface ListSchedulesRequest {
-  staffId?: Query<number>;
-  propertyId?: Query<number>;
-  startDate?: Query<Date>;
-  endDate?: Query<Date>;
-  status?: Query<string>;
+  staffId?: Query&lt;number&gt;;
+  propertyId?: Query&lt;number&gt;;
+  startDate?: Query&lt;Date&gt;;
+  endDate?: Query&lt;Date&gt;;
+  status?: Query&lt;string&gt;;
 }
 
 export interface ScheduleInfo {
@@ -30,11 +30,11 @@ export interface ListSchedulesResponse {
 }
 
 // Lists staff schedules with filtering
-export const listSchedules = api<ListSchedulesRequest, ListSchedulesResponse>(
+export const listSchedules = api&lt;ListSchedulesRequest, ListSchedulesResponse&gt;(
   { auth: true, expose: true, method: "GET", path: "/staff/schedules" },
-  async (req) => {
+  async (req) =&gt; {
     const authData = getAuthData()!;
-    const { staffId, propertyId, startDate, endDate, status } = req;
+    const { staffId, propertyId, startDate, endDate, status } = req || {};
 
     let query = `
       SELECT 
@@ -75,13 +75,13 @@ export const listSchedules = api<ListSchedulesRequest, ListSchedulesResponse>(
     }
 
     if (startDate) {
-      query += ` AND ss.shift_date >= $${paramIndex}`;
+      query += ` AND ss.shift_date &gt;= $${paramIndex}`;
       params.push(startDate);
       paramIndex++;
     }
 
     if (endDate) {
-      query += ` AND ss.shift_date <= $${paramIndex}`;
+      query += ` AND ss.shift_date &lt;= $${paramIndex}`;
       params.push(endDate);
       paramIndex++;
     }
@@ -97,7 +97,7 @@ export const listSchedules = api<ListSchedulesRequest, ListSchedulesResponse>(
     const schedules = await staffDB.rawQueryAll(query, ...params);
 
     return {
-      schedules: schedules.map((schedule) => ({
+      schedules: schedules.map((schedule) =&gt; ({
         id: schedule.id,
         staffId: schedule.staff_id,
         staffName: schedule.staff_name,

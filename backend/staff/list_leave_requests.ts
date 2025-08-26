@@ -3,9 +3,9 @@ import { getAuthData } from "~encore/auth";
 import { staffDB } from "./db";
 
 export interface ListLeaveRequestsRequest {
-  staffId?: Query<number>;
-  status?: Query<string>;
-  leaveType?: Query<string>;
+  staffId?: Query&lt;number&gt;;
+  status?: Query&lt;string&gt;;
+  leaveType?: Query&lt;string&gt;;
 }
 
 export interface LeaveRequestInfo {
@@ -28,11 +28,11 @@ export interface ListLeaveRequestsResponse {
 }
 
 // Lists leave requests with filtering
-export const listLeaveRequests = api<ListLeaveRequestsRequest, ListLeaveRequestsResponse>(
+export const listLeaveRequests = api&lt;ListLeaveRequestsRequest, ListLeaveRequestsResponse&gt;(
   { auth: true, expose: true, method: "GET", path: "/staff/leave-requests" },
-  async (req) => {
+  async (req) =&gt; {
     const authData = getAuthData()!;
-    const { staffId, status, leaveType } = req;
+    const { staffId, status, leaveType } = req || {};
 
     let query = `
       SELECT 
@@ -83,7 +83,7 @@ export const listLeaveRequests = api<ListLeaveRequestsRequest, ListLeaveRequests
     const leaveRequests = await staffDB.rawQueryAll(query, ...params);
 
     return {
-      leaveRequests: leaveRequests.map((request) => ({
+      leaveRequests: leaveRequests.map((request) =&gt; ({
         id: request.id,
         staffId: request.staff_id,
         staffName: request.staff_name,

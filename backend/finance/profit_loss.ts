@@ -3,9 +3,9 @@ import { getAuthData } from "~encore/auth";
 import { financeDB } from "./db";
 
 export interface ProfitLossRequest {
-  propertyId?: Query<number>;
-  startDate?: Query<Date>;
-  endDate?: Query<Date>;
+  propertyId?: Query&lt;number&gt;;
+  startDate?: Query&lt;Date&gt;;
+  endDate?: Query&lt;Date&gt;;
 }
 
 export interface ProfitLossData {
@@ -18,7 +18,7 @@ export interface ProfitLossData {
     addon: number;
     other: number;
   };
-  expensesByCategory: Record<string, number>;
+  expensesByCategory: Record&lt;string, number&gt;;
 }
 
 export interface ProfitLossResponse {
@@ -32,11 +32,11 @@ export interface ProfitLossResponse {
 }
 
 // Gets profit and loss statement
-export const profitLoss = api<ProfitLossRequest, ProfitLossResponse>(
+export const profitLoss = api&lt;ProfitLossRequest, ProfitLossResponse&gt;(
   { auth: true, expose: true, method: "GET", path: "/finance/profit-loss" },
-  async (req) => {
+  async (req) =&gt; {
     const authData = getAuthData()!;
-    const { propertyId, startDate, endDate } = req;
+    const { propertyId, startDate, endDate } = req || {};
 
     try {
       // Default to current month if no date range provided
@@ -115,7 +115,7 @@ export const profitLoss = api<ProfitLossRequest, ProfitLossResponse>(
       const totalRevenue = (parseInt(revenueData?.total_revenue_cents) || 0) / 100;
       const totalExpenses = (parseInt(totalExpensesData?.total_expenses_cents) || 0) / 100;
       const netIncome = totalRevenue - totalExpenses;
-      const profitMargin = totalRevenue > 0 ? (netIncome / totalRevenue) * 100 : 0;
+      const profitMargin = totalRevenue &gt; 0 ? (netIncome / totalRevenue) * 100 : 0;
 
       const revenueBySource = {
         room: (parseInt(revenueData?.room_revenue_cents) || 0) / 100,
@@ -123,8 +123,8 @@ export const profitLoss = api<ProfitLossRequest, ProfitLossResponse>(
         other: (parseInt(revenueData?.other_revenue_cents) || 0) / 100,
       };
 
-      const expensesByCategory: Record<string, number> = {};
-      expenseData.forEach(expense => {
+      const expensesByCategory: Record&lt;string, number&gt; = {};
+      expenseData.forEach(expense =&gt; {
         if (expense.category) {
           expensesByCategory[expense.category] = (parseInt(expense.category_amount_cents) || 0) / 100;
         }

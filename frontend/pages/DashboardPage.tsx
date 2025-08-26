@@ -31,7 +31,7 @@ export default function DashboardPage() {
     queryKey: ['analytics', 'overview'],
     queryFn: async () => {
       const backend = getAuthenticatedBackend();
-      return backend.analytics.overview();
+      return backend.analytics.overview({});
     },
     enabled: user?.role === 'ADMIN',
   });
@@ -40,7 +40,7 @@ export default function DashboardPage() {
     queryKey: ['properties'],
     queryFn: async () => {
       const backend = getAuthenticatedBackend();
-      return backend.properties.list();
+      return backend.properties.list({});
     },
   });
 
@@ -48,7 +48,7 @@ export default function DashboardPage() {
     queryKey: ['tasks'],
     queryFn: async () => {
       const backend = getAuthenticatedBackend();
-      return backend.tasks.list();
+      return backend.tasks.list({});
     },
   });
 
@@ -56,7 +56,7 @@ export default function DashboardPage() {
     queryKey: ['users'],
     queryFn: async () => {
       const backend = getAuthenticatedBackend();
-      return backend.users.list();
+      return backend.users.list({});
     },
     enabled: user?.role === 'ADMIN',
   });

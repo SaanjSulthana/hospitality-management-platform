@@ -3,9 +3,9 @@ import { getAuthData } from "~encore/auth";
 import { staffDB } from "./db";
 
 export interface ListStaffRequest {
-  propertyId?: Query<number>;
-  department?: Query<string>;
-  status?: Query<string>;
+  propertyId?: Query&lt;number&gt;;
+  department?: Query&lt;string&gt;;
+  status?: Query&lt;string&gt;;
 }
 
 export interface StaffInfo {
@@ -28,11 +28,11 @@ export interface ListStaffResponse {
 }
 
 // Lists staff members with filtering
-export const list = api<ListStaffRequest, ListStaffResponse>(
+export const list = api&lt;ListStaffRequest, ListStaffResponse&gt;(
   { auth: true, expose: true, method: "GET", path: "/staff" },
-  async (req) => {
+  async (req) =&gt; {
     const authData = getAuthData()!;
-    const { propertyId, department, status } = req;
+    const { propertyId, department, status } = req || {};
 
     try {
       let query = `
@@ -83,7 +83,7 @@ export const list = api<ListStaffRequest, ListStaffResponse>(
       const staff = await staffDB.rawQueryAll(query, ...params);
 
       return {
-        staff: staff.map((member) => ({
+        staff: staff.map((member) =&gt; ({
           id: member.id,
           userId: member.user_id,
           userName: member.user_name,

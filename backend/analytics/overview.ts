@@ -3,10 +3,10 @@ import { getAuthData } from "~encore/auth";
 import { analyticsDB } from "./db";
 
 export interface OverviewRequest {
-  propertyId?: Query<number>;
-  regionId?: Query<number>;
-  startDate?: Query<Date>;
-  endDate?: Query<Date>;
+  propertyId?: Query&lt;number&gt;;
+  regionId?: Query&lt;number&gt;;
+  startDate?: Query&lt;Date&gt;;
+  endDate?: Query&lt;Date&gt;;
 }
 
 export interface OverviewMetrics {
@@ -32,11 +32,11 @@ export interface OverviewResponse {
 }
 
 // Gets analytics overview with role-based filtering
-export const overview = api<OverviewRequest, OverviewResponse>(
+export const overview = api&lt;OverviewRequest, OverviewResponse&gt;(
   { auth: true, expose: true, method: "GET", path: "/analytics/overview" },
-  async (req) => {
+  async (req) =&gt; {
     const authData = getAuthData()!;
-    const { propertyId, regionId, startDate, endDate } = req;
+    const { propertyId, regionId, startDate, endDate } = req || {};
 
     try {
       // Default to last 30 days if no date range provided
@@ -131,15 +131,15 @@ export const overview = api<OverviewRequest, OverviewResponse>(
 
       const totalUnits = parseInt(occupancyData?.total_units) || 0;
       const occupiedUnits = parseInt(occupancyData?.occupied_units) || 0;
-      const occupancyRate = totalUnits > 0 ? (occupiedUnits / totalUnits) * 100 : 0;
+      const occupancyRate = totalUnits &gt; 0 ? (occupiedUnits / totalUnits) * 100 : 0;
 
       const totalTasks = parseInt(taskData?.total_tasks) || 0;
       const completedTasks = parseInt(taskData?.completed_tasks) || 0;
-      const taskCompletionRate = totalTasks > 0 ? (completedTasks / totalTasks) * 100 : 0;
+      const taskCompletionRate = totalTasks &gt; 0 ? (completedTasks / totalTasks) * 100 : 0;
 
       // Calculate ADR and RevPAR
-      const adr = totalBookings > 0 ? totalRevenue / totalBookings : 0;
-      const revpar = totalUnits > 0 ? totalRevenue / totalUnits : 0;
+      const adr = totalBookings &gt; 0 ? totalRevenue / totalBookings : 0;
+      const revpar = totalUnits &gt; 0 ? totalRevenue / totalUnits : 0;
 
       // Staff utilization (placeholder)
       const staffUtilization = 75;

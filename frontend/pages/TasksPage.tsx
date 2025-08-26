@@ -95,7 +95,7 @@ export default function TasksPage() {
         if (!old) return { tasks: [] };
         
         const optimisticTask = {
-          id: Date.now(), // temporary ID
+          id: Date.now(), // temporary optimistic ID (13-digit)
           propertyId: parseInt(newTask.propertyId),
           propertyName: properties?.properties.find(p => p.id === parseInt(newTask.propertyId))?.name || 'Unknown',
           type: newTask.type,
@@ -141,8 +141,8 @@ export default function TasksPage() {
       queryClient.setQueryData(['tasks'], (old: any) => {
         if (!old) return { tasks: [newTask] };
         
-        // Remove the optimistic update and add the real data
-        const filteredTasks = old.tasks.filter((t: any) => typeof t.id === 'number' && t.id > 1000000);
+        // Remove optimistic updates (Date.now() ~ 13 digits)
+        const filteredTasks = old.tasks.filter((t: any) => !(typeof t.id === 'number' && t.id >= 1_000_000_000_000));
         
         return {
           tasks: [newTask, ...filteredTasks]

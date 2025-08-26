@@ -4,8 +4,8 @@ import { propertiesDB } from "./db";
 import { PropertyType } from "./types";
 
 export interface ListPropertiesRequest {
-  regionId?: Query<number>;
-  type?: Query<PropertyType>;
+  regionId?: Query&lt;number&gt;;
+  type?: Query&lt;PropertyType&gt;;
 }
 
 export interface PropertyInfo {
@@ -13,9 +13,9 @@ export interface PropertyInfo {
   name: string;
   type: PropertyType;
   regionId?: number;
-  addressJson: Record<string, any>;
-  amenitiesJson: Record<string, any>;
-  capacityJson: Record<string, any>;
+  addressJson: Record&lt;string, any&gt;;
+  amenitiesJson: Record&lt;string, any&gt;;
+  capacityJson: Record&lt;string, any&gt;;
   status: string;
   createdAt: Date;
 }
@@ -25,11 +25,11 @@ export interface ListPropertiesResponse {
 }
 
 // Lists properties with role-based filtering
-export const list = api<ListPropertiesRequest, ListPropertiesResponse>(
+export const list = api&lt;ListPropertiesRequest, ListPropertiesResponse&gt;(
   { auth: true, expose: true, method: "GET", path: "/properties" },
-  async (req) => {
+  async (req) =&gt; {
     const authData = getAuthData()!;
-    const { regionId, type } = req;
+    const { regionId, type } = req || {};
 
     let query = `
       SELECT p.id, p.name, p.type, p.region_id, p.address_json, p.amenities_json, p.capacity_json, p.status, p.created_at
@@ -66,7 +66,7 @@ export const list = api<ListPropertiesRequest, ListPropertiesResponse>(
     const properties = await propertiesDB.rawQueryAll(query, ...params);
 
     return {
-      properties: properties.map((property) => ({
+      properties: properties.map((property) =&gt; ({
         id: property.id,
         name: property.name,
         type: property.type as PropertyType,

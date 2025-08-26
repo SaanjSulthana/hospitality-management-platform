@@ -3,11 +3,11 @@ import { getAuthData } from "~encore/auth";
 import { financeDB } from "./db";
 
 export interface ListExpensesRequest {
-  propertyId?: Query<number>;
-  category?: Query<string>;
-  status?: Query<string>;
-  startDate?: Query<Date>;
-  endDate?: Query<Date>;
+  propertyId?: Query&lt;number&gt;;
+  category?: Query&lt;string&gt;;
+  status?: Query&lt;string&gt;;
+  startDate?: Query&lt;Date&gt;;
+  endDate?: Query&lt;Date&gt;;
 }
 
 export interface ExpenseInfo {
@@ -35,11 +35,11 @@ export interface ListExpensesResponse {
 }
 
 // Lists expenses with filtering
-export const listExpenses = api<ListExpensesRequest, ListExpensesResponse>(
+export const listExpenses = api&lt;ListExpensesRequest, ListExpensesResponse&gt;(
   { auth: true, expose: true, method: "GET", path: "/finance/expenses" },
-  async (req) => {
+  async (req) =&gt; {
     const authData = getAuthData()!;
-    const { propertyId, category, status, startDate, endDate } = req;
+    const { propertyId, category, status, startDate, endDate } = req || {};
 
     try {
       let query = `
@@ -87,13 +87,13 @@ export const listExpenses = api<ListExpensesRequest, ListExpensesResponse>(
       }
 
       if (startDate) {
-        query += ` AND e.expense_date >= $${paramIndex}`;
+        query += ` AND e.expense_date &gt;= $${paramIndex}`;
         params.push(startDate);
         paramIndex++;
       }
 
       if (endDate) {
-        query += ` AND e.expense_date <= $${paramIndex}`;
+        query += ` AND e.expense_date &lt;= $${paramIndex}`;
         params.push(endDate);
         paramIndex++;
       }
@@ -104,11 +104,11 @@ export const listExpenses = api<ListExpensesRequest, ListExpensesResponse>(
 
       // Calculate total amount for approved expenses
       const totalAmount = expenses
-        .filter(expense => expense.status === 'approved')
-        .reduce((sum, expense) => sum + (parseInt(expense.amount_cents) || 0), 0);
+        .filter(expense =&gt; expense.status === 'approved')
+        .reduce((sum, expense) =&gt; sum + (parseInt(expense.amount_cents) || 0), 0);
 
       return {
-        expenses: expenses.map((expense) => ({
+        expenses: expenses.map((expense) =&gt; ({
           id: expense.id,
           propertyId: expense.property_id,
           propertyName: expense.property_name,

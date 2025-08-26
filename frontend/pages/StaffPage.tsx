@@ -60,7 +60,7 @@ export default function StaffPage() {
     queryKey: ['staff'],
     queryFn: async () => {
       const backend = getAuthenticatedBackend();
-      return backend.staff.list();
+      return backend.staff.list({});
     },
   });
 
@@ -68,7 +68,7 @@ export default function StaffPage() {
     queryKey: ['schedules'],
     queryFn: async () => {
       const backend = getAuthenticatedBackend();
-      return backend.staff.listSchedules();
+      return backend.staff.listSchedules({});
     },
   });
 
@@ -76,7 +76,7 @@ export default function StaffPage() {
     queryKey: ['leave-requests'],
     queryFn: async () => {
       const backend = getAuthenticatedBackend();
-      return backend.staff.listLeaveRequests();
+      return backend.staff.listLeaveRequests({});
     },
   });
 
@@ -84,7 +84,7 @@ export default function StaffPage() {
     queryKey: ['users'],
     queryFn: async () => {
       const backend = getAuthenticatedBackend();
-      return backend.users.list();
+      return backend.users.list({});
     },
     enabled: user?.role === 'ADMIN',
   });
@@ -93,7 +93,7 @@ export default function StaffPage() {
     queryKey: ['properties'],
     queryFn: async () => {
       const backend = getAuthenticatedBackend();
-      return backend.properties.list();
+      return backend.properties.list({});
     },
   });
 

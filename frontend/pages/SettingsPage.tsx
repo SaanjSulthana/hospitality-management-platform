@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
+import { usePageTitle } from '../contexts/PageTitleContext';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -8,12 +9,21 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useToast } from '@/components/ui/use-toast';
-import { Settings, Palette, Building2, Save, Upload } from 'lucide-react';
+import { Settings, Palette, Building2, Save, Upload, X, Image } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 
 export default function SettingsPage() {
   const { user } = useAuth();
   const { theme, updateTheme, isLoading } = useTheme();
+  const { setPageTitle } = usePageTitle();
   const { toast } = useToast();
+  const navigate = useNavigate();
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Set page title and description
+  useEffect(() => {
+    setPageTitle('Settings', 'Configure your application preferences and branding');
+  }, [setPageTitle]);
   
   const [themeForm, setThemeForm] = useState({
     brandName: theme.brandName,
@@ -26,27 +36,241 @@ export default function SettingsPage() {
     timeFormat: theme.timeFormat,
   });
 
+  const [isUploadingLogo, setIsUploadingLogo] = useState(false);
+  const [logoPreview, setLogoPreview] = useState<string | null>(null);
+
+  // Update form state when theme changes
+  useEffect(() => {
+    setThemeForm({
+      brandName: theme.brandName,
+      logoUrl: theme.logoUrl || '',
+      primaryColor: theme.primaryColor,
+      secondaryColor: theme.secondaryColor,
+      accentColor: theme.accentColor,
+      currency: theme.currency,
+      dateFormat: theme.dateFormat,
+      timeFormat: theme.timeFormat,
+    });
+
+    // Set logo preview - simplified logic
+    if (theme.logoUrl && theme.logoUrl.trim() !== '') {
+      // For relative URLs, construct the full URL
+      if (!theme.logoUrl.startsWith('http')) {
+        const logoUrl = `http://127.0.0.1:4000${theme.logoUrl}`;
+        setLogoPreview(logoUrl);
+        console.log('Setting logo preview (relative):', logoUrl);
+      } else {
+        setLogoPreview(theme.logoUrl);
+        console.log('Setting logo preview (external):', theme.logoUrl);
+      }
+    } else {
+      setLogoPreview(null);
+    }
+  }, [theme]);
+
   const handleThemeSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
+    // Check if user is authenticated
+    if (!user) {
+      toast({
+        variant: "destructive",
+        title: "Authentication Required",
+        description: "Please log in to save your settings.",
+      });
+      navigate('/login', { replace: true });
+      return;
+    }
+    
+    // Validate form data
+    if (!themeForm.brandName || themeForm.brandName.trim() === '') {
+      toast({
+        variant: "destructive",
+        title: "Validation Error",
+        description: "Brand name is required.",
+      });
+      return;
+    }
+
+    // Validate color formats
+    const colorRegex = /^#[0-9A-F]{6}$/i;
+    if (!colorRegex.test(themeForm.primaryColor)) {
+      toast({
+        variant: "destructive",
+        title: "Validation Error",
+        description: "Primary color must be a valid hex color (e.g., #3b82f6).",
+      });
+      return;
+    }
+
+    if (!colorRegex.test(themeForm.secondaryColor)) {
+      toast({
+        variant: "destructive",
+        title: "Validation Error",
+        description: "Secondary color must be a valid hex color (e.g., #64748b).",
+      });
+      return;
+    }
+
+    if (!colorRegex.test(themeForm.accentColor)) {
+      toast({
+        variant: "destructive",
+        title: "Validation Error",
+        description: "Accent color must be a valid hex color (e.g., #10b981).",
+      });
+      return;
+    }
+    
     try {
-      await updateTheme(themeForm);
+      console.log('Submitting theme form:', themeForm);
+      
+      // Prepare theme data - keep empty logoUrl as empty string for removal
+      const themeData = { ...themeForm };
+      
+      console.log('Theme data to submit:', themeData);
+      await updateTheme(themeData);
       toast({
         title: "Settings updated",
         description: "Your branding settings have been saved successfully.",
       });
-    } catch (error) {
+    } catch (error: any) {
       console.error('Failed to update theme:', error);
+      
+      // Check if it's an authentication error
+      if (error.message?.includes('session has expired') || error.message?.includes('Invalid token') || error.message?.includes('Unauthorized')) {
+        toast({
+          variant: "destructive",
+          title: "Session Expired",
+          description: "Your session has expired. Please log in again to save your settings.",
+        });
+        
+        // Redirect to login after a short delay
+        setTimeout(() => {
+          navigate('/login', { replace: true });
+        }, 2000);
+        
+        return;
+      }
+      
+      // Show more specific error message for other errors
+      const errorMessage = error.message || "Failed to update settings. Please try again.";
+      
       toast({
         variant: "destructive",
         title: "Update failed",
-        description: "Failed to update settings. Please try again.",
+        description: errorMessage,
       });
     }
   };
 
   const handleColorChange = (field: string, value: string) => {
     setThemeForm(prev => ({ ...prev, [field]: value }));
+  };
+
+  const handleLogoUpload = async (file: File) => {
+    if (isUploadingLogo) {
+      toast({
+        variant: "destructive",
+        title: "Upload in Progress",
+        description: "Please wait for the current upload to complete.",
+      });
+      return;
+    }
+
+    setIsUploadingLogo(true);
+    
+    try {
+      console.log('Starting logo upload for file:', file.name, file.type, file.size);
+      
+      // Validate file type
+      const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp', 'image/svg+xml'];
+      if (!allowedTypes.includes(file.type)) {
+        throw new Error('File type not supported. Please upload images (JPG, PNG, GIF, WebP, SVG) only.');
+      }
+
+      // Validate file size (max 5MB)
+      const maxSize = 5 * 1024 * 1024; // 5MB
+      if (file.size > maxSize) {
+        throw new Error('File size too large. Maximum size is 5MB for logos.');
+      }
+
+      // Convert file to base64
+      const arrayBuffer = await file.arrayBuffer();
+      const buffer = new Uint8Array(arrayBuffer);
+      const base64String = btoa(String.fromCharCode(...buffer));
+
+      console.log('File converted to base64, length:', base64String.length);
+
+      // Upload logo
+      const response = await fetch('http://127.0.0.1:4000/branding/logo', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('accessToken')}`,
+        },
+        body: JSON.stringify({
+          fileData: base64String,
+          filename: file.name,
+          mimeType: file.type,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.message || `Upload failed: ${response.statusText}`);
+      }
+
+      const uploadResult = await response.json();
+      console.log('Upload result:', uploadResult);
+      
+      // Update form with new logo URL
+      setThemeForm(prev => ({ ...prev, logoUrl: uploadResult.logoUrl }));
+      
+      // Create preview URL - use the uploaded file data for preview
+      const previewUrl = `data:${file.type};base64,${base64String}`;
+      setLogoPreview(previewUrl);
+
+      console.log('Logo preview set:', previewUrl);
+      console.log('Form logo URL updated:', uploadResult.logoUrl);
+
+      toast({
+        title: "Logo uploaded successfully",
+        description: "Your organization logo has been uploaded and will be saved when you click 'Save Changes'.",
+      });
+
+    } catch (error) {
+      console.error('Logo upload error:', error);
+      toast({
+        variant: "destructive",
+        title: "Upload failed",
+        description: error instanceof Error ? error.message : 'Failed to upload logo',
+      });
+    } finally {
+      setIsUploadingLogo(false);
+    }
+  };
+
+  const handleLogoRemove = () => {
+    console.log('Removing logo...');
+    setThemeForm(prev => ({ ...prev, logoUrl: '' }));
+    setLogoPreview(null);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+    console.log('Logo removed from form state');
+    
+    // Show confirmation toast
+    toast({
+      title: "Logo removed",
+      description: "Logo has been removed from the form. Click 'Save Changes' to apply.",
+    });
+  };
+
+  const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file) {
+      handleLogoUpload(file);
+    }
   };
 
   const presetColors = [
@@ -112,23 +336,94 @@ export default function SettingsPage() {
                   />
                 </div>
 
-                {/* Logo URL */}
-                <div className="space-y-2">
-                  <Label htmlFor="logoUrl">Logo URL</Label>
-                  <div className="flex gap-2">
-                    <Input
-                      id="logoUrl"
-                      value={themeForm.logoUrl}
-                      onChange={(e) => setThemeForm(prev => ({ ...prev, logoUrl: e.target.value }))}
-                      placeholder="https://example.com/logo.png"
-                    />
-                    <Button type="button" variant="outline">
-                      <Upload className="h-4 w-4" />
-                    </Button>
+                {/* Logo Upload */}
+                <div className="space-y-4">
+                  <Label>Organization Logo</Label>
+                  
+                  {/* Logo Preview */}
+                  {(logoPreview || (themeForm.logoUrl && themeForm.logoUrl.trim() !== '')) && (
+                    <div className="flex items-center gap-4 p-4 border rounded-lg bg-gray-50">
+                      <div className="relative">
+                        <img
+                          src={logoPreview || (themeForm.logoUrl.startsWith('http') ? themeForm.logoUrl : `http://127.0.0.1:4000${themeForm.logoUrl}`)}
+                          alt="Organization Logo"
+                          className="h-16 w-16 object-contain rounded border"
+                          onError={(e) => {
+                            console.error('Logo preview failed to load:', logoPreview || themeForm.logoUrl);
+                            // Hide the image if it fails to load
+                            e.currentTarget.style.display = 'none';
+                          }}
+                        />
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          onClick={handleLogoRemove}
+                          className="absolute -top-2 -right-2 h-6 w-6 p-0 bg-red-500 hover:bg-red-600 text-white rounded-full z-10"
+                          title="Remove logo"
+                        >
+                          <X className="h-3 w-3" />
+                        </Button>
+                      </div>
+                      <div className="flex-1">
+                        <p className="text-sm font-medium text-gray-900">Current Logo</p>
+                        <p className="text-xs text-gray-500">
+                          {themeForm.logoUrl && themeForm.logoUrl.trim() !== '' ? 'Logo uploaded successfully' : 'Preview of uploaded logo'}
+                        </p>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Upload Section */}
+                  <div className="space-y-2">
+                    <div className="flex gap-2">
+                      <Input
+                        ref={fileInputRef}
+                        type="file"
+                        accept="image/*"
+                        onChange={handleFileSelect}
+                        className="flex-1"
+                        disabled={isUploadingLogo}
+                      />
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() => fileInputRef.current?.click()}
+                        disabled={isUploadingLogo}
+                      >
+                        {isUploadingLogo ? (
+                          <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-gray-900"></div>
+                        ) : (
+                          <Upload className="h-4 w-4" />
+                        )}
+                      </Button>
+                    </div>
+                    <p className="text-xs text-gray-500">
+                      Upload your organization logo (JPG, PNG, GIF, WebP, SVG). Max size: 5MB
+                    </p>
                   </div>
-                  <p className="text-xs text-gray-500">
-                    Upload your logo or provide a URL to an image file
-                  </p>
+
+                                     {/* Manual URL Input (Optional) */}
+                   <div className="space-y-2">
+                     <Label htmlFor="logoUrl" className="text-sm text-gray-600">Or provide logo URL</Label>
+                     <Input
+                       id="logoUrl"
+                       value={themeForm.logoUrl}
+                       onChange={(e) => setThemeForm(prev => ({ ...prev, logoUrl: e.target.value }))}
+                       placeholder="https://example.com/logo.png"
+                       className="text-sm"
+                     />
+                   </div>
+
+                   {/* Debug Info */}
+                   {process.env.NODE_ENV === 'development' && (
+                     <div className="space-y-2 p-3 bg-gray-100 rounded text-xs">
+                       <p className="font-medium">Debug Info:</p>
+                       <p>Logo URL: {themeForm.logoUrl || 'None'}</p>
+                       <p>Logo Preview: {logoPreview ? 'Set' : 'None'}</p>
+                       <p>Theme Logo URL: {theme.logoUrl || 'None'}</p>
+                     </div>
+                   )}
                 </div>
 
                 {/* Color Scheme */}
@@ -154,7 +449,7 @@ export default function SettingsPage() {
                       />
                     </div>
                     <div className="flex gap-1">
-                      {presetColors.map((color) => (
+                      {presetColors.map((color: any) => (
                         <button
                           key={color.name}
                           type="button"
@@ -226,6 +521,7 @@ export default function SettingsPage() {
                         <SelectValue placeholder="Select currency" />
                       </SelectTrigger>
                       <SelectContent>
+                        <SelectItem value="INR">INR - Indian Rupee</SelectItem>
                         <SelectItem value="USD">USD - US Dollar</SelectItem>
                         <SelectItem value="EUR">EUR - Euro</SelectItem>
                         <SelectItem value="GBP">GBP - British Pound</SelectItem>

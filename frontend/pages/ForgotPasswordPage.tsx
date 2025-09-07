@@ -8,7 +8,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { useToast } from '@/components/ui/use-toast';
 import { Building2, Loader2, ArrowLeft } from 'lucide-react';
-import backend from '~backend/client';
+import { backend } from '../services/backend';
 
 export default function ForgotPasswordPage() {
   const [email, setEmail] = useState('');

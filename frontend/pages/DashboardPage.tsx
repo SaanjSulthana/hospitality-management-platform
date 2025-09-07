@@ -1,64 +1,244 @@
-import React from 'react';
-import { useQuery } from '@tanstack/react-query';
-import { useAuth } from '../contexts/AuthContext';
-import { useTheme } from '../contexts/ThemeContext';
+import React, { useEffect } from 'react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useAuth } from '@/contexts/AuthContext';
+import { useTheme } from '@/contexts/ThemeContext';
+import { usePageTitle } from '@/contexts/PageTitleContext';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/components/ui/use-toast';
 import { useNavigate } from 'react-router-dom';
+import { LoadingCard, LoadingPage } from '@/components/ui/loading-spinner';
+import { NoDataCard } from '@/components/ui/no-data';
+import { useApiError } from '@/hooks/use-api-error';
+import { useDashboardRealtime } from '@/hooks/use-realtime';
 import { 
   Building2, 
   Users, 
   CheckSquare, 
-  DollarSign, 
   TrendingUp,
   AlertCircle,
   Clock,
   Shield,
   UserCheck,
   Plus,
-  LogOut
+  LogOut,
+  RefreshCw,
+  FileText,
+  Calendar,
+  Receipt,
+  CreditCard,
+  Eye,
+  Check,
+  X
 } from 'lucide-react';
 
 export default function DashboardPage() {
   const { user, getAuthenticatedBackend, logout } = useAuth();
   const { theme } = useTheme();
+  const { setPageTitle } = usePageTitle();
   const { toast } = useToast();
   const navigate = useNavigate();
+  const { handleError } = useApiError();
+  const { refreshNow, isPolling } = useDashboardRealtime();
+  const queryClient = useQueryClient();
 
-  const { data: analytics, isLoading: analyticsLoading } = useQuery({
+  // Set page title and description
+  useEffect(() => {
+    setPageTitle('Dashboard Overview', 'Monitor your hospitality operations and manage pending tasks');
+  }, [setPageTitle]);
+
+  const { data: analytics, isLoading: analyticsLoading, error: analyticsError } = useQuery({
     queryKey: ['analytics', 'overview'],
     queryFn: async () => {
       const backend = getAuthenticatedBackend();
       return backend.analytics.overview({});
     },
     enabled: user?.role === 'ADMIN',
+    refetchInterval: 10000, // Refresh every 10 seconds for real-time updates
+    staleTime: 0, // Always consider data stale for fresh updates
+    gcTime: 0, // Don't cache results
+    retry: (failureCount, error) => {
+      if (failureCount < 2) {
+        handleError(error, 'analytics');
+        return true;
+      }
+      return false;
+    },
   });
 
-  const { data: properties, isLoading: propertiesLoading } = useQuery({
+  const { data: properties, isLoading: propertiesLoading, error: propertiesError } = useQuery({
     queryKey: ['properties'],
     queryFn: async () => {
       const backend = getAuthenticatedBackend();
       return backend.properties.list({});
     },
+    refetchInterval: 15000, // Refresh every 15 seconds for real-time updates
+    staleTime: 0, // Always consider data stale for fresh updates
+    gcTime: 0, // Don't cache results
+    retry: (failureCount, error) => {
+      if (failureCount < 2) {
+        handleError(error, 'properties');
+        return true;
+      }
+      return false;
+    },
   });
 
-  const { data: tasks, isLoading: tasksLoading } = useQuery({
+  const { data: tasks, isLoading: tasksLoading, error: tasksError } = useQuery({
     queryKey: ['tasks'],
     queryFn: async () => {
       const backend = getAuthenticatedBackend();
       return backend.tasks.list({});
     },
+    refetchInterval: 10000, // Refresh every 10 seconds for real-time updates
+    staleTime: 0, // Always consider data stale for fresh updates
+    gcTime: 0, // Don't cache results
+    retry: (failureCount, error) => {
+      if (failureCount < 2) {
+        handleError(error, 'tasks');
+        return true;
+      }
+      return false;
+    },
   });
 
-  const { data: users, isLoading: usersLoading } = useQuery({
+  const { data: users, isLoading: usersLoading, error: usersError } = useQuery({
     queryKey: ['users'],
     queryFn: async () => {
       const backend = getAuthenticatedBackend();
       return backend.users.list({});
     },
     enabled: user?.role === 'ADMIN',
+    refetchInterval: 15000, // Refresh every 15 seconds for real-time updates
+    staleTime: 0, // Always consider data stale for fresh updates
+    gcTime: 0, // Don't cache results
+    retry: (failureCount, error) => {
+      if (failureCount < 2) {
+        handleError(error, 'users');
+        return true;
+      }
+      return false;
+    },
+  });
+
+  // New queries for works to be done
+  const { data: expenses, isLoading: expensesLoading, error: expensesError } = useQuery({
+    queryKey: ['expenses'],
+    queryFn: async () => {
+      const backend = getAuthenticatedBackend();
+      // Get expenses for current month to match finance page
+      const now = new Date();
+      const startDate = new Date(now.getFullYear(), now.getMonth(), 1); // First day of current month
+      const endDate = new Date(now.getFullYear(), now.getMonth() + 1, 0); // Last day of current month
+      
+      console.log('Fetching expenses for current month:', {
+        startDate: startDate.toISOString(),
+        endDate: endDate.toISOString()
+      });
+      
+      return backend.finance.listExpenses({
+        startDate: startDate.toISOString().split('T')[0],
+        endDate: endDate.toISOString().split('T')[0],
+      });
+    },
+    refetchInterval: 3000, // Refresh every 3 seconds for real-time updates (increased frequency)
+    staleTime: 0, // Always consider data stale for fresh updates
+    gcTime: 0, // Don't cache results
+    refetchOnWindowFocus: true, // Refetch when window gains focus
+    refetchOnMount: true, // Refetch when component mounts
+    retry: (failureCount, error) => {
+      if (failureCount < 2) {
+        handleError(error, 'expenses');
+        return true;
+      }
+      return false;
+    },
+  });
+
+  const { data: revenues, isLoading: revenuesLoading, error: revenuesError } = useQuery({
+    queryKey: ['revenues'],
+    queryFn: async () => {
+      const backend = getAuthenticatedBackend();
+      // Get revenues for current month to match finance page
+      const now = new Date();
+      const startDate = new Date(now.getFullYear(), now.getMonth(), 1); // First day of current month
+      const endDate = new Date(now.getFullYear(), now.getMonth() + 1, 0); // Last day of current month
+      
+      console.log('Fetching revenues for current month:', {
+        startDate: startDate.toISOString(),
+        endDate: endDate.toISOString()
+      });
+      
+      return backend.finance.listRevenues({
+        startDate: startDate.toISOString().split('T')[0],
+        endDate: endDate.toISOString().split('T')[0],
+      });
+    },
+    refetchInterval: 3000, // Refresh every 3 seconds for real-time updates (increased frequency)
+    staleTime: 0, // Always consider data stale for fresh updates
+    gcTime: 0, // Don't cache results
+    refetchOnWindowFocus: true, // Refetch when window gains focus
+    refetchOnMount: true, // Refetch when component mounts
+    retry: (failureCount, error) => {
+      if (failureCount < 2) {
+        handleError(error, 'revenues');
+        return true;
+      }
+      return false;
+    },
+  });
+
+  const { data: leaveRequests, isLoading: leaveRequestsLoading, error: leaveRequestsError } = useQuery({
+    queryKey: ['leave-requests'],
+    queryFn: async () => {
+      const backend = getAuthenticatedBackend();
+      return backend.staff.listLeaveRequests({});
+    },
+    refetchInterval: 3000, // Refresh every 3 seconds for real-time updates (increased frequency)
+    staleTime: 0, // Always consider data stale for fresh updates
+    gcTime: 0, // Don't cache results
+    refetchOnWindowFocus: true, // Refetch when window gains focus
+    refetchOnMount: true, // Refetch when component mounts
+    retry: (failureCount, error) => {
+      if (failureCount < 2) {
+        handleError(error, 'leave-requests');
+        return true;
+      }
+      return false;
+    },
+  });
+
+  // Fetch pending approvals for admins
+  const { data: pendingApprovals, isLoading: pendingApprovalsLoading, error: pendingApprovalsError } = useQuery({
+    queryKey: ['pending-approvals'],
+    queryFn: async () => {
+      // Direct API call since the endpoint isn't in generated client yet
+      const response = await fetch('http://127.0.0.1:4000/finance/pending-approvals', {
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('accessToken')}`,
+        },
+      });
+      
+      if (!response.ok) {
+        throw new Error(`Failed to fetch pending approvals: ${response.statusText}`);
+      }
+      
+      return response.json();
+    },
+    enabled: user?.role === 'ADMIN',
+    refetchInterval: 3000, // Refresh every 3 seconds for real-time updates (increased frequency)
+    staleTime: 0, // Always consider data stale for fresh updates
+    gcTime: 0, // Don't cache results
+    refetchOnWindowFocus: true, // Refetch when window gains focus
+    refetchOnMount: true, // Refetch when component mounts
+    retry: (failureCount, error) => {
+      if (failureCount < 2) {
+        handleError(error, 'pending-approvals');
+        return true;
+      }
+      return false;
+    },
   });
 
   const getRoleDisplayName = (role: string) => {
@@ -72,15 +252,190 @@ export default function DashboardPage() {
     return 'Good evening';
   };
 
-  const urgentTasks = tasks?.tasks.filter(task => 
+  // Helper function to format currency based on theme
+  const formatCurrency = (amount: number) => {
+    const currency = theme.currency || 'USD';
+    const symbol = currency === 'INR' ? '₹' : '$';
+    return `${symbol}${amount.toFixed(2)}`;
+  };
+
+  const urgentTasks = tasks?.tasks.filter((task: any) => 
     task.priority === 'high' && task.status !== 'done'
   ) || [];
 
-  const overdueTasks = tasks?.tasks.filter(task => 
+  const overdueTasks = tasks?.tasks.filter((task: any) => 
     task.dueAt && new Date(task.dueAt) < new Date() && task.status !== 'done'
   ) || [];
 
-  const managersCreated = users?.users.filter(u => u.role === 'MANAGER') || [];
+  // Enhanced data processing for works to be done
+  const pendingExpenses = expenses?.expenses.filter((expense: any) => 
+    expense.status === 'pending'
+  ) || [];
+
+  // Handle missing status property for revenues (frontend client type mismatch)
+  const pendingRevenues = revenues?.revenues.filter((revenue: any) => 
+    // @ts-ignore - status property exists in backend but not in frontend client type
+    (revenue as any).status === 'pending'
+  ) || [];
+
+  const pendingLeaveRequests = leaveRequests?.leaveRequests.filter((leave: any) => 
+    leave.status === 'pending'
+  ) || [];
+
+  const managersCreated = users?.users.filter((u: any) => u.role === 'MANAGER') || [];
+
+  // Calculate totals for works to be done
+  const totalPendingApprovals = (() => {
+    console.log('=== PENDING APPROVALS DEBUG ===');
+    console.log('Pending approvals data:', pendingApprovals);
+    console.log('Pending expenses count:', pendingExpenses.length);
+    console.log('Pending revenues count:', pendingRevenues.length);
+    console.log('Pending leave requests count:', pendingLeaveRequests.length);
+    
+    // Use the dedicated pending approvals endpoint data if available
+    if (pendingApprovals?.pendingManagers && pendingApprovals.pendingManagers.length > 0) {
+      const totalFromEndpoint = pendingApprovals.pendingManagers.reduce((sum: number, manager: any) => {
+        const managerTotal = manager.pendingExpenses + manager.pendingRevenues;
+        console.log(`Manager ${manager.managerName}: ${manager.pendingExpenses} expenses + ${manager.pendingRevenues} revenues = ${managerTotal}`);
+        return sum + managerTotal;
+      }, 0);
+      console.log('Using pending approvals from endpoint:', totalFromEndpoint);
+      return totalFromEndpoint;
+    }
+    
+    // Fallback to calculating from individual queries
+    const totalFromQueries = pendingExpenses.length + pendingRevenues.length + pendingLeaveRequests.length;
+    console.log('Using pending approvals from individual queries:', totalFromQueries);
+    return totalFromQueries;
+  })();
+  const totalUrgentItems = urgentTasks.length + overdueTasks.length;
+
+  // State for quick action modals
+  const [showPendingApprovalsModal, setShowPendingApprovalsModal] = React.useState(false);
+  const [showUrgentTasksModal, setShowUrgentTasksModal] = React.useState(false);
+  const [showOverdueTasksModal, setShowOverdueTasksModal] = React.useState(false);
+  const [showFinancialPendingModal, setShowFinancialPendingModal] = React.useState(false);
+
+  const approveExpenseMutation = useMutation({
+    mutationFn: async ({ id, approved, notes }: { id: number; approved: boolean; notes?: string }) => {
+      const backend = getAuthenticatedBackend();
+      return backend.finance.approveExpense({ id, approved, notes });
+    },
+    onSuccess: () => {
+      console.log('Dashboard: Expense approval successful');
+      
+      // Aggressive cache invalidation for real-time updates
+      queryClient.invalidateQueries({ queryKey: ['expenses'] });
+      queryClient.invalidateQueries({ queryKey: ['revenues'] });
+      queryClient.invalidateQueries({ queryKey: ['pending-approvals'] });
+      queryClient.invalidateQueries({ queryKey: ['analytics'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+      queryClient.invalidateQueries({ queryKey: ['profit-loss'] });
+      queryClient.invalidateQueries({ queryKey: ['daily-approval-check'] });
+      
+      // Force immediate refetch for all users
+      queryClient.refetchQueries({ queryKey: ['expenses'] });
+      queryClient.refetchQueries({ queryKey: ['pending-approvals'] });
+      queryClient.refetchQueries({ queryKey: ['analytics'] });
+      
+      toast({
+        title: "Expense updated",
+        description: "The expense has been processed successfully.",
+      });
+    },
+    onError: (error: any) => {
+      console.error('Dashboard: Approve expense error:', error);
+      toast({
+        variant: "destructive",
+        title: "Failed to process expense",
+        description: error.message || "Please try again.",
+      });
+    },
+  });
+
+  const approveRevenueMutation = useMutation({
+    mutationFn: async ({ id, approved, notes }: { id: number; approved: boolean; notes?: string }) => {
+      // Direct API call since the endpoint might not be in generated client
+      const response = await fetch(`http://127.0.0.1:4000/finance/revenues/${id}/approve`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('accessToken')}`,
+        },
+        body: JSON.stringify({ id, approved, notes }),
+      });
+      
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.message || `Failed to approve revenue: ${response.statusText}`);
+      }
+      
+      return response.json();
+    },
+    onSuccess: () => {
+      console.log('Dashboard: Revenue approval successful');
+      
+      // Aggressive cache invalidation for real-time updates
+      queryClient.invalidateQueries({ queryKey: ['revenues'] });
+      queryClient.invalidateQueries({ queryKey: ['expenses'] });
+      queryClient.invalidateQueries({ queryKey: ['pending-approvals'] });
+      queryClient.invalidateQueries({ queryKey: ['analytics'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+      queryClient.invalidateQueries({ queryKey: ['profit-loss'] });
+      queryClient.invalidateQueries({ queryKey: ['daily-approval-check'] });
+      
+      // Force immediate refetch for all users
+      queryClient.refetchQueries({ queryKey: ['revenues'] });
+      queryClient.refetchQueries({ queryKey: ['pending-approvals'] });
+      queryClient.refetchQueries({ queryKey: ['analytics'] });
+      
+      toast({
+        title: "Revenue updated",
+        description: "The revenue has been processed successfully.",
+      });
+    },
+    onError: (error: any) => {
+      console.error('Dashboard: Approve revenue error:', error);
+      toast({
+        variant: "destructive",
+        title: "Failed to process revenue",
+        description: error.message || "Please try again.",
+      });
+    },
+  });
+
+  const approveLeaveMutation = useMutation({
+    mutationFn: async ({ id, approved }: { id: number; approved: boolean }) => {
+      const backend = getAuthenticatedBackend();
+      return backend.staff.approveLeave({ id, approved });
+    },
+    onSuccess: () => {
+      console.log('Dashboard: Leave approval successful');
+      
+      // Aggressive cache invalidation for real-time updates
+      queryClient.invalidateQueries({ queryKey: ['leave-requests'] });
+      queryClient.invalidateQueries({ queryKey: ['pending-approvals'] });
+      queryClient.invalidateQueries({ queryKey: ['analytics'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+      
+      // Force immediate refetch for all users
+      queryClient.refetchQueries({ queryKey: ['leave-requests'] });
+      queryClient.refetchQueries({ queryKey: ['pending-approvals'] });
+      
+      toast({
+        title: "Leave request updated",
+        description: "The leave request has been processed.",
+      });
+    },
+    onError: (error: any) => {
+      console.error('Dashboard: Approve leave error:', error);
+      toast({
+        variant: "destructive",
+        title: "Failed to process leave request",
+        description: error.message || "Please try again.",
+      });
+    },
+  });
 
   const handleLogout = async () => {
     try {
@@ -100,24 +455,162 @@ export default function DashboardPage() {
     }
   };
 
+  // Show loading state if any critical data is loading
+  if (propertiesLoading || tasksLoading || (user?.role === 'ADMIN' && (analyticsLoading || usersLoading || expensesLoading || revenuesLoading || leaveRequestsLoading || pendingApprovalsLoading))) {
+    return <LoadingPage text="Loading dashboard..." />;
+  }
+
+  // Show error state if any critical data failed to load
+  if (propertiesError || tasksError || (user?.role === 'ADMIN' && (analyticsError || usersError || expensesError || revenuesError || leaveRequestsError || pendingApprovalsError))) {
+    return (
+      <div className="space-y-6">
+        <div className="text-center py-12">
+          <AlertCircle className="h-12 w-12 text-red-500 mx-auto mb-4" />
+          <h3 className="text-lg font-medium text-gray-900 mb-2">Failed to load dashboard data</h3>
+          <p className="text-gray-500 mb-4">
+            There was an error loading your dashboard. Please try refreshing the page.
+          </p>
+          <Button onClick={refreshNow} variant="outline">
+            <RefreshCw className="mr-2 h-4 w-4" />
+            Try Again
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
+
+
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-start justify-between">
-        <div>
-          <h1 className="text-3xl font-bold text-gray-900">
-            {getGreeting()}, {user?.displayName}
-          </h1>
-          <p className="text-gray-600 flex items-center gap-2">
-            <Shield className="h-4 w-4" />
-            {getRoleDisplayName(user?.role || '')} Dashboard
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          <Button variant="outline" onClick={handleLogout}>
-            <LogOut className="h-4 w-4 mr-2" />
-            Sign out
-          </Button>
+
+      {/* WORKS TO BE DONE - Priority Section */}
+      <div className="space-y-4">
+        <h2 className="text-xl font-semibold text-gray-900 flex items-center gap-2">
+          <AlertCircle className="h-5 w-5 text-red-500" />
+          Works to be Done
+        </h2>
+        
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          {/* Pending Approvals */}
+          <Card 
+            className="border-red-200 bg-red-50 cursor-pointer hover:bg-red-100 transition-all duration-300 hover:shadow-lg hover:scale-105"
+            onClick={() => {
+              if (totalPendingApprovals > 0) {
+                setShowPendingApprovalsModal(true);
+              } else {
+                navigate('/finance');
+              }
+            }}
+          >
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium text-red-900">Pending Approvals</CardTitle>
+              <div className="flex items-center gap-1">
+                <FileText className="h-4 w-4 text-red-600" />
+                {totalPendingApprovals > 0 && (
+                  <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse"></div>
+                )}
+              </div>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-red-900">
+                {totalPendingApprovals}
+              </div>
+              <p className="text-xs text-red-700">
+                {totalPendingApprovals > 0 ? 'Click to review' : 'Require attention'}
+              </p>
+            </CardContent>
+          </Card>
+
+          {/* Urgent Tasks */}
+          <Card 
+            className="border-orange-200 bg-orange-50 cursor-pointer hover:bg-orange-100 transition-all duration-300 hover:shadow-lg hover:scale-105"
+            onClick={() => {
+              if (urgentTasks.length > 0) {
+                setShowUrgentTasksModal(true);
+              } else {
+                navigate('/tasks');
+              }
+            }}
+          >
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium text-orange-900">Urgent Tasks</CardTitle>
+              <div className="flex items-center gap-1">
+                <AlertCircle className="h-4 w-4 text-orange-600" />
+                {urgentTasks.length > 0 && (
+                  <div className="w-2 h-2 bg-orange-500 rounded-full animate-pulse"></div>
+                )}
+              </div>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-orange-900">
+                {urgentTasks.length}
+              </div>
+              <p className="text-xs text-orange-700">
+                {urgentTasks.length > 0 ? 'Click to view' : 'High priority'}
+              </p>
+            </CardContent>
+          </Card>
+
+          {/* Overdue Tasks */}
+          <Card 
+            className="border-red-200 bg-red-50 cursor-pointer hover:bg-red-100 transition-all duration-300 hover:shadow-lg hover:scale-105"
+            onClick={() => {
+              if (overdueTasks.length > 0) {
+                setShowOverdueTasksModal(true);
+              } else {
+                navigate('/tasks');
+              }
+            }}
+          >
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium text-red-900">Overdue Tasks</CardTitle>
+              <div className="flex items-center gap-1">
+                <Clock className="h-4 w-4 text-red-600" />
+                {overdueTasks.length > 0 && (
+                  <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse"></div>
+                )}
+              </div>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-red-900">
+                {overdueTasks.length}
+              </div>
+              <p className="text-xs text-red-700">
+                {overdueTasks.length > 0 ? 'Click to view' : 'Past due date'}
+              </p>
+            </CardContent>
+          </Card>
+
+          {/* Financial Transactions */}
+          <Card 
+            className="border-blue-200 bg-blue-50 cursor-pointer hover:bg-blue-100 transition-all duration-300 hover:shadow-lg hover:scale-105"
+            onClick={() => {
+              if (pendingExpenses.length + pendingRevenues.length > 0) {
+                setShowFinancialPendingModal(true);
+              } else {
+                navigate('/finance');
+              }
+            }}
+          >
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium text-blue-900">Financial Pending</CardTitle>
+              <div className="flex items-center gap-1">
+                <CreditCard className="h-4 w-4 text-blue-600" />
+                {(pendingExpenses.length + pendingRevenues.length) > 0 && (
+                  <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></div>
+                )}
+              </div>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-blue-900">
+                {pendingExpenses.length + pendingRevenues.length}
+              </div>
+              <p className="text-xs text-blue-700">
+                {(pendingExpenses.length + pendingRevenues.length) > 0 ? 'Click to approve' : 'Expenses & Revenues'}
+              </p>
+            </CardContent>
+          </Card>
         </div>
       </div>
 
@@ -155,36 +648,93 @@ export default function DashboardPage() {
           </CardContent>
         </Card>
 
-        {user?.role === 'ADMIN' && (
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Occupancy Rate</CardTitle>
-              <TrendingUp className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">
-                {analyticsLoading ? '...' : `${analytics?.metrics.occupancyRate || 0}%`}
-              </div>
-              <p className="text-xs text-muted-foreground">
-                Current occupancy
-              </p>
-            </CardContent>
-          </Card>
-        )}
+
 
         {user?.role === 'ADMIN' && (
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium">Revenue</CardTitle>
-              <DollarSign className="h-4 w-4 text-muted-foreground" />
+              <div className="flex items-center gap-1">
+              <TrendingUp className="h-4 w-4 text-muted-foreground" />
+                {(analytics?.metrics.totalRevenue || (revenues?.revenues && revenues.revenues.length > 0)) && (
+                  <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
+                )}
+              </div>
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold">
-                {analyticsLoading ? '...' : `$${analytics?.metrics.totalRevenue?.toLocaleString() || 0}`}
+                {analyticsLoading && revenuesLoading ? (
+                  <div className="flex items-center gap-2">
+                    <div className="w-4 h-4 border-2 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
+                    <span className="text-gray-500">Loading...</span>
+              </div>
+                ) : (
+                  <span className="text-green-600">
+                    {(() => {
+                      // Debug logging
+                      console.log('=== REVENUE DEBUG ===');
+                      console.log('Analytics data:', analytics);
+                      console.log('Revenues data:', revenues);
+                      console.log('Analytics loading:', analyticsLoading);
+                      console.log('Revenues loading:', revenuesLoading);
+                      
+                      // Prioritize real revenue data over analytics (which might be mock data)
+                      if (revenues?.revenues && revenues.revenues.length > 0) {
+                        console.log('Found revenues:', revenues.revenues.length, 'items');
+                        console.log('Backend totalAmount (includes pending):', revenues.totalAmount);
+                        
+                        // Calculate only approved revenues for dashboard display
+                        const approvedRevenues = revenues.revenues.filter((revenue: any) => {
+                          // @ts-ignore - status property exists in backend but not in frontend client type
+                          const status = (revenue as any).status;
+                          const isApproved = status === 'approved' || status === undefined || status === null;
+                          console.log(`Revenue ${revenue.id}: status=${status}, amount=${revenue.amountCents/100}, approved=${isApproved}`);
+                          return isApproved;
+                        });
+                        
+                        console.log('Approved revenues count:', approvedRevenues.length);
+                        
+                        // Calculate total from approved revenues only
+                        const totalApprovedRevenue = approvedRevenues.reduce((sum: any, revenue: any) => {
+                          const amount = revenue.amountCents / 100; // Convert cents to currency
+                          return sum + amount;
+                        }, 0);
+                        
+                        console.log('Total approved revenue:', totalApprovedRevenue);
+                        
+                        // Use theme currency setting for formatting
+                        const currency = theme.currency || 'USD';
+                        const symbol = currency === 'INR' ? '₹' : '$';
+                        
+                        return `${symbol}${totalApprovedRevenue.toLocaleString()}`;
+                      }
+                      
+                      // Fallback to analytics data if no real revenue data available
+                      if (analytics?.metrics?.totalRevenue) {
+                        console.log('Using analytics revenue (fallback):', analytics.metrics.totalRevenue);
+                        const currency = theme.currency || 'USD';
+                        const symbol = currency === 'INR' ? '₹' : '$';
+                        return `${symbol}${analytics.metrics.totalRevenue.toLocaleString()}`;
+                      }
+                      
+                      console.log('No revenue data available');
+                      const currency = theme.currency || 'USD';
+                      const symbol = currency === 'INR' ? '₹' : '$';
+                      return `${symbol}0`;
+                    })()}
+                  </span>
+                )}
               </div>
               <p className="text-xs text-muted-foreground">
-                Last 30 days
+                {revenues?.revenues && revenues.revenues.length > 0 ? 'This month' : 
+                 analytics?.metrics.totalRevenue ? 'Last 30 days' : 'No data'}
               </p>
+              {(analytics?.metrics.totalRevenue || (revenues?.revenues && revenues.revenues.length > 0)) && (
+                <div className="mt-1 flex items-center gap-1 text-xs text-green-600">
+                  <TrendingUp className="h-3 w-3" />
+                  <span>Live data</span>
+                </div>
+              )}
             </CardContent>
           </Card>
         )}
@@ -196,7 +746,7 @@ export default function DashboardPage() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
-              {tasksLoading ? '...' : tasks?.tasks.filter(t => t.status !== 'done').length || 0}
+              {tasksLoading ? '...' : tasks?.tasks.filter((t: any) => t.status !== 'done').length || 0}
             </div>
             <p className="text-xs text-muted-foreground">
               Pending completion
@@ -205,106 +755,121 @@ export default function DashboardPage() {
         </Card>
       </div>
 
-      {/* Getting Started Section for New Organizations */}
-      {user?.role === 'ADMIN' && (!properties?.properties.length || properties.properties.length === 0) && (
-        <Card className="border-blue-200 bg-blue-50">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-blue-900">
-              <Building2 className="h-5 w-5" />
-              Welcome to Your Hospitality Platform!
-            </CardTitle>
-            <CardDescription className="text-blue-700">
-              Get started by setting up your first property and inviting team members
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div className="text-center p-4 bg-white rounded-lg border border-blue-200">
-                <Building2 className="h-8 w-8 mx-auto mb-2 text-blue-600" />
-                <h3 className="font-medium text-blue-900 mb-2">Add Your First Property</h3>
-                <p className="text-sm text-blue-700 mb-3">
-                  Set up your hotel, hostel, resort, or apartment
-                </p>
-                <Button size="sm" className="bg-blue-600 hover:bg-blue-700">
-                  <Plus className="mr-2 h-4 w-4" />
-                  Add Property
-                </Button>
-              </div>
-              
-              <div className="text-center p-4 bg-white rounded-lg border border-blue-200">
-                <Users className="h-8 w-8 mx-auto mb-2 text-blue-600" />
-                <h3 className="font-medium text-blue-900 mb-2">Invite Managers</h3>
-                <p className="text-sm text-blue-700 mb-3">
-                  Create manager accounts for your team
-                </p>
-                <Button size="sm" variant="outline" className="border-blue-600 text-blue-600 hover:bg-blue-50">
-                  <Plus className="mr-2 h-4 w-4" />
-                  Create Manager
-                </Button>
-              </div>
-              
-              <div className="text-center p-4 bg-white rounded-lg border border-blue-200">
-                <CheckSquare className="h-8 w-8 mx-auto mb-2 text-blue-600" />
-                <h3 className="font-medium text-blue-900 mb-2">Create Tasks</h3>
-                <p className="text-sm text-blue-700 mb-3">
-                  Start managing operations and workflows
-                </p>
-                <Button size="sm" variant="outline" className="border-blue-600 text-blue-600 hover:bg-blue-50">
-                  <Plus className="mr-2 h-4 w-4" />
-                  Create Task
-                </Button>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
       {/* Role-specific content */}
       {user?.role === 'ADMIN' ? (
         <>
-          {/* Admin Dashboard Content */}
+          {/* Admin Dashboard Content - Enhanced with Works to be Done */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {/* Recent Managers */}
+            {/* Pending Approvals - Financial */}
+            <Card>
+          <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Receipt className="h-5 w-5 text-blue-500" />
+                  Pending Financial Approvals
+            </CardTitle>
+                <CardDescription>
+                  Expenses and revenues awaiting approval
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+                {pendingExpenses.length === 0 && pendingRevenues.length === 0 ? (
+                  <div className="text-center py-6">
+                    <Receipt className="h-8 w-8 text-gray-400 mx-auto mb-2" />
+                    <p className="text-sm text-gray-500 mb-3">No pending financial approvals</p>
+                    <Button size="sm" variant="outline" onClick={() => navigate('/finance')}>
+                  <Plus className="mr-2 h-4 w-4" />
+                      View Finance
+                </Button>
+              </div>
+                ) : (
+                  <div className="space-y-3">
+                    {pendingExpenses.slice(0, 3).map((expense: any) => (
+                      <div key={`expense-${expense.id}`} className="flex items-center justify-between p-3 bg-orange-50 rounded-lg">
+                        <div className="flex-1">
+                          <p className="font-medium text-sm">{expense.description || 'Expense'}</p>
+                          <p className="text-xs text-gray-600">{expense.propertyName}</p>
+                          <p className="text-xs text-orange-600">
+                            {formatCurrency(expense.amountCents / 100)} • {expense.category}
+                          </p>
+              </div>
+                        <Badge variant="outline" className="border-orange-500 text-orange-700">
+                          Expense
+                        </Badge>
+                      </div>
+                    ))}
+                    {pendingRevenues.slice(0, 3).map((revenue: any) => (
+                      <div key={`revenue-${revenue.id}`} className="flex items-center justify-between p-3 bg-green-50 rounded-lg">
+                        <div className="flex-1">
+                          <p className="font-medium text-sm">{revenue.description || 'Revenue'}</p>
+                          <p className="text-xs text-gray-600">{revenue.propertyName}</p>
+                          <p className="text-xs text-green-600">
+                            {formatCurrency(revenue.amountCents / 100)} • {revenue.source}
+                          </p>
+              </div>
+                        <Badge variant="outline" className="border-green-500 text-green-700">
+                          Revenue
+                        </Badge>
+            </div>
+                    ))}
+                    {(pendingExpenses.length > 3 || pendingRevenues.length > 3) && (
+                      <Button size="sm" variant="outline" className="w-full" onClick={() => navigate('/finance')}>
+                        View All ({pendingExpenses.length + pendingRevenues.length})
+                      </Button>
+                    )}
+                  </div>
+                )}
+          </CardContent>
+        </Card>
+
+            {/* Pending Leave Requests */}
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
-                  <Users className="h-5 w-5 text-blue-500" />
-                  Recent Managers
+                  <Calendar className="h-5 w-5 text-purple-500" />
+                  Pending Leave Requests
                 </CardTitle>
                 <CardDescription>
-                  Recently created manager accounts
+                  Staff leave requests awaiting approval
                 </CardDescription>
               </CardHeader>
               <CardContent>
-                {managersCreated.length === 0 ? (
+                {pendingLeaveRequests.length === 0 ? (
                   <div className="text-center py-6">
-                    <Users className="h-8 w-8 text-gray-400 mx-auto mb-2" />
-                    <p className="text-sm text-gray-500 mb-3">No managers created yet</p>
-                    <Button size="sm" variant="outline">
+                    <Calendar className="h-8 w-8 text-gray-400 mx-auto mb-2" />
+                    <p className="text-sm text-gray-500 mb-3">No pending leave requests</p>
+                    <Button size="sm" variant="outline" onClick={() => navigate('/staff')}>
                       <Plus className="mr-2 h-4 w-4" />
-                      Create First Manager
+                      View Staff
                     </Button>
                   </div>
                 ) : (
                   <div className="space-y-3">
-                    {managersCreated.slice(0, 5).map((manager) => (
-                      <div key={manager.id} className="flex items-center justify-between p-3 bg-blue-50 rounded-lg">
+                    {pendingLeaveRequests.slice(0, 5).map((leave: any) => (
+                      <div key={leave.id} className="flex items-center justify-between p-3 bg-purple-50 rounded-lg">
                         <div className="flex-1">
-                          <p className="font-medium text-sm">{manager.displayName}</p>
-                          <p className="text-xs text-gray-600">{manager.email}</p>
-                          <p className="text-xs text-gray-500">
-                            Created {new Date(manager.createdAt).toLocaleDateString()}
+                          <p className="font-medium text-sm">{leave.staffName}</p>
+                          <p className="text-xs text-gray-600">{leave.leaveType}</p>
+                          <p className="text-xs text-purple-600">
+                            {new Date(leave.startDate).toLocaleDateString()} - {new Date(leave.endDate).toLocaleDateString()}
                           </p>
                         </div>
-                        <Badge variant="outline">Manager</Badge>
+                        <Badge variant="outline" className="border-purple-500 text-purple-700">
+                          Pending
+                        </Badge>
                       </div>
                     ))}
+                    {pendingLeaveRequests.length > 5 && (
+                      <Button size="sm" variant="outline" className="w-full" onClick={() => navigate('/staff')}>
+                        View All ({pendingLeaveRequests.length})
+                      </Button>
+                    )}
                   </div>
                 )}
               </CardContent>
             </Card>
+          </div>
 
-            {/* Urgent Tasks */}
+          {/* Urgent Tasks for Admin */}
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
@@ -320,14 +885,14 @@ export default function DashboardPage() {
                   <div className="text-center py-6">
                     <CheckSquare className="h-8 w-8 text-gray-400 mx-auto mb-2" />
                     <p className="text-sm text-gray-500 mb-3">No urgent tasks at the moment</p>
-                    <Button size="sm" variant="outline">
+                  <Button size="sm" variant="outline" onClick={() => navigate('/tasks')}>
                       <Plus className="mr-2 h-4 w-4" />
                       Create Task
                     </Button>
                   </div>
                 ) : (
                   <div className="space-y-3">
-                    {urgentTasks.slice(0, 5).map((task) => (
+                  {urgentTasks.slice(0, 5).map((task: any) => (
                       <div key={task.id} className="flex items-center justify-between p-3 bg-red-50 rounded-lg">
                         <div className="flex-1">
                           <p className="font-medium text-sm">{task.title}</p>
@@ -336,11 +901,109 @@ export default function DashboardPage() {
                         <Badge variant="destructive">High</Badge>
                       </div>
                     ))}
+                  {urgentTasks.length > 5 && (
+                    <Button size="sm" variant="outline" className="w-full" onClick={() => navigate('/tasks')}>
+                      View All ({urgentTasks.length})
+                    </Button>
+                  )}
                   </div>
                 )}
               </CardContent>
             </Card>
+
+          {/* Recent Managers */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Users className="h-5 w-5 text-blue-500" />
+                Recent Managers
+              </CardTitle>
+              <CardDescription>
+                Recently created manager accounts
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              {managersCreated.length === 0 ? (
+                <div className="text-center py-6">
+                  <Users className="h-8 w-8 text-gray-400 mx-auto mb-2" />
+                  <p className="text-sm text-gray-500 mb-3">No managers created yet</p>
+                  <Button size="sm" variant="outline">
+                    <Plus className="mr-2 h-4 w-4" />
+                    Create First Manager
+                  </Button>
           </div>
+              ) : (
+                <div className="space-y-3">
+                  {managersCreated.slice(0, 5).map((manager: any) => (
+                    <div key={manager.id} className="flex items-center justify-between p-3 bg-blue-50 rounded-lg">
+                      <div className="flex-1">
+                        <p className="font-medium text-sm">{manager.displayName}</p>
+                        <p className="text-xs text-gray-600">{manager.email}</p>
+                        <p className="text-xs text-gray-500">
+                          Created {new Date(manager.createdAt).toLocaleDateString()}
+                        </p>
+                      </div>
+                      <Badge variant="outline">Manager</Badge>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Getting Started Section for New Organizations */}
+          {(!properties?.properties.length || properties.properties.length === 0) && (
+            <Card className="border-blue-200 bg-blue-50">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-blue-900">
+                  <Building2 className="h-5 w-5" />
+                  Welcome to Your Hospitality Platform!
+                </CardTitle>
+                <CardDescription className="text-blue-700">
+                  Get started by setting up your first property and inviting team members
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="text-center p-4 bg-white rounded-lg border border-blue-200">
+                    <Building2 className="h-8 w-8 mx-auto mb-2 text-blue-600" />
+                    <h3 className="font-medium text-blue-900 mb-2">Add Your First Property</h3>
+                    <p className="text-sm text-blue-700 mb-3">
+                      Set up your hotel, hostel, resort, or apartment
+                    </p>
+                    <Button size="sm" className="bg-blue-600 hover:bg-blue-700">
+                      <Plus className="mr-2 h-4 w-4" />
+                      Add Property
+                    </Button>
+                  </div>
+                  
+                  <div className="text-center p-4 bg-white rounded-lg border border-blue-200">
+                    <Users className="h-8 w-8 mx-auto mb-2 text-blue-600" />
+                    <h3 className="font-medium text-blue-900 mb-2">Invite Managers</h3>
+                    <p className="text-sm text-blue-700 mb-3">
+                      Create manager accounts for your team
+                    </p>
+                    <Button size="sm" variant="outline" className="border-blue-600 text-blue-600 hover:bg-blue-50">
+                      <Plus className="mr-2 h-4 w-4" />
+                      Create Manager
+                    </Button>
+                  </div>
+                  
+                  <div className="text-center p-4 bg-white rounded-lg border border-blue-200">
+                    <CheckSquare className="h-8 w-8 mx-auto mb-2 text-blue-600" />
+                    <h3 className="font-medium text-blue-900 mb-2">Create Tasks</h3>
+                    <p className="text-sm text-blue-700 mb-3">
+                      Start managing operations and workflows
+                    </p>
+                    <Button size="sm" variant="outline" className="border-blue-600 text-blue-600 hover:bg-blue-50">
+                      <Plus className="mr-2 h-4 w-4" />
+                      Create Task
+                    </Button>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          )}
 
           {/* Quick Stats for Admin */}
           {analytics && (
@@ -355,13 +1018,13 @@ export default function DashboardPage() {
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                   <div className="text-center">
                     <div className="text-2xl font-bold" style={{ color: theme.primaryColor }}>
-                      ${analytics.metrics.adr.toFixed(0)}
+                      {formatCurrency(analytics.metrics.adr)}
                     </div>
                     <p className="text-sm text-gray-600">Average Daily Rate</p>
                   </div>
                   <div className="text-center">
                     <div className="text-2xl font-bold" style={{ color: theme.primaryColor }}>
-                      ${analytics.metrics.revpar.toFixed(0)}
+                      {formatCurrency(analytics.metrics.revpar)}
                     </div>
                     <p className="text-sm text-gray-600">RevPAR</p>
                   </div>
@@ -409,7 +1072,7 @@ export default function DashboardPage() {
                   </div>
                 ) : (
                   <div className="space-y-3">
-                    {tasks?.tasks.slice(0, 5).map((task) => (
+                    {tasks?.tasks.slice(0, 5).map((task: any) => (
                       <div key={task.id} className="flex items-center justify-between p-3 bg-green-50 rounded-lg">
                         <div className="flex-1">
                           <p className="font-medium text-sm">{task.title}</p>
@@ -444,7 +1107,7 @@ export default function DashboardPage() {
                   </div>
                 ) : (
                   <div className="space-y-3">
-                    {overdueTasks.slice(0, 5).map((task) => (
+                    {overdueTasks.slice(0, 5).map((task: any) => (
                       <div key={task.id} className="flex items-center justify-between p-3 bg-orange-50 rounded-lg">
                         <div className="flex-1">
                           <p className="font-medium text-sm">{task.title}</p>
@@ -485,7 +1148,7 @@ export default function DashboardPage() {
                   <p className="text-sm font-medium">Properties</p>
                 </div>
                 <div className="text-center p-4 border rounded-lg hover:bg-gray-50 cursor-pointer">
-                  <DollarSign className="h-8 w-8 mx-auto mb-2 text-green-500" />
+                   <Receipt className="h-8 w-8 mx-auto mb-2 text-green-500" />
                   <p className="text-sm font-medium">Finance</p>
                 </div>
                 <div className="text-center p-4 border rounded-lg hover:bg-gray-50 cursor-pointer">
@@ -497,6 +1160,349 @@ export default function DashboardPage() {
           </Card>
         </>
       )}
+      
+      {/* Quick Action Modals */}
+      
+                    {/* Pending Approvals Modal */}
+      {showPendingApprovalsModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 max-w-2xl w-full mx-4 max-h-[80vh] overflow-y-auto">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-lg font-semibold">Pending Approvals</h3>
+              <Button variant="outline" size="sm" onClick={() => setShowPendingApprovalsModal(false)}>
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
+            
+            <div className="space-y-4">
+              {/* Pending Expenses */}
+              {pendingExpenses.length > 0 && (
+                <div>
+                  <h4 className="font-medium text-gray-900 mb-2">Pending Expenses</h4>
+                  <div className="space-y-2">
+                    {pendingExpenses.map((expense: any) => (
+                      <div key={expense.id} className="flex items-center justify-between p-3 bg-orange-50 rounded-lg">
+                        <div className="flex-1">
+                          <p className="font-medium text-sm">{expense.description || 'Expense'}</p>
+                          <p className="text-xs text-gray-600">{expense.propertyName}</p>
+                          <p className="text-xs text-orange-600">
+                            {formatCurrency(expense.amountCents / 100)} • {expense.category}
+                          </p>
+                        </div>
+                        <div className="flex gap-2">
+                          <Button
+                            size="sm"
+                            className="bg-green-600 hover:bg-green-700"
+                            onClick={() => approveExpenseMutation.mutate({ id: expense.id, approved: true })}
+                            disabled={approveExpenseMutation.isPending}
+                          >
+                            <Check className="h-3 w-3 mr-1" />
+                            Approve
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="destructive"
+                            onClick={() => approveExpenseMutation.mutate({ id: expense.id, approved: false })}
+                            disabled={approveExpenseMutation.isPending}
+                          >
+                            <X className="h-3 w-3 mr-1" />
+                            Reject
+                          </Button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Pending Revenues */}
+              {pendingRevenues.length > 0 && (
+                <div>
+                  <h4 className="font-medium text-gray-900 mb-2">Pending Revenues</h4>
+                  <div className="space-y-2">
+                    {pendingRevenues.map((revenue: any) => (
+                      <div key={revenue.id} className="flex items-center justify-between p-3 bg-green-50 rounded-lg">
+                        <div className="flex-1">
+                          <p className="font-medium text-sm">{revenue.description || 'Revenue'}</p>
+                          <p className="text-xs text-gray-600">{revenue.propertyName}</p>
+                          <p className="text-xs text-green-600">
+                            ${(revenue.amountCents / 100).toFixed(2)} • {revenue.source}
+                          </p>
+                        </div>
+                        <div className="flex gap-2">
+                          <Button
+                            size="sm"
+                            className="bg-green-600 hover:bg-green-700"
+                            onClick={() => approveRevenueMutation.mutate({ id: revenue.id, approved: true })}
+                            disabled={approveRevenueMutation.isPending}
+                          >
+                            <Check className="h-3 w-3 mr-1" />
+                            Approve
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="destructive"
+                            onClick={() => approveRevenueMutation.mutate({ id: revenue.id, approved: false })}
+                            disabled={approveRevenueMutation.isPending}
+                          >
+                            <X className="h-3 w-3 mr-1" />
+                            Reject
+                          </Button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Pending Leave Requests */}
+              {pendingLeaveRequests.length > 0 && (
+                <div>
+                  <h4 className="font-medium text-gray-900 mb-2">Pending Leave Requests</h4>
+                  <div className="space-y-2">
+                    {pendingLeaveRequests.map((leave: any) => (
+                      <div key={leave.id} className="flex items-center justify-between p-3 bg-purple-50 rounded-lg">
+                        <div className="flex-1">
+                          <p className="font-medium text-sm">{leave.staffName}</p>
+                          <p className="text-xs text-gray-600">{leave.leaveType}</p>
+                          <p className="text-xs text-purple-600">
+                            {new Date(leave.startDate).toLocaleDateString()} - {new Date(leave.endDate).toLocaleDateString()}
+                          </p>
+                        </div>
+                        <div className="flex gap-2">
+                          <Button
+                            size="sm"
+                            className="bg-green-600 hover:bg-green-700"
+                            onClick={() => approveLeaveMutation.mutate({ id: leave.id, approved: true })}
+                            disabled={approveLeaveMutation.isPending}
+                          >
+                            <Check className="h-3 w-3 mr-1" />
+                            Approve
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="destructive"
+                            onClick={() => approveLeaveMutation.mutate({ id: leave.id, approved: false })}
+                            disabled={approveLeaveMutation.isPending}
+                          >
+                            <X className="h-3 w-3 mr-1" />
+                            Reject
+                          </Button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {totalPendingApprovals === 0 && (
+                <div className="text-center py-8">
+                  <FileText className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+                  <p className="text-gray-500">No pending approvals</p>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Urgent Tasks Modal */}
+      {showUrgentTasksModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 max-w-2xl w-full mx-4 max-h-[80vh] overflow-y-auto">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-lg font-semibold">Urgent Tasks</h3>
+              <Button variant="outline" size="sm" onClick={() => setShowUrgentTasksModal(false)}>
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
+            
+            <div className="space-y-3">
+              {urgentTasks.length > 0 ? (
+                urgentTasks.map((task: any) => (
+                  <div key={task.id} className="flex items-center justify-between p-3 bg-red-50 rounded-lg">
+                    <div className="flex-1">
+                      <p className="font-medium text-sm">{task.title}</p>
+                      <p className="text-xs text-gray-600">{task.propertyName}</p>
+                      {task.dueAt && (
+                        <p className="text-xs text-red-600">
+                          Due: {new Date(task.dueAt).toLocaleDateString()}
+                        </p>
+                      )}
+                    </div>
+                    <div className="flex gap-2">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => navigate(`/tasks`)}
+                      >
+                        <Eye className="h-3 w-3 mr-1" />
+                        View
+                      </Button>
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <div className="text-center py-8">
+                  <AlertCircle className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+                  <p className="text-gray-500">No urgent tasks</p>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Overdue Tasks Modal */}
+      {showOverdueTasksModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 max-w-2xl w-full mx-4 max-h-[80vh] overflow-y-auto">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-lg font-semibold">Overdue Tasks</h3>
+              <Button variant="outline" size="sm" onClick={() => setShowOverdueTasksModal(false)}>
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
+            
+            <div className="space-y-3">
+              {overdueTasks.length > 0 ? (
+                overdueTasks.map((task: any) => (
+                  <div key={task.id} className="flex items-center justify-between p-3 bg-red-50 rounded-lg">
+                    <div className="flex-1">
+                      <p className="font-medium text-sm">{task.title}</p>
+                      <p className="text-xs text-gray-600">{task.propertyName}</p>
+                      {task.dueAt && (
+                        <p className="text-xs text-red-600">
+                          Due: {new Date(task.dueAt).toLocaleDateString()}
+                        </p>
+                      )}
+                    </div>
+                    <div className="flex gap-2">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => navigate(`/tasks`)}
+                      >
+                        <Eye className="h-3 w-3 mr-1" />
+                        View
+                      </Button>
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <div className="text-center py-8">
+                  <Clock className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+                  <p className="text-gray-500">No overdue tasks</p>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Financial Pending Modal */}
+      {showFinancialPendingModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 max-w-2xl w-full mx-4 max-h-[80vh] overflow-y-auto">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-lg font-semibold">Financial Pending</h3>
+              <Button variant="outline" size="sm" onClick={() => setShowFinancialPendingModal(false)}>
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
+            
+            <div className="space-y-4">
+              {/* Pending Expenses */}
+              {pendingExpenses.length > 0 && (
+                <div>
+                  <h4 className="font-medium text-gray-900 mb-2">Pending Expenses</h4>
+                  <div className="space-y-2">
+                    {pendingExpenses.map((expense: any) => (
+                      <div key={expense.id} className="flex items-center justify-between p-3 bg-orange-50 rounded-lg">
+                        <div className="flex-1">
+                          <p className="font-medium text-sm">{expense.description || 'Expense'}</p>
+                          <p className="text-xs text-gray-600">{expense.propertyName}</p>
+                          <p className="text-xs text-orange-600">
+                            {formatCurrency(expense.amountCents / 100)} • {expense.category}
+                          </p>
+                        </div>
+                        <div className="flex gap-2">
+                          <Button
+                            size="sm"
+                            className="bg-green-600 hover:bg-green-700"
+                            onClick={() => approveExpenseMutation.mutate({ id: expense.id, approved: true })}
+                            disabled={approveExpenseMutation.isPending}
+                          >
+                            <Check className="h-3 w-3 mr-1" />
+                            Approve
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="destructive"
+                            onClick={() => approveExpenseMutation.mutate({ id: expense.id, approved: false })}
+                            disabled={approveExpenseMutation.isPending}
+                          >
+                            <X className="h-3 w-3 mr-1" />
+                            Reject
+                          </Button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Pending Revenues */}
+              {pendingRevenues.length > 0 && (
+                <div>
+                  <h4 className="font-medium text-gray-900 mb-2">Pending Revenues</h4>
+                  <div className="space-y-2">
+                    {pendingRevenues.map((revenue: any) => (
+                      <div key={revenue.id} className="flex items-center justify-between p-3 bg-green-50 rounded-lg">
+                        <div className="flex-1">
+                          <p className="font-medium text-sm">{revenue.description || 'Revenue'}</p>
+                          <p className="text-xs text-gray-600">{revenue.propertyName}</p>
+                          <p className="text-xs text-green-600">
+                            {formatCurrency(revenue.amountCents / 100)} • {revenue.source}
+                          </p>
+                        </div>
+                        <div className="flex gap-2">
+                          <Button
+                            size="sm"
+                            className="bg-green-600 hover:bg-green-700"
+                            onClick={() => approveRevenueMutation.mutate({ id: revenue.id, approved: true })}
+                            disabled={approveRevenueMutation.isPending}
+                          >
+                            <Check className="h-3 w-3 mr-1" />
+                            Approve
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="destructive"
+                            onClick={() => approveRevenueMutation.mutate({ id: revenue.id, approved: false })}
+                            disabled={approveRevenueMutation.isPending}
+                          >
+                            <X className="h-3 w-3 mr-1" />
+                            Reject
+                          </Button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {pendingExpenses.length === 0 && pendingRevenues.length === 0 && (
+                <div className="text-center py-8">
+                  <CreditCard className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+                  <p className="text-gray-500">No pending financial transactions</p>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }

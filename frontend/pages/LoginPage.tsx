@@ -8,6 +8,7 @@ import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { useToast } from '@/components/ui/use-toast';
+import { LoginProgress } from '@/components/ui/login-progress';
 import { Building2, Loader2 } from 'lucide-react';
 
 export default function LoginPage() {
@@ -15,6 +16,7 @@ export default function LoginPage() {
   const [password, setPassword] = useState('');
   const [rememberMe, setRememberMe] = useState<boolean>(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [showProgress, setShowProgress] = useState(false);
   const [error, setError] = useState('');
   
   const { login } = useAuth();
@@ -22,6 +24,7 @@ export default function LoginPage() {
   const { toast } = useToast();
   const navigate = useNavigate();
   const location = useLocation();
+  const formRef = React.useRef<HTMLFormElement>(null);
 
   const from = location.state?.from?.pathname || '/dashboard';
 
@@ -33,29 +36,87 @@ export default function LoginPage() {
     }
   }, []);
 
+  // Debug email state changes
+  useEffect(() => {
+    console.log('Email state changed to:', email);
+    console.log('Email state length:', email.length);
+    console.log('Email state type:', typeof email);
+  }, [email]);
+
+  // Verify form configuration
+  useEffect(() => {
+    if (formRef.current) {
+      console.log('Form configuration verified:', {
+        method: formRef.current.method,
+        action: formRef.current.action,
+        onsubmit: formRef.current.onsubmit,
+        hasOnSubmit: !!formRef.current.onsubmit
+      });
+      
+      // Ensure form has proper configuration
+      formRef.current.method = 'POST';
+      formRef.current.action = '#';
+      
+      // Test form submission binding
+      console.log('Testing form submission binding...');
+      const testEvent = new Event('submit', { bubbles: true, cancelable: true });
+      formRef.current.dispatchEvent(testEvent);
+    }
+  }, []);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    
+    // Use the current state values directly (controlled inputs)
+    const currentEmail = email;
+    const currentPassword = password;
+    
+    console.log('=== LOGIN FORM DEBUG ===');
+    console.log('Form event:', e);
+    console.log('Email state value:', email);
+    console.log('Password state value:', password);
+    console.log('Current email from state:', currentEmail);
+    console.log('Current password from state:', currentPassword);
+    console.log('Email length:', currentEmail.length);
+    console.log('Password length:', currentPassword.length);
+    console.log('Email type:', typeof currentEmail);
+    console.log('Password type:', typeof currentPassword);
+    console.log('Email === ""', currentEmail === "");
+    console.log('Password === ""', currentPassword === "");
+    console.log('Login form submitted!', { email: currentEmail, password: currentPassword });
+    
+    // Validate inputs
+    if (!currentEmail || !currentPassword) {
+      setError('Please enter both email and password');
+      return;
+    }
+    
     setIsLoading(true);
     setError('');
 
     try {
-      await login(email, password);
+      // Start progress dialog immediately
+      setShowProgress(true);
+      
+      // Add a small delay to let the progress dialog appear
+      await new Promise(resolve => setTimeout(resolve, 100));
+      
+      console.log('Calling login function with:', { email: currentEmail, password: currentPassword });
+      await login(currentEmail, currentPassword);
+      console.log('Login successful!');
 
       // Remember email if selected
       if (rememberMe) {
-        localStorage.setItem('rememberEmail', email);
+        localStorage.setItem('rememberEmail', currentEmail);
       } else {
         localStorage.removeItem('rememberEmail');
       }
 
-      toast({
-        title: "Welcome back!",
-        description: "You have been successfully logged in.",
-      });
-      navigate(from, { replace: true });
+      // Progress dialog will continue to show success steps and then call onComplete
     } catch (error: any) {
       console.error('Login error:', error);
       setError(error.message || 'Login failed. Please try again.');
+      setShowProgress(false); // Hide progress on error
       toast({
         variant: "destructive",
         title: "Login failed",
@@ -64,6 +125,11 @@ export default function LoginPage() {
     } finally {
       setIsLoading(false);
     }
+  };
+
+  const handleLoginComplete = () => {
+    setShowProgress(false);
+    navigate(from, { replace: true });
   };
 
   return (
@@ -89,7 +155,14 @@ export default function LoginPage() {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <form onSubmit={handleSubmit} className="space-y-4">
+            <form 
+              onSubmit={handleSubmit} 
+              method="POST"
+              action="#"
+              className="space-y-4"
+              noValidate
+              ref={formRef}
+            >
               {error && (
                 <Alert variant="destructive">
                   <AlertDescription>{error}</AlertDescription>
@@ -102,7 +175,16 @@ export default function LoginPage() {
                   id="email"
                   type="email"
                   value={email}
-                  onChange={(e) => setEmail(e.target.value)}
+                  onChange={(e) => {
+                    console.log('=== EMAIL INPUT DEBUG ===');
+                    console.log('Event target:', e.target);
+                    console.log('Event target value:', e.target.value);
+                    console.log('Event target type:', e.target.type);
+                    console.log('Current email state:', email);
+                    console.log('Setting email to:', e.target.value);
+                    setEmail(e.target.value);
+                    console.log('Email state after setEmail:', email); // This will still show old value due to React's async nature
+                  }}
                   required
                   placeholder="Enter your email"
                   disabled={isLoading}
@@ -145,13 +227,13 @@ export default function LoginPage() {
               <Button
                 type="submit"
                 className="w-full"
-                disabled={isLoading}
+                disabled={isLoading || showProgress}
                 style={{ backgroundColor: theme.primaryColor }}
               >
-                {isLoading ? (
+                {isLoading || showProgress ? (
                   <>
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Signing in...
+                    {showProgress ? 'Processing...' : 'Signing in...'}
                   </>
                 ) : (
                   'Sign in'
@@ -170,6 +252,12 @@ export default function LoginPage() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Login Progress Dialog */}
+      <LoginProgress 
+        isOpen={showProgress} 
+        onComplete={handleLoginComplete}
+      />
     </div>
   );
 }

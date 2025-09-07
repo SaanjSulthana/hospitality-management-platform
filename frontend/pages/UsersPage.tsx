@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../contexts/AuthContext';
+import { usePageTitle } from '../contexts/PageTitleContext';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -10,7 +11,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { useToast } from '@/components/ui/use-toast';
-import { Users, Plus, Search, Mail, Calendar, UserPlus, Pencil, RefreshCw } from 'lucide-react';
+import { formatUserActivityDateTime } from '../lib/datetime';
+import { Users, Plus, Search, Mail, Calendar, UserPlus, Pencil, RefreshCw, Shield, User } from 'lucide-react';
 
 type ListUsersResponse = {
   users: {
@@ -20,24 +22,48 @@ type ListUsersResponse = {
     displayName: string;
     createdByUserId?: number;
     createdByName?: string;
-    createdAt: Date;
-    lastLoginAt?: Date;
+    createdAt: string | Date;
+    lastLoginAt?: string | Date;
+    lastActivityAt?: string | Date;
+    loginCount: number;
+    lastLoginIp?: string;
+    lastLoginUserAgent?: string;
+    lastLoginLocation?: {
+      country?: string;
+      region?: string;
+      city?: string;
+      latitude?: number;
+      longitude?: number;
+      timezone?: string;
+    } | null;
+    timezone?: string;
+    locale?: string;
   }[];
 };
 
 export default function UsersPage() {
   const { user, getAuthenticatedBackend } = useAuth();
+  const { setPageTitle } = usePageTitle();
   const { toast } = useToast();
   const queryClient = useQueryClient();
+
+  // Set page title and description
+  useEffect(() => {
+    setPageTitle('User Management', 'Manage user accounts and permissions');
+  }, [setPageTitle]);
   const [searchTerm, setSearchTerm] = useState('');
   const [roleFilter, setRoleFilter] = useState<string>('all');
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
+  const [isPromoteDialogOpen, setIsPromoteDialogOpen] = useState(false);
+  const [userToPromote, setUserToPromote] = useState<any | null>(null);
+  const [isDemoteDialogOpen, setIsDemoteDialogOpen] = useState(false);
+  const [userToDemote, setUserToDemote] = useState<any | null>(null);
   const [newUser, setNewUser] = useState({
     email: '',
     password: '',
     displayName: '',
-    role: 'MANAGER' as const,
+    role: 'MANAGER' as 'ADMIN' | 'MANAGER',
     propertyIds: [] as number[],
   });
   const [editingUser, setEditingUser] = useState<any | null>(null);
@@ -50,11 +76,12 @@ export default function UsersPage() {
     queryKey: ['users'],
     queryFn: async () => {
       const backend = getAuthenticatedBackend();
-      return backend.users.list();
+      return backend.users.list({});
     },
     enabled: user?.role === 'ADMIN',
-    staleTime: 10000, // Reduced to 10 seconds for more frequent updates
-    gcTime: 300000, // 5 minutes
+    refetchInterval: 3000, // Refresh every 3 seconds for real-time activity updates (increased frequency)
+    staleTime: 0, // Consider data immediately stale for fresh user activity
+    gcTime: 0, // Don't cache results
     refetchOnMount: true,
     refetchOnWindowFocus: true,
     retry: (failureCount, error) => {
@@ -67,11 +94,14 @@ export default function UsersPage() {
     queryKey: ['properties'],
     queryFn: async () => {
       const backend = getAuthenticatedBackend();
-      return backend.properties.list();
+      return backend.properties.list({});
     },
     enabled: user?.role === 'ADMIN',
-    staleTime: 30000,
-    gcTime: 300000,
+    refetchInterval: 5000, // Refresh every 5 seconds for real-time updates
+    staleTime: 0, // Always consider data stale for fresh updates
+    gcTime: 0, // Don't cache results
+    refetchOnWindowFocus: true, // Refetch when window gains focus
+    refetchOnMount: true, // Refetch when component mounts
   });
 
   const createUserMutation = useMutation({
@@ -97,10 +127,17 @@ export default function UsersPage() {
           email: newUserData.email,
           role: newUserData.role,
           displayName: newUserData.displayName,
-          createdByUserId: user?.id,
+          createdByUserId: user?.userID ? parseInt(user.userID) : 0,
           createdByName: user?.displayName,
           createdAt: new Date(),
           lastLoginAt: undefined,
+          lastActivityAt: new Date(),
+          loginCount: 0,
+          lastLoginIp: undefined,
+          lastLoginUserAgent: undefined,
+          lastLoginLocation: null,
+          timezone: 'UTC',
+          locale: 'en-US',
         };
         
         return { users: [optimisticUser, ...old.users] };
@@ -137,23 +174,14 @@ export default function UsersPage() {
       
       // Update the cache with the real data from the server
       queryClient.setQueryData<ListUsersResponse>(['users'], (old) => {
-        if (!old) return { users: [createdUser] };
+        if (!old) return { users: [createdUser as any] };
         
         // Remove optimistic updates (Date.now() ~ 13 digits)
         const filteredUsers = old.users.filter((u: any) => !(typeof u.id === 'number' && u.id >= 1_000_000_000_000));
         
-        const newUserData = {
-          id: createdUser.id,
-          email: createdUser.email,
-          role: createdUser.role,
-          displayName: createdUser.displayName,
-          createdByUserId: createdUser.createdByUserId,
-          createdByName: user?.displayName,
-          createdAt: new Date(),
-          lastLoginAt: undefined,
-        };
-        
-        return { users: [newUserData, ...filteredUsers] };
+        // Since CreateUserResponse doesn't have all the fields, we'll use type assertion
+        // and let the backend refetch handle the complete data
+        return { users: [createdUser as any, ...filteredUsers] };
       });
 
       setIsCreateDialogOpen(false);
@@ -180,7 +208,11 @@ export default function UsersPage() {
     mutationFn: async (payload: { id: number; displayName?: string; email?: string; password?: string }) => {
       console.log('Updating user with data:', payload);
       const backend = getAuthenticatedBackend();
-      return backend.users.update(payload);
+      return backend.users.update(payload.id, { 
+        displayName: payload.displayName, 
+        email: payload.email, 
+        password: payload.password 
+      });
     },
     onMutate: async (updatedUser) => {
       console.log('User update mutation starting...');
@@ -244,7 +276,7 @@ export default function UsersPage() {
     mutationFn: async (payload: { id: number; propertyIds: number[] }) => {
       console.log('Assigning properties with data:', payload);
       const backend = getAuthenticatedBackend();
-      return backend.users.assignProperties(payload);
+      return backend.users.assignProperties({ id: payload.id, propertyIds: payload.propertyIds });
     },
     onError: (error: any) => {
       console.error('Property assignment failed:', error);
@@ -267,6 +299,72 @@ export default function UsersPage() {
     },
   });
 
+  const promoteToAdminMutation = useMutation({
+    mutationFn: async (userId: number) => {
+      console.log('Promoting user to admin:', userId);
+      
+      // Additional validation
+      if (typeof userId !== 'number' || isNaN(userId)) {
+        throw new Error(`Invalid user ID: ${userId} (type: ${typeof userId})`);
+      }
+      
+      const backend = getAuthenticatedBackend();
+      return backend.users.update(userId, { role: 'ADMIN' });
+    },
+    onError: (error: any) => {
+      console.error('Role promotion failed:', error);
+      toast({
+        variant: "destructive",
+        title: "Failed to promote user",
+        description: error.message || "Please try again.",
+      });
+    },
+    onSuccess: (updatedUser) => {
+      console.log('User promoted to admin successfully:', updatedUser);
+      toast({
+        title: "User promoted",
+        description: "User has been promoted to Admin role.",
+      });
+    },
+    onSettled: () => {
+      console.log('Role promotion mutation settled, invalidating queries...');
+      refetchUsers();
+    },
+  });
+
+  const demoteToManagerMutation = useMutation({
+    mutationFn: async (userId: number) => {
+      console.log('Demoting user to manager:', userId);
+      
+      // Additional validation
+      if (typeof userId !== 'number' || isNaN(userId)) {
+        throw new Error(`Invalid user ID: ${userId} (type: ${typeof userId})`);
+      }
+      
+      const backend = getAuthenticatedBackend();
+      return backend.users.update(userId, { role: 'MANAGER' });
+    },
+    onError: (error: any) => {
+      console.error('Role demotion failed:', error);
+      toast({
+        variant: "destructive",
+        title: "Failed to demote user",
+        description: error.message || "Please try again.",
+      });
+    },
+    onSuccess: (updatedUser) => {
+      console.log('User demoted to manager successfully:', updatedUser);
+      toast({
+        title: "User demoted",
+        description: "User has been demoted to Manager role.",
+      });
+    },
+    onSettled: () => {
+      console.log('Role demotion mutation settled, invalidating queries...');
+      refetchUsers();
+    },
+  });
+
   const filteredUsers = users?.users.filter(user => {
     const matchesSearch = user.displayName.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          user.email.toLowerCase().includes(searchTerm.toLowerCase());
@@ -283,7 +381,11 @@ export default function UsersPage() {
   };
 
   const getRoleDisplayName = (role: string) => {
-    return role.charAt(0) + role.slice(1).toLowerCase();
+    switch (role) {
+      case 'ADMIN': return 'Admin';
+      case 'MANAGER': return 'Manager';
+      default: return role.charAt(0) + role.slice(1).toLowerCase();
+    }
   };
 
   const getInitials = (name: string) => {
@@ -345,16 +447,112 @@ export default function UsersPage() {
     });
   };
 
-  // Only show to admins
+  const handlePromoteToAdmin = (user: any) => {
+    console.log('Handling promotion for user:', user);
+    console.log('User ID type:', typeof user.id, 'Value:', user.id);
+    
+    // Validate user object before setting state
+    if (!user || typeof user.id !== 'number' || isNaN(user.id)) {
+      console.error('Invalid user object for promotion:', user);
+      toast({
+        variant: "destructive",
+        title: "Invalid User Data",
+        description: "Cannot promote user with invalid data. Please refresh and try again.",
+      });
+      return;
+    }
+    
+    setUserToPromote(user);
+    setIsPromoteDialogOpen(true);
+  };
+
+  const confirmPromoteToAdmin = () => {
+    if (userToPromote) {
+      console.log('Confirming promotion for user:', userToPromote);
+      console.log('User ID type:', typeof userToPromote.id, 'Value:', userToPromote.id);
+      
+      // Validate user ID before making the API call
+      if (typeof userToPromote.id !== 'number' || isNaN(userToPromote.id)) {
+        console.error('Invalid user ID for promotion:', userToPromote.id);
+        toast({
+          variant: "destructive",
+          title: "Invalid User ID",
+          description: "Cannot promote user with invalid ID. Please refresh and try again.",
+        });
+        return;
+      }
+      
+      // Determine which promotion to use based on current role
+      if (userToPromote.role === 'MANAGER') {
+        promoteToAdminMutation.mutate(userToPromote.id);
+      }
+      
+      setIsPromoteDialogOpen(false);
+      setUserToPromote(null);
+    }
+  };
+
+  const handleDemoteToManager = (user: any) => {
+    console.log('Handling demotion for user:', user);
+    console.log('User ID type:', typeof user.id, 'Value:', user.id);
+    
+    // Validate user object before setting state
+    if (!user || typeof user.id !== 'number' || isNaN(user.id)) {
+      console.error('Invalid user object for demotion:', user);
+      toast({
+        variant: "destructive",
+        title: "Invalid User Data",
+        description: "Cannot demote user with invalid data. Please refresh and try again.",
+      });
+      return;
+    }
+    
+    setUserToDemote(user);
+    setIsDemoteDialogOpen(true);
+  };
+
+  const confirmDemoteToManager = () => {
+    if (userToDemote) {
+      console.log('Confirming demotion for user:', userToDemote);
+      console.log('User ID type:', typeof userToDemote.id, 'Value:', userToDemote.id);
+      
+      // Validate user ID before making the API call
+      if (typeof userToDemote.id !== 'number' || isNaN(userToDemote.id)) {
+        console.error('Invalid user ID for demotion:', userToDemote.id);
+        toast({
+          variant: "destructive",
+          title: "Invalid User ID",
+          description: "Cannot demote user with invalid ID. Please refresh and try again.",
+        });
+        return;
+      }
+      
+      // Determine which demotion to use based on current role
+      if (userToDemote.role === 'ADMIN') {
+        demoteToManagerMutation.mutate(userToDemote.id);
+      }
+      
+      setIsDemoteDialogOpen(false);
+      setUserToDemote(null);
+    }
+  };
+
+  // Only show to ADMIN
   if (user?.role !== 'ADMIN') {
     return (
-      <div className="space-y-6">
-        <div className="text-center py-12">
-          <Users className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-          <h3 className="text-lg font-medium text-gray-900 mb-2">Access Restricted</h3>
-          <p className="text-gray-500">
-            Only Administrators can manage users.
-          </p>
+      <div className="min-h-screen bg-gray-50">
+        <div className="px-6 py-6">
+          <Card className="border-l-4 border-l-red-500 shadow-sm">
+            <CardContent className="flex items-center justify-center p-12">
+              <div className="text-center">
+                <div className="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                  <Shield className="h-6 w-6 text-red-600" />
+                </div>
+                <h3 className="text-lg font-medium text-red-900 mb-2">Access Restricted</h3>
+                <p className="text-sm text-gray-600">Only Administrators can manage users.</p>
+              </div>
+            </CardContent>
+          </Card>
         </div>
       </div>
     );
@@ -362,82 +560,133 @@ export default function UsersPage() {
 
   if (isLoading) {
     return (
-      <div className="space-y-6">
-        <div className="flex justify-between items-center">
-          <h1 className="text-3xl font-bold">Users</h1>
-        </div>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {[...Array(6)].map((_, i) => (
-            <Card key={i} className="animate-pulse">
-              <CardHeader>
-                <div className="h-4 bg-gray-200 rounded w-3/4"></div>
-                <div className="h-3 bg-gray-200 rounded w-1/2"></div>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-2">
-                  <div className="h-3 bg-gray-200 rounded"></div>
-                  <div className="h-3 bg-gray-200 rounded w-2/3"></div>
+      <div className="min-h-screen bg-gray-50">
+        <div className="px-6 py-6">
+          <Card className="border-l-4 border-l-blue-500 shadow-sm">
+            <CardContent className="flex items-center justify-center p-12">
+              <div className="text-center">
+                <RefreshCw className="h-8 w-8 animate-spin text-blue-600 mx-auto mb-4" />
+                <p className="text-lg font-medium text-gray-900">Loading users...</p>
+                <p className="text-sm text-gray-600 mt-2">Please wait while we fetch your user data</p>
                 </div>
               </CardContent>
             </Card>
-          ))}
         </div>
       </div>
     );
   }
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex justify-between items-center">
-        <div>
-          <h1 className="text-3xl font-bold text-gray-900">Users</h1>
-          <p className="text-gray-600">Manage team members and their roles</p>
+    <div className="min-h-screen bg-gray-50">
+      <div className="px-6 py-6">
+        {/* Optimized User Management Section */}
+        <Card className="border-l-4 border-l-blue-500 shadow-sm hover:shadow-md transition-shadow duration-200 mb-6">
+          <CardHeader className="pb-4">
+          <div className="flex items-center gap-3">
+              <div className="p-2 bg-blue-100 rounded-lg shadow-sm">
+                <Users className="h-5 w-5 text-blue-600" />
+            </div>
+              <div>
+                <CardTitle className="text-xl font-bold text-gray-900 flex items-center gap-2">
+                  User Management
+                  <span className="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded-full font-medium">Live</span>
+                </CardTitle>
+                <CardDescription className="text-sm text-gray-600">
+                  Manage team members and their roles
+                </CardDescription>
+          </div>
         </div>
-        <div className="flex gap-2">
-          <Button variant="outline" onClick={handleRefresh}>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            {/* Search and Filter Controls */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="search-users" className="text-sm font-medium text-gray-700">Search Users</Label>
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
+                  <Input
+                    id="search-users"
+                    placeholder="Search by name or email..."
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    className="pl-10 h-11 border-gray-300 focus:border-blue-500 focus:ring-blue-500"
+                  />
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="role-filter" className="text-sm font-medium text-gray-700">Filter by Role</Label>
+                <Select value={roleFilter} onValueChange={setRoleFilter}>
+                  <SelectTrigger className="h-11 border-gray-300 focus:border-blue-500 focus:ring-blue-500">
+                    <SelectValue placeholder="Filter by role" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Roles</SelectItem>
+                    <SelectItem value="ADMIN">Admin</SelectItem>
+                    <SelectItem value="MANAGER">Manager</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            {/* Action Buttons */}
+            <div className="flex flex-wrap gap-2">
+              <Button 
+                variant="outline" 
+                onClick={handleRefresh}
+                className="transition-all duration-200 hover:scale-105 hover:shadow-md flex-shrink-0"
+              >
             <RefreshCw className="mr-2 h-4 w-4" />
-            Refresh
+                <span className="hidden sm:inline">Refresh</span>
+                <span className="sm:hidden">Refresh</span>
           </Button>
           <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
             <DialogTrigger asChild>
-              <Button>
+                  <Button className="bg-blue-600 hover:bg-blue-700 transition-all duration-200 hover:scale-105 hover:shadow-md">
                 <Plus className="mr-2 h-4 w-4" />
-                Create Manager
+                    <span className="hidden sm:inline">Create User</span>
+                    <span className="sm:hidden">Create</span>
               </Button>
             </DialogTrigger>
-            <DialogContent>
-              <DialogHeader>
-                <DialogTitle>Create Manager Account</DialogTitle>
-                <DialogDescription>
-                  Create a new manager account and assign properties.
-                </DialogDescription>
-              </DialogHeader>
-              <div className="space-y-4">
+                <DialogContent className="max-w-2xl max-h-[95vh] overflow-hidden flex flex-col">
+                  <DialogHeader className="pb-4">
+                    <DialogTitle className="text-xl font-bold text-gray-900 flex items-center gap-2">
+                      <div className="p-2 bg-blue-100 rounded-lg shadow-sm">
+                        <UserPlus className="h-5 w-5 text-blue-600" />
+                      </div>
+                      Create {newUser.role === 'ADMIN' ? 'Admin' : 'Manager'} Account
+                    </DialogTitle>
+                    <DialogDescription className="text-sm text-gray-600">
+                 Create a new {newUser.role === 'ADMIN' ? 'admin' : 'manager'} account{newUser.role === 'MANAGER' ? ' and assign properties' : ''}.
+               </DialogDescription>
+             </DialogHeader>
+                  <div className="flex-1 overflow-y-auto px-1">
+                    <div className="space-y-6">
                 <div className="space-y-2">
-                  <Label htmlFor="displayName">Full Name</Label>
+                        <Label htmlFor="displayName" className="text-sm font-medium text-gray-700">Full Name *</Label>
                   <Input
                     id="displayName"
                     value={newUser.displayName}
                     onChange={(e) => setNewUser(prev => ({ ...prev, displayName: e.target.value }))}
                     placeholder="Enter full name"
+                          className="h-11 border-gray-300 focus:border-blue-500 focus:ring-blue-500"
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="email">Email</Label>
+                        <Label htmlFor="email" className="text-sm font-medium text-gray-700">Email *</Label>
                   <Input
                     id="email"
                     type="email"
                     value={newUser.email}
                     onChange={(e) => setNewUser(prev => ({ ...prev, email: e.target.value }))}
                     placeholder="Enter email address"
+                          className="h-11 border-gray-300 focus:border-blue-500 focus:ring-blue-500"
                   />
                   {users?.users.some(u => u.email.toLowerCase() === newUser.email.toLowerCase()) && (
                     <p className="text-sm text-red-600">This email is already in use</p>
                   )}
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="password">Password</Label>
+                        <Label htmlFor="password" className="text-sm font-medium text-gray-700">Password *</Label>
                   <Input
                     id="password"
                     type="password"
@@ -445,13 +694,36 @@ export default function UsersPage() {
                     onChange={(e) => setNewUser(prev => ({ ...prev, password: e.target.value }))}
                     placeholder="Enter password (min 8 characters)"
                     minLength={8}
+                          className="h-11 border-gray-300 focus:border-blue-500 focus:ring-blue-500"
                   />
                 </div>
 
                 <div className="space-y-2">
-                  <Label>Assign Properties</Label>
+                        <Label htmlFor="role" className="text-sm font-medium text-gray-700">Role *</Label>
+                                     <Select 
+                     value={newUser.role} 
+                     onValueChange={(value: 'ADMIN' | 'MANAGER') => setNewUser(prev => ({ ...prev, role: value }))}
+                   >
+                          <SelectTrigger className="h-11 border-gray-300 focus:border-blue-500 focus:ring-blue-500">
+                      <SelectValue placeholder="Select role" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="MANAGER">Manager</SelectItem>
+                      <SelectItem value="ADMIN">Admin</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-gray-500">
+                    {newUser.role === 'ADMIN' 
+                      ? 'Admins have full access to all features and can manage managers.'
+                      : 'Managers can manage properties and tasks assigned to them.'
+                    }
+                  </p>
+                </div>
+
+                <div className="space-y-2">
+                        <Label className="text-sm font-medium text-gray-700">Assign Properties</Label>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-2 max-h-48 overflow-auto border rounded p-2">
-                    {properties?.properties.map((p) => (
+                    {properties?.properties.map((p: any) => (
                       <label key={p.id} className="flex items-center gap-2 text-sm">
                         <input
                           type="checkbox"
@@ -471,8 +743,14 @@ export default function UsersPage() {
                   </div>
                 </div>
               </div>
-              <DialogFooter>
-                <Button variant="outline" onClick={() => setIsCreateDialogOpen(false)}>
+                  </div>
+                  <DialogFooter className="border-t pt-4 mt-6 bg-gray-50 -mx-6 -mb-6 px-6 py-4">
+                    <div className="flex items-center justify-between w-full">
+                      <Button 
+                        variant="outline" 
+                        onClick={() => setIsCreateDialogOpen(false)}
+                        className="transition-all duration-200 hover:scale-105 hover:shadow-md"
+                      >
                   Cancel
                 </Button>
                 <Button 
@@ -484,67 +762,72 @@ export default function UsersPage() {
                     !newUser.displayName ||
                     users?.users.some(u => u.email.toLowerCase() === newUser.email.toLowerCase())
                   }
-                >
-                  {createUserMutation.isPending ? 'Creating...' : 'Create Manager'}
-                </Button>
+                        className="bg-blue-600 hover:bg-blue-700 transition-all duration-200 hover:scale-105 hover:shadow-md"
+                      >
+                        {createUserMutation.isPending ? (
+                          <>
+                            <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
+                            Creating...
+                          </>
+                        ) : (
+                          <>
+                            <UserPlus className="mr-2 h-4 w-4" />
+                            Create {newUser.role === 'ADMIN' ? 'Admin' : 'Manager'}
+                          </>
+                        )}
+                 </Button>
+                    </div>
               </DialogFooter>
             </DialogContent>
           </Dialog>
         </div>
-      </div>
+          </CardContent>
+        </Card>
 
-      {/* Filters */}
-      <div className="flex flex-col sm:flex-row gap-4">
-        <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
-          <Input
-            placeholder="Search users..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="pl-10"
-          />
-        </div>
-        <Select value={roleFilter} onValueChange={setRoleFilter}>
-          <SelectTrigger className="w-full sm:w-48">
-            <SelectValue placeholder="Filter by role" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All Roles</SelectItem>
-            <SelectItem value="ADMIN">Admin</SelectItem>
-            <SelectItem value="MANAGER">Manager</SelectItem>
-          </SelectContent>
-        </Select>
-      </div>
-
-      {/* Users Grid */}
+        {/* Optimized Users Grid */}
       {filteredUsers.length === 0 ? (
-        <Card>
+          <Card className="border-l-4 border-l-blue-500 shadow-sm hover:shadow-md transition-shadow duration-200">
           <CardContent className="flex flex-col items-center justify-center py-12">
-            <Users className="h-12 w-12 text-gray-400 mb-4" />
+              <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                <Users className="h-8 w-8 text-blue-600" />
+              </div>
             <h3 className="text-lg font-medium text-gray-900 mb-2">No users found</h3>
             <p className="text-gray-500 text-center mb-4">
               {searchTerm || roleFilter !== 'all' 
                 ? 'Try adjusting your search or filters'
-                : 'Get started by creating your first manager'
+                : 'Get started by creating your first user'
               }
             </p>
-            <div className="flex gap-2">
-              <Button variant="outline" onClick={handleRefresh}>
+              <div className="flex flex-wrap gap-2">
+                <Button 
+                  variant="outline" 
+                  onClick={handleRefresh}
+                  className="transition-all duration-200 hover:scale-105 hover:shadow-md"
+                >
                 <RefreshCw className="mr-2 h-4 w-4" />
                 Refresh List
               </Button>
-              <Button onClick={() => setIsCreateDialogOpen(true)}>
+                <Button 
+                  onClick={() => setIsCreateDialogOpen(true)}
+                  className="bg-blue-600 hover:bg-blue-700 transition-all duration-200 hover:scale-105 hover:shadow-md"
+                >
                 <Plus className="mr-2 h-4 w-4" />
-                Create Manager
+                Create User
               </Button>
             </div>
           </CardContent>
         </Card>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {filteredUsers.map((u) => (
-            <Card key={u.id} className="hover:shadow-lg transition-shadow">
-              <CardHeader>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
+          {filteredUsers.map((u) => {
+            // Debug logging for user objects
+            if (process.env.NODE_ENV === 'development') {
+              console.log('Rendering user:', { id: u.id, type: typeof u.id, email: u.email, role: u.role });
+            }
+            
+            return (
+                <Card key={u.id} className="border-l-4 border-l-blue-500 shadow-sm hover:shadow-md transition-shadow duration-200">
+                  <CardHeader className="pb-4">
                 <div className="flex items-start space-x-4">
                   <Avatar className="h-12 w-12">
                     <AvatarFallback className="bg-blue-100 text-blue-600">
@@ -552,19 +835,18 @@ export default function UsersPage() {
                     </AvatarFallback>
                   </Avatar>
                   <div className="flex-1 min-w-0">
-                    <CardTitle className="text-lg truncate">{u.displayName}</CardTitle>
+                        <CardTitle className="text-lg font-bold text-gray-900 truncate">{u.displayName}</CardTitle>
                     <CardDescription className="flex items-center mt-1">
-                      <Mail className="h-3 w-3 mr-1" />
-                      <span className="truncate">{u.email}</span>
+                          <Mail className="h-3 w-3 mr-1 flex-shrink-0" />
+                          <span className="truncate text-sm text-gray-600">{u.email}</span>
                     </CardDescription>
                   </div>
                 </div>
               </CardHeader>
-              <CardContent>
-                <div className="space-y-3">
+                  <CardContent className="space-y-3">
                   <div className="flex items-center justify-between">
                     <span className="text-sm font-medium text-gray-700">Role</span>
-                    <Badge className={getRoleColor(u.role)}>
+                      <Badge className={`${getRoleColor(u.role)} flex-shrink-0`}>
                       {getRoleDisplayName(u.role)}
                     </Badge>
                   </div>
@@ -580,7 +862,7 @@ export default function UsersPage() {
                     <div className="flex items-center justify-between text-sm">
                       <span className="text-gray-700">Last login</span>
                       <div className="flex items-center text-gray-600">
-                        <Calendar className="h-3 w-3 mr-1" />
+                          <Calendar className="h-3 w-3 mr-1 flex-shrink-0" />
                         <span>{new Date(u.lastLoginAt).toLocaleDateString()}</span>
                       </div>
                     </div>
@@ -589,65 +871,167 @@ export default function UsersPage() {
                   <div className="flex items-center justify-between text-sm">
                     <span className="text-gray-700">Joined</span>
                     <div className="flex items-center text-gray-600">
-                      <Calendar className="h-3 w-3 mr-1" />
+                        <Calendar className="h-3 w-3 mr-1 flex-shrink-0" />
                       <span>{new Date(u.createdAt).toLocaleDateString()}</span>
                     </div>
                   </div>
 
-                  <div className="flex justify-end pt-2">
-                    <Button variant="outline" size="sm" onClick={() => openEditDialog(u)}>
-                      <Pencil className="mr-2 h-4 w-4" />
-                      Edit
-                    </Button>
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-gray-700">Login count</span>
+                    <span className="text-gray-600">{u.loginCount || 0}</span>
                   </div>
+
+                  {u.lastActivityAt && (
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-gray-700">Last activity</span>
+                      <div className="flex items-center text-gray-600">
+                          <Calendar className="h-3 w-3 mr-1 flex-shrink-0" />
+                        <span>{formatUserActivityDateTime(u.lastActivityAt)}</span>
+                      </div>
+                    </div>
+                  )}
+
+                  {u.lastLoginLocation && (
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-gray-700">Last location</span>
+                      <div className="text-gray-600 text-xs">
+                        {u.lastLoginLocation.city && <div>{u.lastLoginLocation.city}</div>}
+                        {u.lastLoginLocation.region && <div>{u.lastLoginLocation.region}</div>}
+                        {u.lastLoginLocation.country && <div>{u.lastLoginLocation.country}</div>}
+                      </div>
+                    </div>
+                  )}
+
+                  {u.timezone && (
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-gray-700">Timezone</span>
+                      <span className="text-gray-600">{u.timezone}</span>
+                    </div>
+                  )}
+
+                    <div className="flex flex-wrap gap-2 pt-2">
+                    {/* ADMIN can promote managers to admin */}
+                    {user?.role === 'ADMIN' && u.role === 'MANAGER' && u.id !== parseInt(user?.userID || '0') && (
+                      <Button 
+                        variant="outline" 
+                        size="sm" 
+                        onClick={() => handlePromoteToAdmin(u)}
+                        disabled={promoteToAdminMutation.isPending}
+                          className="bg-purple-50 text-purple-700 border-purple-200 hover:bg-purple-100 transition-all duration-200 hover:scale-105 hover:shadow-md flex-shrink-0"
+                      >
+                        <Shield className="mr-2 h-3 w-3" />
+                          <span className="hidden sm:inline">Promote to Admin</span>
+                          <span className="sm:hidden">Promote</span>
+                      </Button>
+                    )}
+                    {u.role === 'MANAGER' && u.id === parseInt(user?.userID || '0') && (
+                      <div className="text-xs text-gray-500 italic px-2 py-1 bg-gray-100 rounded">
+                        Current user (cannot promote)
+                      </div>
+                    )}
+                    {/* ADMIN can demote other admins to manager */}
+                    {user?.role === 'ADMIN' && u.role === 'ADMIN' && u.id !== parseInt(user?.userID || '0') && (
+                      <Button 
+                        variant="outline" 
+                        size="sm" 
+                        onClick={() => handleDemoteToManager(u)}
+                        disabled={demoteToManagerMutation.isPending}
+                          className="bg-orange-50 text-orange-700 border-orange-200 hover:bg-orange-100 transition-all duration-200 hover:scale-105 hover:shadow-md flex-shrink-0"
+                      >
+                        <User className="mr-2 h-3 w-3" />
+                          <span className="hidden sm:inline">Demote to Manager</span>
+                          <span className="sm:hidden">Demote</span>
+                      </Button>
+                    )}
+                    {u.role === 'ADMIN' && u.id === parseInt(user?.userID || '0') && (
+                      <div className="text-xs text-gray-500 italic px-2 py-1 bg-gray-100 rounded">
+                        Current user (cannot demote)
+                      </div>
+                    )}
+                      <Button 
+                        variant="outline" 
+                        size="sm" 
+                        onClick={() => openEditDialog(u)}
+                        className="transition-all duration-200 hover:scale-105 hover:shadow-md flex-shrink-0"
+                      >
+                      <Pencil className="mr-2 h-4 w-4" />
+                        <span className="hidden sm:inline">Edit</span>
+                        <span className="sm:hidden">Edit</span>
+                    </Button>
                 </div>
               </CardContent>
             </Card>
-          ))}
+            );
+          })}
         </div>
       )}
 
-      {/* Edit Dialog */}
+        {/* Enhanced Edit Dialog */}
       <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Edit Manager</DialogTitle>
-            <DialogDescription>Update manager details and property assignments</DialogDescription>
-          </DialogHeader>
+          <DialogContent className="max-w-2xl max-h-[95vh] overflow-hidden flex flex-col">
+            <DialogHeader className="pb-4">
+              <DialogTitle className="text-xl font-bold text-gray-900 flex items-center gap-2">
+                <div className="p-2 bg-orange-100 rounded-lg shadow-sm">
+                  <Pencil className="h-5 w-5 text-orange-600" />
+                </div>
+                Edit {editingUser?.role === 'ADMIN' ? 'Admin' : 'Manager'}
+              </DialogTitle>
+              <DialogDescription className="text-sm text-gray-600">
+                Update {editingUser?.role === 'ADMIN' ? 'admin' : 'manager'} details{editingUser?.role === 'MANAGER' ? ' and property assignments' : ''}
+              </DialogDescription>
+           </DialogHeader>
           {editingUser && (
-            <div className="space-y-4">
+              <div className="flex-1 overflow-y-auto px-1">
+                <div className="space-y-6">
+              {editingUser.id === parseInt(user?.userID || '0') && (
+                <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                  <div className="flex items-start gap-3">
+                    <User className="h-5 w-5 text-blue-600 mt-0.5" />
+                    <div className="text-sm text-blue-800">
+                      <p className="font-medium">ℹ️ Note: This is your own account</p>
+                      <p>You can update your personal details, but some changes may require another admin.</p>
+                    </div>
+                  </div>
+                </div>
+              )}
               <div className="space-y-2">
-                <Label>Full Name</Label>
+                    <Label htmlFor="edit-displayName" className="text-sm font-medium text-gray-700">Full Name *</Label>
                 <Input
+                      id="edit-displayName"
                   value={editingDisplayName}
                   onChange={(e) => setEditingDisplayName(e.target.value)}
+                      className="h-11 border-gray-300 focus:border-blue-500 focus:ring-blue-500"
                 />
               </div>
               <div className="space-y-2">
-                <Label>Email</Label>
+                    <Label htmlFor="edit-email" className="text-sm font-medium text-gray-700">Email *</Label>
                 <Input
+                      id="edit-email"
                   type="email"
                   value={editingEmail}
                   onChange={(e) => setEditingEmail(e.target.value)}
+                      className="h-11 border-gray-300 focus:border-blue-500 focus:ring-blue-500"
                 />
                 {users?.users.some(u => u.id !== editingUser.id && u.email.toLowerCase() === editingEmail.toLowerCase()) && (
                   <p className="text-sm text-red-600">This email is already in use by another user</p>
                 )}
               </div>
               <div className="space-y-2">
-                <Label>New Password (optional)</Label>
+                    <Label htmlFor="edit-password" className="text-sm font-medium text-gray-700">New Password (optional)</Label>
                 <Input
+                      id="edit-password"
                   type="password"
                   value={editingPassword}
                   onChange={(e) => setEditingPassword(e.target.value)}
                   placeholder="Leave blank to keep current password"
+                      className="h-11 border-gray-300 focus:border-blue-500 focus:ring-blue-500"
                 />
               </div>
 
               <div className="space-y-2">
-                <Label>Assigned Properties</Label>
+                    <Label className="text-sm font-medium text-gray-700">Assigned Properties</Label>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-2 max-h-48 overflow-auto border rounded p-2">
-                  {properties?.properties.map((p) => (
+                  {properties?.properties.map((p: any) => (
                     <label key={p.id} className="flex items-center gap-2 text-sm">
                       <input
                         type="checkbox"
@@ -657,12 +1041,18 @@ export default function UsersPage() {
                       <span>{p.name}</span>
                     </label>
                   ))}
+                    </div>
                 </div>
               </div>
             </div>
           )}
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setIsEditDialogOpen(false)}>
+            <DialogFooter className="border-t pt-4 mt-6 bg-gray-50 -mx-6 -mb-6 px-6 py-4">
+              <div className="flex items-center justify-between w-full">
+                <Button 
+                  variant="outline" 
+                  onClick={() => setIsEditDialogOpen(false)}
+                  className="transition-all duration-200 hover:scale-105 hover:shadow-md"
+                >
               Cancel
             </Button>
             <Button
@@ -707,12 +1097,200 @@ export default function UsersPage() {
                 !editingEmail ||
                 users?.users.some(u => u.id !== editingUser?.id && u.email.toLowerCase() === editingEmail.toLowerCase())
               }
-            >
-              {(updateUserMutation.isPending || assignPropertiesMutation.isPending) ? 'Saving...' : 'Save Changes'}
+                  className="bg-orange-600 hover:bg-orange-700 transition-all duration-200 hover:scale-105 hover:shadow-md"
+                >
+                  {(updateUserMutation.isPending || assignPropertiesMutation.isPending) ? (
+                    <>
+                      <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
+                      Saving...
+                    </>
+                  ) : (
+                    <>
+                      <Pencil className="mr-2 h-4 w-4" />
+                      Save Changes
+                    </>
+                  )}
             </Button>
+              </div>
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+        {/* Enhanced Promotion Confirmation Dialog */}
+       <Dialog open={isPromoteDialogOpen} onOpenChange={setIsPromoteDialogOpen}>
+          <DialogContent className="max-w-2xl max-h-[95vh] overflow-hidden flex flex-col">
+            <DialogHeader className="pb-4">
+              <DialogTitle className="text-xl font-bold text-gray-900 flex items-center gap-2">
+                <div className="p-2 bg-purple-100 rounded-lg shadow-sm">
+                  <Shield className="h-5 w-5 text-purple-600" />
+                </div>
+                Promote User
+              </DialogTitle>
+              <DialogDescription className="text-sm text-gray-600">
+               Are you sure you want to promote <strong>{userToPromote?.displayName}</strong>?
+             </DialogDescription>
+           </DialogHeader>
+            <div className="flex-1 overflow-y-auto px-1">
+          <div className="space-y-4">
+            {userToPromote && parseInt(user?.userID || '0') === userToPromote.id && (
+              <div className="p-4 bg-red-50 border border-red-200 rounded-lg">
+                <div className="flex items-start gap-3">
+                      <AlertCircle className="h-5 w-5 text-red-600 mt-0.5" />
+                  <div className="text-sm text-red-800">
+                    <p className="font-medium">⚠️ Warning: This is your own account</p>
+                    <p>You cannot promote yourself. Ask another admin to do this for you.</p>
+                  </div>
+                </div>
+              </div>
+            )}
+                         <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
+               <div className="flex items-start gap-3">
+                 <Shield className="h-5 w-5 text-yellow-600 mt-0.5" />
+                 <div className="text-sm text-yellow-800">
+                   <p className="font-medium mb-1">
+                     {userToPromote?.role === 'MANAGER' ? 'Admin privileges include:' : 'Admin privileges include:'}
+                   </p>
+                   <ul className="list-disc list-inside space-y-1">
+                     {userToPromote?.role === 'MANAGER' ? (
+                       <>
+                         <li>Full access to all system features</li>
+                         <li>Ability to create and manage managers</li>
+                         <li>Access to organization settings</li>
+                         <li>View all properties and financial data</li>
+                       </>
+                     ) : (
+                       <>
+                         <li>Full access to all system features</li>
+                         <li>Ability to create and manage managers</li>
+                         <li>Complete control over organization settings</li>
+                         <li>View and manage all properties and financial data</li>
+                         <li>Highest level administrative privileges</li>
+                       </>
+                     )}
+                   </ul>
+                 </div>
+               </div>
+             </div>
+          </div>
+            </div>
+            <DialogFooter className="border-t pt-4 mt-6 bg-gray-50 -mx-6 -mb-6 px-6 py-4">
+              <div className="flex items-center justify-between w-full">
+                <Button 
+                  variant="outline" 
+                  onClick={() => setIsPromoteDialogOpen(false)}
+                  className="transition-all duration-200 hover:scale-105 hover:shadow-md"
+                >
+              Cancel
+            </Button>
+                         <Button 
+               onClick={confirmPromoteToAdmin}
+               disabled={promoteToAdminMutation.isPending}
+                  className="bg-purple-600 hover:bg-purple-700 transition-all duration-200 hover:scale-105 hover:shadow-md"
+                >
+                  {promoteToAdminMutation.isPending ? (
+                    <>
+                      <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
+                      Promoting...
+                    </>
+                  ) : (
+                    <>
+                      <Shield className="mr-2 h-4 w-4" />
+                      Promote User
+                    </>
+                  )}
+             </Button>
+              </div>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+        {/* Enhanced Demotion Confirmation Dialog */}
+       <Dialog open={isDemoteDialogOpen} onOpenChange={setIsDemoteDialogOpen}>
+          <DialogContent className="max-w-2xl max-h-[95vh] overflow-hidden flex flex-col">
+            <DialogHeader className="pb-4">
+              <DialogTitle className="text-xl font-bold text-gray-900 flex items-center gap-2">
+                <div className="p-2 bg-orange-100 rounded-lg shadow-sm">
+                  <User className="h-5 w-5 text-orange-600" />
+                </div>
+                Demote User
+              </DialogTitle>
+              <DialogDescription className="text-sm text-gray-600">
+               Are you sure you want to demote <strong>{userToDemote?.displayName}</strong>?
+             </DialogDescription>
+           </DialogHeader>
+            <div className="flex-1 overflow-y-auto px-1">
+          <div className="space-y-4">
+            {userToDemote && parseInt(user?.userID || '0') === userToDemote.id && (
+              <div className="p-4 bg-red-50 border border-red-200 rounded-lg">
+                <div className="flex items-start gap-3">
+                      <AlertCircle className="h-5 w-5 text-red-600 mt-0.5" />
+                  <div className="text-sm text-red-800">
+                    <p className="font-medium">⚠️ Warning: This is your own account</p>
+                    <p>You cannot demote yourself. Ask another admin to do this for you.</p>
+                  </div>
+                </div>
+              </div>
+            )}
+                         <div className="p-4 bg-orange-50 border border-orange-200 rounded-lg">
+               <div className="flex items-start gap-3">
+                 <User className="h-5 w-5 text-orange-600 mt-0.5" />
+                 <div className="text-sm text-orange-800">
+                   <p className="font-medium mb-1">
+                     {userToDemote?.role === 'ADMIN' ? 'Admin privileges include:' : 'Manager privileges include:'}
+                   </p>
+                   <ul className="list-disc list-inside space-y-1">
+                     {userToDemote?.role === 'ADMIN' ? (
+                       <>
+                         <li>Full access to all system features</li>
+                         <li>Ability to create and manage managers</li>
+                         <li>Access to organization settings</li>
+                         <li>View all properties and financial data</li>
+                       </>
+                     ) : (
+                       <>
+                         <li>Manage assigned properties and tasks</li>
+                         <li>View financial data for assigned properties</li>
+                         <li>Manage staff and bookings</li>
+                         <li>Cannot access user management or system settings</li>
+                       </>
+                     )}
+                   </ul>
+                 </div>
+               </div>
+             </div>
+          </div>
+            </div>
+            <DialogFooter className="border-t pt-4 mt-6 bg-gray-50 -mx-6 -mb-6 px-6 py-4">
+              <div className="flex items-center justify-between w-full">
+                <Button 
+                  variant="outline" 
+                  onClick={() => setIsDemoteDialogOpen(false)}
+                  className="transition-all duration-200 hover:scale-105 hover:shadow-md"
+                >
+              Cancel
+            </Button>
+                         <Button 
+               onClick={confirmDemoteToManager}
+               disabled={demoteToManagerMutation.isPending}
+                  className="bg-orange-600 hover:bg-orange-700 transition-all duration-200 hover:scale-105 hover:shadow-md"
+                >
+                  {demoteToManagerMutation.isPending ? (
+                    <>
+                      <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
+                      Demoting...
+                    </>
+                  ) : (
+                    <>
+                      <User className="mr-2 h-4 w-4" />
+                      Demote User
+                    </>
+                  )}
+             </Button>
+              </div>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      </div>
     </div>
   );
 }

@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Toaster } from '@/components/ui/toaster';
 import { AuthProvider } from './contexts/AuthContext';
 import { ThemeProvider } from './contexts/ThemeContext';
+import { PageTitleProvider } from './contexts/PageTitleContext';
 import LoginPage from './pages/LoginPage';
 import SignupPage from './pages/SignupPage';
 import ForgotPasswordPage from './pages/ForgotPasswordPage';
@@ -12,6 +13,7 @@ import DashboardPage from './pages/DashboardPage';
 import PropertiesPage from './pages/PropertiesPage';
 import TasksPage from './pages/TasksPage';
 import FinancePage from './pages/FinancePage';
+import ReportsPage from './pages/ReportsPage';
 import StaffPage from './pages/StaffPage';
 import UsersPage from './pages/UsersPage';
 import AnalyticsPage from './pages/AnalyticsPage';
@@ -57,6 +59,7 @@ function AppInner() {
                   <Route path="/properties" element={<PropertiesPage />} />
                   <Route path="/tasks" element={<TasksPage />} />
                   <Route path="/finance" element={<FinancePage />} />
+                  <Route path="/reports" element={<ReportsPage />} />
                   <Route path="/staff" element={<StaffPage />} />
                   <Route path="/users" element={<UsersPage />} />
                   <Route path="/analytics" element={<AnalyticsPage />} />
@@ -76,8 +79,10 @@ export default function App() {
     <QueryClientProvider client={queryClient}>
       <AuthProvider>
         <ThemeProvider>
-          <AppInner />
-          <Toaster />
+          <PageTitleProvider>
+            <AppInner />
+            <Toaster />
+          </PageTitleProvider>
         </ThemeProvider>
       </AuthProvider>
     </QueryClientProvider>

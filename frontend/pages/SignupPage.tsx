@@ -1,78 +1,67 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { useAuth } from '../contexts/AuthContext';
-import { useTheme } from '../contexts/ThemeContext';
-import { Button } from '@/components/ui/button';
+import { Building2, Loader2 } from 'lucide-react';
+import { useAuth } from '@/contexts/AuthContext';
+import { useTheme } from '@/contexts/ThemeContext';
+import { useToast } from '@/components/ui/use-toast';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { useToast } from '@/components/ui/use-toast';
-import { Building2, Loader2 } from 'lucide-react';
-import backend from '~backend/client';
+
+interface SignupFormData {
+  displayName: string;
+  email: string;
+  password: string;
+  organizationName: string;
+  subdomainPrefix: string;
+}
 
 export default function SignupPage() {
-  const [formData, setFormData] = useState({
+  const navigate = useNavigate();
+  const { signup } = useAuth();
+  const { theme } = useTheme();
+  const { toast } = useToast();
+  
+  const [formData, setFormData] = useState<SignupFormData>({
+    displayName: '',
     email: '',
     password: '',
-    displayName: '',
     organizationName: '',
     subdomainPrefix: '',
   });
+  
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
-  
-  const { login } = useAuth();
-  const { theme } = useTheme();
-  const { toast } = useToast();
-  const navigate = useNavigate();
+
+  useEffect(() => {
+    // Check if user is already authenticated
+    // Note: This should check for user authentication status, not the signup function
+    // For now, we'll let the user access the signup page
+  }, [navigate]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
     setError('');
 
-    // Basic validation
-    if (!formData.email || !formData.password || !formData.displayName || !formData.organizationName || !formData.subdomainPrefix) {
-      setError('All fields are required');
-      setIsLoading(false);
-      return;
-    }
-
-    if (formData.password.length < 8) {
-      setError('Password must be at least 8 characters long');
-      setIsLoading(false);
-      return;
-    }
-
-    if (!/^[a-z0-9-]+$/.test(formData.subdomainPrefix)) {
-      setError('Subdomain can only contain lowercase letters, numbers, and hyphens');
-      setIsLoading(false);
-      return;
-    }
-
     try {
-      // Create admin account
-      await backend.auth.signup(formData);
-      
-      toast({
-        title: "Account created successfully!",
-        description: "Welcome to your new hospitality management platform.",
-      });
-      
-      // Auto-login after successful signup
-      try {
-        await login(formData.email, formData.password);
-        navigate('/dashboard', { replace: true });
-      } catch (loginError) {
-        console.error('Auto-login failed:', loginError);
-        // If auto-login fails, redirect to login page
-        navigate('/login', { replace: true });
-        toast({
-          title: "Account created",
-          description: "Please log in with your new credentials.",
-        });
+      // Validate subdomain format
+      const subdomainRegex = /^[a-z0-9-]+$/;
+      if (!subdomainRegex.test(formData.subdomainPrefix)) {
+        throw new Error('Subdomain can only contain lowercase letters, numbers, and hyphens');
       }
+
+      // Call signup function
+      await signup(formData);
+      
+      // Redirect to login page
+      navigate('/login', { replace: true });
+      toast({
+        title: "Account created",
+        description: "Please log in with your new credentials.",
+      });
     } catch (error: any) {
       console.error('Signup error:', error);
       
@@ -227,7 +216,6 @@ export default function SignupPage() {
                     placeholder="mycompany"
                     disabled={isLoading}
                     className="rounded-r-none"
-                    pattern="[a-z0-9-]+"
                     title="Only lowercase letters, numbers, and hyphens allowed"
                   />
                   <span className="inline-flex items-center px-3 rounded-r-md border border-l-0 border-gray-300 bg-gray-50 text-gray-500 text-sm">

@@ -3,7 +3,7 @@ module.exports = {
   testEnvironment: 'node',
   roots: ['<rootDir>'],
   testMatch: [
-    '<rootDir>/__tests__/**/*.(ts|js)',
+    '<rootDir>/__tests__/**/*.(test|spec).(ts|js)',
     '<rootDir>/**/*.(test|spec).(ts|js)',
   ],
   transform: {
@@ -25,10 +25,10 @@ module.exports = {
   moduleNameMapper: {
     '^~encore/(.*)$': '<rootDir>/encore.gen/$1',
   },
-  globals: {
-    'ts-jest': {
+  transform: {
+    '^.+\\.(ts|tsx)$': ['ts-jest', {
       tsconfig: 'tsconfig.json',
-    },
+    }],
   },
   // Add ESM support
   extensionsToTreatAsEsm: ['.ts'],

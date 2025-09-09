@@ -4,17 +4,17 @@
   "type": "module",
   "packageManager": "bun@1.2.21",
   "scripts": {
-    "dev": "bun run encore run",
-    "build": "bun run encore build",
-    "build:docker": "bun run encore build docker",
+    "dev": "encore run",
+    "build": "chmod +x build.sh && ./build.sh",
+    "build:docker": "encore build docker",
     "build:frontend": "cd ../frontend && bun install && bun run build",
-    "db:migrate": "bun run encore db migrate",
-    "db:reset": "bun run encore db reset",
-    "db:seed": "bun run encore run --seed",
-    "gen:client": "bun run encore gen client --lang typescript",
-    "test": "bun run jest",
-    "test:watch": "bun run jest --watch",
-    "test:coverage": "bun run jest --coverage"
+    "db:migrate": "encore db migrate",
+    "db:reset": "encore db reset",
+    "db:seed": "encore run --seed",
+    "gen:client": "encore gen client --lang typescript",
+    "test": "jest",
+    "test:watch": "jest --watch",
+    "test:coverage": "jest --coverage"
   },
   "dependencies": {
     "@types/bcrypt": "^6.0.0",
@@ -34,8 +34,5 @@
     "jest": "^29.7.0",
     "ts-jest": "^29.1.1",
     "typescript": "^5.9.2"
-  },
-  "bin": {
-    "encore": "./node_modules/.bin/encore"
   }
 }

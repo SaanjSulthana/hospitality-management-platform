@@ -2,7 +2,7 @@
   "name": "hospitality-management-platform",
   "version": "1.0.0",
   "type": "module",
-  "packageManager": "bun",
+  "packageManager": "bun@1.2.21",
   "workspaces": [
     "backend",
     "frontend"

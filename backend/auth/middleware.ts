@@ -19,6 +19,17 @@ export const auth = authHandler<AuthParams, AuthData>(
       throw APIError.unauthenticated("Missing token");
     }
 
+    // Debug logging to see what token is being received
+    console.log('Auth middleware received token:', {
+      headerLength: authHeader.length,
+      tokenLength: token.length,
+      tokenStart: token.substring(0, 20) + '...',
+      tokenEnd: '...' + token.substring(token.length - 20),
+      hasSpaces: token.includes(' '),
+      hasNewlines: token.includes('\n'),
+      hasTabs: token.includes('\t'),
+    });
+
     try {
       const payload = verifyAccessToken(token);
       
@@ -31,6 +42,7 @@ export const auth = authHandler<AuthParams, AuthData>(
         createdByUserId: payload.createdByUserId,
       };
     } catch (error) {
+      console.error('Token verification failed:', error);
       throw APIError.unauthenticated("Invalid token");
     }
   }
@@ -49,3 +61,5 @@ export function requireOrgAccess(orgId: number, authData: AuthData) {
     throw APIError.permissionDenied("Access denied to this organization");
   }
 }
+
+

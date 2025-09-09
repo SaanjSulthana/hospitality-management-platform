@@ -1,7 +1,7 @@
 import { api, APIError } from "encore.dev/api";
 import { getAuthData } from "~encore/auth";
-import { tasksDB } from "./db";
 import { requireRole } from "../auth/middleware";
+import { tasksDB } from "./db";
 
 export interface UpdateTaskHoursRequest {
   id: number;
@@ -20,7 +20,10 @@ export interface UpdateTaskHoursResponse {
 export const updateHours = api<UpdateTaskHoursRequest, UpdateTaskHoursResponse>(
   { auth: true, expose: true, method: "PATCH", path: "/tasks/:id/hours" },
   async (req) => {
-    const authData = getAuthData()!;
+    const authData = getAuthData();
+    if (!authData) {
+      throw APIError.unauthenticated("Authentication required");
+    }
     requireRole("ADMIN", "MANAGER")(authData);
 
     const { id, estimatedHours, actualHours } = req;
@@ -86,3 +89,4 @@ export const updateHours = api<UpdateTaskHoursRequest, UpdateTaskHoursResponse>(
     };
   }
 );
+

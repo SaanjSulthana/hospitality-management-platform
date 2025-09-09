@@ -12,7 +12,7 @@ import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { useToast } from '@/components/ui/use-toast';
 import { formatUserActivityDateTime } from '../lib/datetime';
-import { Users, Plus, Search, Mail, Calendar, UserPlus, Pencil, RefreshCw, Shield, User } from 'lucide-react';
+import { Users, Plus, Search, Mail, Calendar, UserPlus, Pencil, RefreshCw, Shield, User, AlertCircle } from 'lucide-react';
 
 type ListUsersResponse = {
   users: {

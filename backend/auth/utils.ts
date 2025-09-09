@@ -6,6 +6,22 @@ import { JWTPayload, User } from "./types";
 const jwtSecret = secret("JWTSecret");
 const refreshSecret = secret("RefreshSecret");
 
+// Debug: Log secret values (be careful not to log in production)
+console.log('=== JWT SECRETS DEBUG ===');
+console.log('JWTSecret type:', typeof jwtSecret());
+console.log('JWTSecret length:', jwtSecret().length);
+console.log('JWTSecret has spaces:', jwtSecret().includes(' '));
+console.log('JWTSecret has newlines:', jwtSecret().includes('\n'));
+console.log('JWTSecret has tabs:', jwtSecret().includes('\t'));
+console.log('JWTSecret first 10 chars:', jwtSecret().substring(0, 10));
+console.log('JWTSecret last 10 chars:', jwtSecret().substring(jwtSecret().length - 10));
+console.log('JWTSecret value (first 20 chars):', jwtSecret().substring(0, 20));
+console.log('RefreshSecret type:', typeof refreshSecret());
+console.log('RefreshSecret length:', refreshSecret().length);
+console.log('RefreshSecret has spaces:', refreshSecret().includes(' '));
+console.log('RefreshSecret value (first 20 chars):', refreshSecret().substring(0, 20));
+console.log('=== END JWT SECRETS DEBUG ===');
+
 export async function hashPassword(password: string): Promise<string> {
   try {
     const saltRounds = 12;
@@ -38,7 +54,19 @@ export function generateAccessToken(user: User): string {
       iat: Math.floor(Date.now() / 1000),
     };
     
-    return jwt.sign(payload, jwtSecret(), { algorithm: 'HS256' });
+    const token = jwt.sign(payload, jwtSecret(), { algorithm: 'HS256' });
+    
+    // Debug: Log token details
+    console.log('=== ACCESS TOKEN DEBUG ===');
+    console.log('Token length:', token.length);
+    console.log('Token has spaces:', token.includes(' '));
+    console.log('Token has newlines:', token.includes('\n'));
+    console.log('Token has tabs:', token.includes('\t'));
+    console.log('Token first 20 chars:', token.substring(0, 20));
+    console.log('Token last 20 chars:', token.substring(token.length - 20));
+    console.log('=== END ACCESS TOKEN DEBUG ===');
+    
+    return token;
   } catch (error) {
     console.error('Access token generation error:', error);
     throw new Error('Failed to generate access token');

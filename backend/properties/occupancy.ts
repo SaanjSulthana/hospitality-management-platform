@@ -1,5 +1,6 @@
 import { api, APIError } from "encore.dev/api";
 import { getAuthData } from "~encore/auth";
+import { requireRole } from "../auth/middleware";
 import { propertiesDB } from "./db";
 
 export interface GetOccupancyRequest {
@@ -25,15 +26,26 @@ export interface GetOccupancyResponse {
 export const getOccupancy = api<GetOccupancyRequest, GetOccupancyResponse>(
   { auth: true, expose: true, method: "GET", path: "/properties/:id/occupancy" },
   async (req) => {
-    const authData = getAuthData()!;
+    const authData = getAuthData();
+    if (!authData) {
+      throw APIError.unauthenticated("Authentication required");
+    }
+    requireRole("ADMIN", "MANAGER")(authData);
+
     const { id } = req;
+
+    // Ensure ID is a number
+    const propertyId = parseInt(id.toString(), 10);
+    if (isNaN(propertyId)) {
+      throw APIError.invalidArgument("Invalid property ID");
+    }
 
     try {
       // Check property access with org scoping
       const propertyRow = await propertiesDB.queryRow`
         SELECT p.id, p.name, p.org_id
         FROM properties p
-        WHERE p.id = ${id} AND p.org_id = ${authData.orgId}
+        WHERE p.id = ${propertyId} AND p.org_id = ${authData.orgId}
       `;
 
       if (!propertyRow) {
@@ -43,7 +55,7 @@ export const getOccupancy = api<GetOccupancyRequest, GetOccupancyResponse>(
       // Managers must have access to the property
       if (authData.role === "MANAGER") {
         const accessCheck = await propertiesDB.queryRow`
-          SELECT 1 FROM user_properties WHERE user_id = ${parseInt(authData.userID)} AND property_id = ${id}
+          SELECT 1 FROM user_properties WHERE user_id = ${parseInt(authData.userID)} AND property_id = ${propertyId}
         `;
         if (!accessCheck) {
           throw APIError.permissionDenied("No access to this property");
@@ -58,14 +70,14 @@ export const getOccupancy = api<GetOccupancyRequest, GetOccupancyResponse>(
           COUNT(CASE WHEN status = 'available' THEN 1 END) as available_units,
           COUNT(CASE WHEN status = 'oo' THEN 1 END) as out_of_order_units
         FROM beds_or_units
-        WHERE property_id = ${id} AND org_id = ${authData.orgId}
+        WHERE property_id = ${propertyId} AND org_id = ${authData.orgId}
       `;
 
       // Get current bookings count with org scoping
       const bookingsData = await propertiesDB.queryRow`
         SELECT COUNT(*) as current_bookings
         FROM bookings
-        WHERE property_id = ${id} 
+        WHERE property_id = ${propertyId} 
           AND org_id = ${authData.orgId}
           AND status IN ('confirmed', 'checked_in')
           AND checkin_date <= CURRENT_DATE
@@ -81,7 +93,7 @@ export const getOccupancy = api<GetOccupancyRequest, GetOccupancyResponse>(
       const occupancyRate = totalUnits > 0 ? (occupiedUnits / totalUnits) * 100 : 0;
 
       return {
-        propertyId: id,
+        propertyId: propertyId,
         propertyName: propertyRow.name,
         occupancy: {
           totalUnits,
@@ -101,3 +113,4 @@ export const getOccupancy = api<GetOccupancyRequest, GetOccupancyResponse>(
     }
   }
 );
+

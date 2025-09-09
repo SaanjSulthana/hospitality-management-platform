@@ -8,6 +8,7 @@ import { Download, FileText, Image, X, Calendar, Building2, User, Receipt } from
 import { formatCurrency } from '../../lib/currency';
 import { formatTransactionDateTime } from '../../lib/datetime';
 import { useTheme } from '../../contexts/ThemeContext';
+import { API_CONFIG } from '../../src/config/api';
 
 interface ReceiptViewerProps {
   isOpen: boolean;
@@ -42,7 +43,7 @@ export function ReceiptViewer({ isOpen, onClose, transaction }: ReceiptViewerPro
       if (!transaction?.receiptFileId) return null;
       
       // Direct API call since uploads service isn't in generated client yet
-      const response = await fetch(`http://127.0.0.1:4000/uploads/file/${transaction.receiptFileId}/info`, {
+      const response = await fetch(`${API_CONFIG.BASE_URL}/uploads/file/${transaction.receiptFileId}/info`, {
         headers: {
           'Authorization': `Bearer ${localStorage.getItem('accessToken')}`,
         },
@@ -64,7 +65,7 @@ export function ReceiptViewer({ isOpen, onClose, transaction }: ReceiptViewerPro
       if (!transaction?.receiptFileId) return null;
       
       // Direct API call since uploads service isn't in generated client yet
-      const response = await fetch(`http://127.0.0.1:4000/uploads/file/${transaction.receiptFileId}`, {
+      const response = await fetch(`${API_CONFIG.BASE_URL}/uploads/file/${transaction.receiptFileId}`, {
         headers: {
           'Authorization': `Bearer ${localStorage.getItem('accessToken')}`,
         },

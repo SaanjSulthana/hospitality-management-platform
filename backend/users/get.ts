@@ -1,7 +1,7 @@
 import { api, APIError } from "encore.dev/api";
 import { getAuthData } from "~encore/auth";
-import { usersDB } from "./db";
 import { requireRole } from "../auth/middleware";
+import { usersDB } from "./db";
 import type { UserRole } from "../auth/types";
 
 export interface GetUserRequest {
@@ -22,16 +22,18 @@ export interface GetUserResponse {
 export const get = api<GetUserRequest, GetUserResponse>(
   { auth: true, expose: true, method: "GET", path: "/users/:id" },
   async (req) => {
-    const authData = getAuthData()!;
-    requireRole("ADMIN")(authData);
-
-    const { id } = req;
+    const authData = getAuthData();
+    if (!authData) {
+      throw APIError.unauthenticated("Authentication required");
+    }
+    const { id: userId } = req;
+    requireRole("ADMIN", "MANAGER")(authData);
 
     try {
       const userRow = await usersDB.queryRow`
         SELECT id, email, role, display_name, created_at, last_login_at, org_id
         FROM users
-        WHERE id = ${id} AND org_id = ${authData.orgId}
+        WHERE id = ${userId} AND org_id = ${authData.orgId}
       `;
       
       if (!userRow) {
@@ -39,7 +41,7 @@ export const get = api<GetUserRequest, GetUserResponse>(
       }
 
       const props = await usersDB.queryAll`
-        SELECT property_id FROM user_properties WHERE user_id = ${id}
+        SELECT property_id FROM user_properties WHERE user_id = ${userId}
       `;
       const propertyIds = props.map((p: any) => p.property_id as number);
 

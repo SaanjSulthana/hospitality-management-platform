@@ -11,6 +11,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { useToast } from './use-toast';
 import { ReceiptViewer } from './receipt-viewer';
 import { formatTransactionDateTime, formatCardDateTime } from '../../lib/datetime';
+import { API_CONFIG } from '../../src/config/api';
 import { 
   Calendar, 
   Check, 
@@ -74,7 +75,7 @@ export function DailyApprovalManager() {
     queryKey: ['pending-approvals'],
     queryFn: async () => {
       // Direct API call since the endpoint isn't in generated client yet
-      const response = await fetch('http://127.0.0.1:4000/finance/pending-approvals', {
+      const response = await fetch(`${API_CONFIG.BASE_URL}/finance/pending-approvals`, {
         headers: {
           'Authorization': `Bearer ${localStorage.getItem('accessToken')}`,
         },
@@ -98,7 +99,7 @@ export function DailyApprovalManager() {
       notes?: string;
     }) => {
       // Direct API call since the endpoint isn't in generated client yet
-      const response = await fetch('http://127.0.0.1:4000/finance/grant-daily-approval', {
+      const response = await fetch(`${API_CONFIG.BASE_URL}/finance/grant-daily-approval`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -144,11 +145,11 @@ export function DailyApprovalManager() {
       // Approve all pending revenues and expenses for this manager
       const [revenuesResponse, expensesResponse] = await Promise.all([
         // Get pending revenues for this manager
-        fetch('http://127.0.0.1:4000/finance/revenues', {
+        fetch(`${API_CONFIG.BASE_URL}/finance/revenues`, {
           headers: { 'Authorization': `Bearer ${localStorage.getItem('accessToken')}` },
         }),
         // Get pending expenses for this manager  
-        fetch('http://127.0.0.1:4000/finance/expenses', {
+        fetch(`${API_CONFIG.BASE_URL}/finance/expenses`, {
           headers: { 'Authorization': `Bearer ${localStorage.getItem('accessToken')}` },
         })
       ]);
@@ -166,7 +167,7 @@ export function DailyApprovalManager() {
 
       // Approve all pending revenues
       const revenueApprovals = pendingRevenues.map((revenue: any) =>
-        fetch(`http://127.0.0.1:4000/finance/revenues/${revenue.id}/approve`, {
+        fetch(`${API_CONFIG.BASE_URL}/finance/revenues/${revenue.id}/approve`, {
           method: 'PATCH',
           headers: {
             'Content-Type': 'application/json',
@@ -182,7 +183,7 @@ export function DailyApprovalManager() {
 
       // Approve all pending expenses
       const expenseApprovals = pendingExpenses.map((expense: any) =>
-        fetch(`http://127.0.0.1:4000/finance/expenses/${expense.id}/approve`, {
+        fetch(`${API_CONFIG.BASE_URL}/finance/expenses/${expense.id}/approve`, {
           method: 'PATCH',
           headers: {
             'Content-Type': 'application/json',
@@ -256,10 +257,10 @@ export function DailyApprovalManager() {
     try {
       // Fetch manager's pending transactions
       const [revenuesResponse, expensesResponse] = await Promise.all([
-        fetch('http://127.0.0.1:4000/finance/revenues', {
+        fetch(`${API_CONFIG.BASE_URL}/finance/revenues`, {
           headers: { 'Authorization': `Bearer ${localStorage.getItem('accessToken')}` },
         }),
-        fetch('http://127.0.0.1:4000/finance/expenses', {
+        fetch(`${API_CONFIG.BASE_URL}/finance/expenses`, {
           headers: { 'Authorization': `Bearer ${localStorage.getItem('accessToken')}` },
         })
       ]);
@@ -582,7 +583,7 @@ export function DailyApprovalManager() {
                             className="bg-green-600 hover:bg-green-700"
                             onClick={async () => {
                               try {
-                                const response = await fetch(`http://127.0.0.1:4000/finance/revenues/${revenue.id}/approve`, {
+                                const response = await fetch(`${API_CONFIG.BASE_URL}/finance/revenues/${revenue.id}/approve`, {
                                   method: 'PATCH',
                                   headers: {
                                     'Content-Type': 'application/json',
@@ -679,7 +680,7 @@ export function DailyApprovalManager() {
                             className="bg-green-600 hover:bg-green-700"
                             onClick={async () => {
                               try {
-                                const response = await fetch(`http://127.0.0.1:4000/finance/expenses/${expense.id}/approve`, {
+                                const response = await fetch(`${API_CONFIG.BASE_URL}/finance/expenses/${expense.id}/approve`, {
                                   method: 'PATCH',
                                   headers: {
                                     'Content-Type': 'application/json',

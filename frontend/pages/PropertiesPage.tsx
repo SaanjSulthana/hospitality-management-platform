@@ -12,6 +12,15 @@ import { Textarea } from '@/components/ui/textarea';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { useToast } from '@/components/ui/use-toast';
 import { Building2, MapPin, Users, Bed, Plus, Search, Pencil, Trash2, RefreshCw, Edit } from 'lucide-react';
+import { API_CONFIG } from '../src/config/api';
+import { 
+  useStandardQuery, 
+  useStandardMutation, 
+  QUERY_KEYS, 
+  STANDARD_QUERY_CONFIGS,
+  API_ENDPOINTS,
+  handleStandardError
+} from '../src/utils/api-standardizer';
 
 export default function PropertiesPage() {
   const { user, getAuthenticatedBackend } = useAuth();
@@ -48,187 +57,56 @@ export default function PropertiesPage() {
     },
   });
 
-  const { data: properties, isLoading, error: propertiesError, refetch } = useQuery({
-    queryKey: ['properties'],
-    queryFn: async () => {
-      try {
-        const backend = getAuthenticatedBackend();
-        const result = await backend.properties.list({});
-        
-        // Safety check: ensure the response has the expected structure
-        if (!result || !result.properties || !Array.isArray(result.properties)) {
-          console.error('Invalid properties response:', result);
-          return { properties: [] };
-        }
-        
-        console.log('Properties query successful, count:', result.properties.length);
-        return { properties: result.properties };
-      } catch (error) {
-        console.error('Properties query error:', error);
-        throw error;
-      }
-    },
-    // Enable real-time updates
-    refetchInterval: 30000, // Refetch every 30 seconds
-    staleTime: 10000, // Consider data fresh for 10 seconds
-    gcTime: 5 * 60 * 1000, // Cache for 5 minutes
-    refetchOnMount: true, // Refetch on mount
-    refetchOnWindowFocus: true, // Refetch on window focus
-    retry: (failureCount, error) => {
-      console.error('Properties query failed:', error);
-      return failureCount < 2;
-    },
-  });
+  const { data: properties, isLoading, error: propertiesError, refetch } = useStandardQuery(
+    QUERY_KEYS.PROPERTIES,
+    API_ENDPOINTS.PROPERTIES,
+    {
+      ...STANDARD_QUERY_CONFIGS.NORMAL,
+    }
+  );
 
 
-  const createPropertyMutation = useMutation({
-    mutationFn: async (data: any) => {
-      console.log('Creating property with data:', data);
-      const backend = getAuthenticatedBackend();
-      return backend.properties.create({
-        name: data.name,
-        type: data.type,
-        address: data.address,
-        amenities: data.amenities,
-        capacity: {
-          totalRooms: data.capacity.totalRooms ? parseInt(data.capacity.totalRooms) : undefined,
-          totalBeds: data.capacity.totalBeds ? parseInt(data.capacity.totalBeds) : undefined,
-          maxGuests: data.capacity.maxGuests ? parseInt(data.capacity.maxGuests) : undefined,
-        },
-      });
-    },
-    onSuccess: (newProperty) => {
-      console.log('Property created successfully:', newProperty);
-      
-      // Invalidate and refetch properties to get the latest data
-      queryClient.invalidateQueries({ queryKey: ['properties'] });
+  const createPropertyMutation = useStandardMutation(
+    API_ENDPOINTS.PROPERTIES,
+    'POST',
+    {
+      invalidateQueries: [QUERY_KEYS.PROPERTIES],
+      successMessage: "The property has been created successfully.",
+      errorMessage: "Failed to create property. Please try again.",
+      onSuccess: () => {
+        setIsCreateDialogOpen(false);
+        resetForm();
+      },
+    }
+  );
 
-      setIsCreateDialogOpen(false);
-      resetForm();
-      toast({
-        title: "Property created",
-        description: "The property has been created successfully.",
-      });
-    },
-    onError: (error: any) => {
-      console.error('Property creation failed:', error);
-      toast({
-        variant: "destructive",
-        title: "Failed to create property",
-        description: error.message || "Please try again.",
-      });
-    },
-  });
+  const updatePropertyMutation = useStandardMutation(
+    '/properties/:id',
+    'PATCH',
+    {
+      invalidateQueries: [QUERY_KEYS.PROPERTIES],
+      successMessage: "The property has been updated successfully.",
+      errorMessage: "Failed to update property. Please try again.",
+      onSuccess: () => {
+        setIsEditDialogOpen(false);
+        setEditingProperty(null);
+      },
+    }
+  );
 
-  const updatePropertyMutation = useMutation({
-    mutationFn: async (data: any) => {
-      console.log('Updating property with data:', data);
-      
-      // Use direct fetch call to avoid client generation issues
-      const response = await fetch(`http://localhost:4000/properties/${data.id}`, {
-        method: 'PATCH',
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('accessToken')}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          name: data.name,
-          type: data.type,
-          address: data.address,
-          amenities: data.amenities,
-          capacity: {
-            totalRooms: data.capacity.totalRooms ? parseInt(data.capacity.totalRooms) : null,
-            totalBeds: data.capacity.totalBeds ? parseInt(data.capacity.totalBeds) : null,
-            maxGuests: data.capacity.maxGuests ? parseInt(data.capacity.maxGuests) : null,
-          },
-          status: data.status,
-        }),
-      });
-
-      if (!response.ok) {
-        throw new Error(`Failed to update property: ${response.statusText}`);
-      }
-
-      const result = await response.json();
-      console.log('Property update response:', result);
-      return result;
-    },
-    onSuccess: (result) => {
-      console.log('Property updated successfully:', result);
-      
-      // Invalidate and refetch properties to get the latest data
-      queryClient.invalidateQueries({ queryKey: ['properties'] });
-      
-      setIsEditDialogOpen(false);
-      setEditingProperty(null);
-      toast({
-        title: "Property updated",
-        description: "The property has been updated successfully.",
-      });
-    },
-    onError: (error: any) => {
-      console.error('Property update failed:', error);
-      toast({
-        variant: "destructive",
-        title: "Failed to update property",
-        description: error.message || "Please try again.",
-      });
-    },
-  });
-
-  const deletePropertyMutation = useMutation({
-    mutationFn: async (propertyId: number) => {
-      console.log('Deleting property with ID:', propertyId);
-      
-      // Use direct fetch call to avoid client generation issues
-      const response = await fetch(`http://localhost:4000/properties/${propertyId}`, {
-        method: 'DELETE',
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('accessToken')}`,
-          'Content-Type': 'application/json',
-        },
-      });
-      
-      if (!response.ok) {
-        throw new Error(`Failed to delete property: ${response.statusText}`);
-      }
-      
-      return await response.json();
-    },
-    onSuccess: (result) => {
-      console.log('Property deleted successfully:', result);
-      
-      // Invalidate and refetch properties to get the latest data
-      queryClient.invalidateQueries({ queryKey: ['properties'] });
-      
-      setIsDeleteDialogOpen(false);
-      setDeletingProperty(null);
-      toast({
-        title: "Property deleted",
-        description: "The property has been deleted successfully.",
-      });
-    },
-    onError: (error: any) => {
-      console.error('Property deletion failed:', error);
-      
-      let errorMessage = "Please try again.";
-      if (error.message) {
-        if (error.message.includes('not found')) {
-          errorMessage = "Property not found or already deleted.";
-        } else if (error.message.includes('permission')) {
-          errorMessage = "You don't have permission to delete this property.";
-        } else {
-          errorMessage = error.message;
-        }
-      }
-      
-      toast({
-        variant: "destructive",
-        title: "Failed to delete property",
-        description: errorMessage,
-      });
-    },
-  });
+  const deletePropertyMutation = useStandardMutation(
+    '/properties/:id',
+    'DELETE',
+    {
+      invalidateQueries: [QUERY_KEYS.PROPERTIES],
+      successMessage: "The property has been deleted successfully.",
+      errorMessage: "Failed to delete property. Please try again.",
+      onSuccess: () => {
+        setIsDeleteDialogOpen(false);
+        setDeletingProperty(null);
+      },
+    }
+  );
 
   // Use React Query data directly
   const currentProperties = properties?.properties || [];
@@ -321,7 +199,7 @@ export default function PropertiesPage() {
 
   const handleDeleteProperty = () => {
     if (deletingProperty) {
-      deletePropertyMutation.mutate(deletingProperty.id);
+      deletePropertyMutation.mutate({ id: deletingProperty.id });
     }
   };
 

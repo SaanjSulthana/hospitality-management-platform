@@ -447,9 +447,9 @@ export function WelcomePopup({ isOpen, onClose, userData, dashboardData }: Welco
                 <Button
                   onClick={() => {
                     // Navigate to dashboard or first available section
-                    if (dashboardData?.pendingApprovals > 0) {
+                    if (dashboardData?.pendingApprovals && dashboardData.pendingApprovals > 0) {
                       navigate('/finance');
-                    } else if (dashboardData?.urgentTasks > 0) {
+                    } else if (dashboardData?.urgentTasks && dashboardData.urgentTasks > 0) {
                       navigate('/tasks');
                     } else {
                       navigate('/dashboard');

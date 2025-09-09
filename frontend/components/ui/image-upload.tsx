@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useState, useEffect } from 'react';
 import { useDropzone } from 'react-dropzone';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -11,6 +11,7 @@ interface ImageFile {
   file: File;
   preview: string;
   isUploading?: boolean;
+  uploadProgress?: number;
   error?: string;
 }
 
@@ -20,6 +21,9 @@ interface ImageUploadProps {
   maxSize?: number; // in MB
   disabled?: boolean;
   className?: string;
+  onUploadProgress?: (imageId: string, progress: number) => void;
+  existingImages?: number; // Number of existing images to account for
+  resetTrigger?: number; // Trigger to reset the component
 }
 
 export function ImageUpload({
@@ -28,9 +32,23 @@ export function ImageUpload({
   maxSize = 5,
   disabled = false,
   className = '',
+  onUploadProgress,
+  existingImages = 0,
+  resetTrigger = 0,
 }: ImageUploadProps) {
   const [images, setImages] = useState<ImageFile[]>([]);
   const { toast } = useToast();
+
+  // Reset component when resetTrigger changes
+  useEffect(() => {
+    if (resetTrigger > 0) {
+      setImages([]);
+      onImagesChange([]);
+    }
+  }, [resetTrigger, onImagesChange]);
+
+  // Calculate available slots for new images
+  const availableSlots = maxImages - existingImages - images.length;
 
   const onDrop = useCallback((acceptedFiles: File[], rejectedFiles: any[]) => {
     // Handle rejected files
@@ -54,26 +72,36 @@ export function ImageUpload({
       });
     }
 
-    // Handle accepted files
-    if (acceptedFiles.length > 0) {
-      const newImages: ImageFile[] = acceptedFiles.map((file) => ({
+    // Handle accepted files - limit to available slots
+    if (acceptedFiles.length > 0 && availableSlots > 0) {
+      const filesToAdd = acceptedFiles.slice(0, availableSlots);
+      const newImages: ImageFile[] = filesToAdd.map((file) => ({
         id: Math.random().toString(36).substr(2, 9),
         file,
         preview: URL.createObjectURL(file),
       }));
 
-      const updatedImages = [...images, ...newImages].slice(0, maxImages);
+      const updatedImages = [...images, ...newImages];
       setImages(updatedImages);
       onImagesChange(updatedImages);
 
-      if (acceptedFiles.length > 0) {
+      if (filesToAdd.length > 0) {
         toast({
           title: 'Images added',
-          description: `${acceptedFiles.length} image(s) added successfully`,
+          description: `${filesToAdd.length} image(s) added successfully`,
+        });
+      }
+
+      // Show warning if some files were skipped
+      if (acceptedFiles.length > availableSlots) {
+        toast({
+          variant: 'destructive',
+          title: 'Some files skipped',
+          description: `Only ${availableSlots} image(s) can be added. ${acceptedFiles.length - availableSlots} file(s) were skipped.`,
         });
       }
     }
-  }, [images, maxImages, maxSize, onImagesChange, toast]);
+  }, [images, maxImages, maxSize, onImagesChange, toast, availableSlots]);
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
@@ -83,15 +111,30 @@ export function ImageUpload({
       'image/webp': ['.webp'],
     },
     maxSize: maxSize * 1024 * 1024, // Convert MB to bytes
-    maxFiles: maxImages - images.length,
-    disabled: disabled || images.length >= maxImages,
+    maxFiles: availableSlots,
+    disabled: disabled || availableSlots <= 0,
   });
 
   const removeImage = (imageId: string) => {
+    const imageToRemove = images.find(img => img.id === imageId);
+    if (imageToRemove) {
+      // Clean up the object URL to prevent memory leaks
+      URL.revokeObjectURL(imageToRemove.preview);
+    }
+    
     const updatedImages = images.filter((img) => img.id !== imageId);
     setImages(updatedImages);
     onImagesChange(updatedImages);
   };
+
+  // Cleanup object URLs when component unmounts
+  useEffect(() => {
+    return () => {
+      images.forEach(img => {
+        URL.revokeObjectURL(img.preview);
+      });
+    };
+  }, [images]);
 
   const formatFileSize = (bytes: number) => {
     if (bytes === 0) return '0 Bytes';
@@ -128,7 +171,7 @@ export function ImageUpload({
               {isDragActive ? 'Drop images here' : 'Upload images'}
             </p>
             <p className="text-xs text-gray-500">
-              {maxSize}MB max • {maxImages} images
+              {maxSize}MB max • {availableSlots} of {maxImages} slots available
             </p>
           </div>
         </div>
@@ -140,7 +183,7 @@ export function ImageUpload({
           <div className="flex items-center justify-between">
             <span className="text-xs font-medium text-gray-600">Uploaded</span>
             <Badge variant="outline" className="text-xs h-5">
-              {images.length}/{maxImages}
+              {images.length + existingImages}/{maxImages}
             </Badge>
           </div>
           
@@ -169,7 +212,12 @@ export function ImageUpload({
                 {/* Upload Status */}
                 {image.isUploading && (
                   <div className="absolute inset-0 bg-black bg-opacity-50 flex items-center justify-center rounded-lg">
-                    <Loader2 className="h-4 w-4 animate-spin text-white" />
+                    <div className="text-center">
+                      <Loader2 className="h-4 w-4 animate-spin text-white mx-auto mb-1" />
+                      <div className="text-xs text-white">
+                        {image.uploadProgress ? `${Math.round(image.uploadProgress)}%` : 'Uploading...'}
+                      </div>
+                    </div>
                   </div>
                 )}
                 

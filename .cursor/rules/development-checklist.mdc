@@ -1,0 +1,147 @@
+spec: Quick Development Checklist
+version: 1.0.0
+
+sections:
+  - title: "🚀 Before Starting New Feature"
+    groups:
+      - title: "Backend Setup"
+        tasks:
+          - "Create service directory: backend/[service-name]/"
+          - "Create database file: backend/[service-name]/db.ts"
+          - "Create encore service: backend/[service-name]/encore.service.ts"
+          - "Import getAuthData from ~encore/auth"
+          - "Import requireRole from ../auth/middleware"
+      - title: "Frontend Setup"
+        tasks:
+          - "Create page component: frontend/pages/[PageName].tsx"
+          - "Import useAuth and getAuthenticatedBackend"
+          - "Import useQuery and useMutation from React Query"
+          - "Import useToast for notifications"
+
+  - title: "🔐 Authentication Checklist"
+    groups:
+      - title: "Backend"
+        tasks:
+          - "Use async (req) => signature (NOT async (req, authData))"
+          - "Call getAuthData() inside function"
+          - "Validate roles with requireRole('ADMIN')(authData)"
+          - "Include org_id in all database queries"
+          - "Wrap logic in try-catch blocks"
+      - title: "Frontend"
+        tasks:
+          - "Use getAuthenticatedBackend() for API calls"
+          - "Check user roles before rendering: user?.role === 'ADMIN'"
+          - "Handle authentication errors in onError"
+          - "Redirect to login on token expiry"
+
+  - title: "🗄️ Database Checklist"
+    groups:
+      - title: "⚠️ CRITICAL: Database Connection Method"
+        tasks:
+          - "ALWAYS use Encore database shell: encore db shell hospitality"
+          - "NEVER use Docker direct connection"
+          - "Data isolation: Application data is org-specific"
+      - title: "Database Queries"
+        tasks:
+          - "All queries include org_id = $1 parameter"
+          - "Use parameterized queries (NOT string concatenation)"
+          - "Handle database errors gracefully"
+          - "Validate input parameters before queries"
+      - title: "Database Testing"
+        tasks:
+          - "Test with Encore db shell: encore db shell hospitality"
+          - "Verify org-specific isolation"
+          - "Validate authentication context"
+
+  - title: "⚠️ Error Handling Checklist"
+    groups:
+      - title: "Backend"
+        tasks:
+          - "Import and use APIError class"
+          - "Wrap main logic in try-catch"
+          - "Re-throw APIError instances"
+          - "Convert other errors to APIError.internal()"
+          - "Log errors for debugging"
+      - title: "Frontend"
+        tasks:
+          - "Handle loading states (isLoading)"
+          - "Handle error states (error)"
+          - "Implement onError handlers"
+          - "Show user-friendly error messages"
+          - "Handle authentication errors separately"
+
+  - title: "🎯 API Response Checklist"
+    tasks:
+      - "Define TypeScript interfaces for requests/responses"
+      - "Use consistent response structure"
+      - "Include proper error status codes"
+      - "Validate response data"
+      - "Handle empty/null responses"
+
+  - title: "🔄 State Management Checklist"
+    tasks:
+      - "Use React Query for server state"
+      - "Invalidate queries after mutations"
+      - "Handle optimistic updates properly"
+      - "Implement loading states"
+
+  - title: "🧪 Testing Checklist"
+    tasks:
+      - "Test with valid authentication"
+      - "Test with expired tokens"
+      - "Test role-based access control"
+      - "Test error scenarios"
+      - "Test multi-tenant isolation"
+
+  - title: "📝 Code Quality Checklist"
+    tasks:
+      - "Define proper TypeScript types"
+      - "Avoid any types"
+      - "Consistent naming conventions"
+      - "Proper error logging"
+      - "Readable structure"
+
+  - title: "🚨 Common Mistakes to Avoid"
+    groups:
+      - title: "Authentication & API Issues"
+        mistakes:
+          - "❌ async (req, authData) → ✅ async (req) + getAuthData()"
+          - "❌ Missing org_id in queries"
+          - "❌ No try-catch"
+      - title: "Database Connection Issues"
+        mistakes:
+          - "❌ Using Docker db connection"
+          - "❌ Checking empty Docker DB"
+      - title: "API Endpoint Issues"
+        mistakes:
+          - "❌ Wrong HTTP method"
+          - "❌ Missing path parameters"
+          - "❌ Incorrect body format"
+
+  - title: "🔧 Quick Fixes"
+    groups:
+      - title: "Invalid token"
+        steps:
+          - "Check expiry"
+          - "Implement refresh"
+          - "Clear cache"
+      - title: "Database errors"
+        steps:
+          - "Ensure org_id in queries"
+          - "Use parameterized queries"
+      - title: "Empty DB"
+        steps:
+          - "Use encore db shell hospitality"
+          - "Verify org isolation"
+
+  - title: "🔍 Advanced Troubleshooting"
+    groups:
+      - title: "Common Error Patterns"
+        examples:
+          - "Endpoint not found → check method & path"
+          - "Path parameter invalid → ensure numeric ID"
+          - "SQL param mismatch → use sequential $1, $2"
+      - title: "Client Generation Issues"
+        steps:
+          - "Check endpoint in encore.service.ts"
+          - "Restart backend to regenerate client"

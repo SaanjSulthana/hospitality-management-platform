@@ -115,6 +115,7 @@ export const signup = api<SignupRequest, SignupResponse>(
         createdByUserId: insertedUser.created_by_user_id ?? undefined,
         createdAt: insertedUser.created_at,
         lastLoginAt: new Date(),
+        loginCount: 1, // Set initial login count
       };
 
       // Generate tokens

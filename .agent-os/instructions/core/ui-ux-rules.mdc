@@ -1,0 +1,50 @@
+# UI/UX Responsiveness & Adaptation Rules
+
+## General Principles
+- All UI must be fully responsive across **mobile, tablet, and desktop**.
+- Use **fluid layouts** with flexbox or grid instead of fixed positioning.
+- Always test at **320px (mobile)**, **768px (tablet)**, and **1024px+ (desktop)** widths.
+- Avoid hardcoded pixel values; prefer `rem`, `%`, or `minmax()` for scalable designs.
+- Keep UI consistent and clean with whitespace, padding, and alignment.
+
+## Mobile-First Development
+- Start with **mobile-first** layouts, then expand for larger screens.
+- Ensure **touch-friendly** interactions (buttons min 44px height).
+- Tap zones must not be too close together.
+- Use stacked layouts for mobile; expand into side-by-side layouts on larger screens.
+
+## Tables & Data Representation
+- Tables must be **scrollable horizontally on mobile** if column count > 3.
+- Use **fixed headers (sticky top row)** for large data sets.
+- Provide **alternating row colors** or subtle separators for readability.
+- Columns should auto-adjust width but allow manual resizing when possible.
+
+## Excel-Sheet Style Features
+- Spreadsheet-like grids must be responsive with **pinch-to-zoom** on mobile.
+- Allow **cell focus & keyboard navigation** on desktop.
+- Row numbers and column headers must remain **sticky at all breakpoints**.
+- Collapse wide sheets into **card format on mobile**.
+- Enable **bulk editing, copy-paste, and formula previews** on desktop.
+- Support **Excel import/export** with CSV/XLSX compatibility.
+
+## Accessibility
+- Follow **WCAG 2.1 AA compliance**.
+- Use **high contrast** colors.
+- Provide **alt text** for images/icons.
+- Use **semantic HTML tables** with `<thead>`, `<tbody>`, `<th>`.
+- Ensure **clear focus states** for interactive elements.
+
+## Performance
+- Optimize assets for **fast mobile load** (lazy loading, compression).
+- Minimize DOM nesting for performance and readability.
+
+## Cross-Platform App Readiness
+- UI must adapt when wrapped in **WebView** or packaged for mobile apps (React Native / Capacitor).
+- Avoid platform-specific hacks that break portability.
+
+## ✅ Summary
+- Ensure responsive layouts.
+- Optimize tables & data representation for each device type.
+- Follow mobile-first principles.
+- Maintain accessibility and performance.
+- Keep design ready for both web and mobile apps.

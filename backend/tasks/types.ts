@@ -16,4 +16,17 @@ export interface Task {
   createdByUserId: number;
   createdAt: Date;
   updatedAt: Date;
+  referenceImages?: TaskImage[];
+}
+
+export interface TaskImage {
+  id: number;
+  taskId: number;
+  filename: string;
+  originalName: string;
+  fileSize: number;
+  mimeType: string;
+  filePath: string;
+  isPrimary: boolean;
+  createdAt: Date;
 }

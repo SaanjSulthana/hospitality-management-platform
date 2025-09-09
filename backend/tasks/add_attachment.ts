@@ -1,7 +1,7 @@
 import { api, APIError } from "encore.dev/api";
 import { getAuthData } from "~encore/auth";
-import { tasksDB } from "./db";
 import { requireRole } from "../auth/middleware";
+import { tasksDB } from "./db";
 
 export interface AddAttachmentRequest {
   taskId: number;
@@ -26,7 +26,10 @@ export interface AddAttachmentResponse {
 export const addAttachment = api<AddAttachmentRequest, AddAttachmentResponse>(
   { auth: true, expose: true, method: "POST", path: "/tasks/attachments" },
   async (req) => {
-    const authData = getAuthData()!;
+    const authData = getAuthData();
+    if (!authData) {
+      throw APIError.unauthenticated("Authentication required");
+    }
     requireRole("ADMIN", "MANAGER")(authData);
 
     const { taskId, fileName, fileUrl, fileSize, mimeType } = req;
@@ -59,6 +62,10 @@ export const addAttachment = api<AddAttachmentRequest, AddAttachmentResponse>(
       RETURNING id, org_id, task_id, file_name, file_url, file_size, mime_type, uploaded_by_user_id, created_at
     `;
 
+    if (!attachmentRow) {
+      throw new Error('Failed to create attachment');
+    }
+
     return {
       id: attachmentRow.id,
       taskId: attachmentRow.task_id,
@@ -71,3 +78,4 @@ export const addAttachment = api<AddAttachmentRequest, AddAttachmentResponse>(
     };
   }
 );
+

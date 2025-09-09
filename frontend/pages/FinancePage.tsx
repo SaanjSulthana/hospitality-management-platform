@@ -6,6 +6,7 @@ import { usePageTitle } from '../contexts/PageTitleContext';
 import { formatCurrency as formatCurrencyUtil } from '../lib/currency';
 import { formatCardDateTime } from '../lib/datetime';
 import { formatDateForAPI, getCurrentDateString, getCurrentDateTimeString } from '../lib/date-utils';
+import { API_CONFIG } from '../src/config/api';
 import { FileUpload } from '@/components/ui/file-upload';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -251,7 +252,7 @@ export default function FinancePage() {
     queryKey: ['daily-approval-check'],
     queryFn: async () => {
       // Direct API call since the endpoint isn't in generated client yet
-      const response = await fetch('http://127.0.0.1:4000/finance/check-daily-approval', {
+      const response = await fetch(`${API_CONFIG.BASE_URL}/finance/check-daily-approval`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -421,7 +422,7 @@ export default function FinancePage() {
   const approveExpenseMutation = useMutation({
     mutationFn: async ({ id, approved }: { id: number; approved: boolean }) => {
       // Direct API call since the generated client might have issues
-      const response = await fetch(`http://127.0.0.1:4000/finance/expenses/${id}/approve`, {
+      const response = await fetch(`${API_CONFIG.BASE_URL}/finance/expenses/${id}/approve`, {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
@@ -473,7 +474,7 @@ export default function FinancePage() {
   const approveRevenueMutation = useMutation({
     mutationFn: async ({ id, approved }: { id: number; approved: boolean }) => {
       // Direct API call for revenue approval
-      const response = await fetch(`http://127.0.0.1:4000/finance/revenues/${id}/approve`, {
+      const response = await fetch(`${API_CONFIG.BASE_URL}/finance/revenues/${id}/approve`, {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
@@ -524,7 +525,7 @@ export default function FinancePage() {
 
   const updateExpenseMutation = useMutation({
     mutationFn: async (data: any) => {
-      const response = await fetch(`http://127.0.0.1:4000/finance/expenses/${data.id}`, {
+      const response = await fetch(`${API_CONFIG.BASE_URL}/finance/expenses/${data.id}`, {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
@@ -572,7 +573,7 @@ export default function FinancePage() {
 
   const updateRevenueMutation = useMutation({
     mutationFn: async (data: any) => {
-      const response = await fetch(`http://127.0.0.1:4000/finance/revenues/${data.id}`, {
+      const response = await fetch(`${API_CONFIG.BASE_URL}/finance/revenues/${data.id}`, {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
@@ -620,7 +621,7 @@ export default function FinancePage() {
 
   const deleteExpenseMutation = useMutation({
     mutationFn: async (id: number) => {
-      const response = await fetch(`http://127.0.0.1:4000/finance/expenses/${id}`, {
+      const response = await fetch(`${API_CONFIG.BASE_URL}/finance/expenses/${id}`, {
         method: 'DELETE',
         headers: {
           'Authorization': `Bearer ${localStorage.getItem('accessToken')}`,
@@ -658,7 +659,7 @@ export default function FinancePage() {
 
   const deleteRevenueMutation = useMutation({
     mutationFn: async (id: number) => {
-      const response = await fetch(`http://127.0.0.1:4000/finance/revenues/${id}`, {
+      const response = await fetch(`${API_CONFIG.BASE_URL}/finance/revenues/${id}`, {
         method: 'DELETE',
         headers: {
           'Authorization': `Bearer ${localStorage.getItem('accessToken')}`,
@@ -732,7 +733,7 @@ export default function FinancePage() {
       const base64String = btoa(String.fromCharCode(...buffer));
       
       // Direct API call since uploads service isn't in generated client yet
-      const response = await fetch('http://127.0.0.1:4000/uploads/file', {
+      const response = await fetch(`${API_CONFIG.BASE_URL}/uploads/file`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -787,7 +788,7 @@ export default function FinancePage() {
       const base64String = btoa(String.fromCharCode(...buffer));
       
       // Direct API call since uploads service isn't in generated client yet
-      const response = await fetch('http://127.0.0.1:4000/uploads/file', {
+      const response = await fetch(`${API_CONFIG.BASE_URL}/uploads/file`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

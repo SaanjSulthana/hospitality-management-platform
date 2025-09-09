@@ -1,7 +1,7 @@
 import { api, APIError } from "encore.dev/api";
 import { getAuthData } from "~encore/auth";
-import { usersDB } from "./db";
 import { requireRole } from "../auth/middleware";
+import { usersDB } from "./db";
 import { UserRole } from "../auth/types";
 import { hashPassword } from "../auth/utils";
 import log from "encore.dev/log";
@@ -21,20 +21,28 @@ export interface CreateUserResponse {
   role: UserRole;
   displayName: string;
   createdByUserId: number;
+  loginCount: number;
+  timezone: string;
+  locale: string;
 }
 
 // Creates a new user in the organization (Admin only)
 export const create = api<CreateUserRequest, CreateUserResponse>(
   { auth: true, expose: true, method: "POST", path: "/users" },
   async (req) => {
-    const authData = getAuthData()!;
+    const authData = getAuthData();
+    if (!authData) {
+      throw APIError.unauthenticated("Authentication required");
+    }
+    // Only ADMIN can create users
     requireRole('ADMIN')(authData);
 
     const { email, password, displayName, role, propertyIds } = req;
 
-    // Only admins can create managers
-    if (role !== 'MANAGER') {
-      throw APIError.invalidArgument("Only MANAGER role can be created");
+    // ADMIN can create any role (ADMIN or MANAGER)
+    
+    if (role !== 'MANAGER' && role !== 'ADMIN') {
+      throw APIError.invalidArgument("Invalid role. Must be MANAGER or ADMIN");
     }
 
     if (password.length < 8) {
@@ -63,8 +71,8 @@ export const create = api<CreateUserRequest, CreateUserResponse>(
       const passwordHash = await hashPassword(password);
 
       const userRow = await tx.queryRow`
-        INSERT INTO users (org_id, email, password_hash, role, display_name, created_by_user_id)
-        VALUES (${authData.orgId}, ${email}, ${passwordHash}, ${role}, ${displayName}, ${parseInt(authData.userID)})
+        INSERT INTO users (org_id, email, password_hash, role, display_name, created_by_user_id, login_count, timezone, locale)
+        VALUES (${authData.orgId}, ${email}, ${passwordHash}, ${role}, ${displayName}, ${parseInt(authData.userID)}, 0, 'UTC', 'en-US')
         RETURNING id, email, role, display_name, created_by_user_id
       `;
 
@@ -112,6 +120,9 @@ export const create = api<CreateUserRequest, CreateUserResponse>(
         role: userRow.role as UserRole,
         displayName: userRow.display_name,
         createdByUserId: userRow.created_by_user_id,
+        loginCount: 0,
+        timezone: 'UTC',
+        locale: 'en-US',
       };
     } catch (error) {
       await tx.rollback();
@@ -149,3 +160,4 @@ export const create = api<CreateUserRequest, CreateUserResponse>(
     }
   }
 );
+

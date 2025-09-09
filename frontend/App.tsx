@@ -5,6 +5,13 @@ import { Toaster } from '@/components/ui/toaster';
 import { AuthProvider } from './contexts/AuthContext';
 import { ThemeProvider } from './contexts/ThemeContext';
 import { PageTitleProvider } from './contexts/PageTitleContext';
+import { isDevelopment } from './src/utils/env';
+
+// Run environment tests in development
+if (isDevelopment()) {
+  import('./src/utils/test-env');
+  import('./src/utils/test-uploads');
+}
 import LoginPage from './pages/LoginPage';
 import SignupPage from './pages/SignupPage';
 import ForgotPasswordPage from './pages/ForgotPasswordPage';

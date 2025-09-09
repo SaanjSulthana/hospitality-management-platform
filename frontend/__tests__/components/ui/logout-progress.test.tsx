@@ -1,6 +1,6 @@
 import React from 'react';
 import { render, screen, waitFor, act } from '@testing-library/react';
-import { LogoutProgress } from '../../components/ui/logout-progress';
+import { LogoutProgress } from '../../../components/ui/logout-progress';
 
 // Mock the dialog components
 jest.mock('../../components/ui/dialog', () => ({

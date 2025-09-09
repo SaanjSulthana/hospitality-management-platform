@@ -67,6 +67,7 @@ describe('Complete Workflow End-to-End Tests', () => {
       trackActivity: jest.fn(),
       showLogoutProgress: false,
       setShowLogoutProgress: jest.fn(),
+      setIsTestingLogoutDialog: jest.fn(),
       clearCorruptedTokens: jest.fn(),
       clearAllAuthData: jest.fn(),
     });

@@ -1,7 +1,7 @@
 import { api, APIError } from "encore.dev/api";
 import { getAuthData } from "~encore/auth";
-import { tasksDB } from "./db";
 import { requireRole } from "../auth/middleware";
+import { tasksDB } from "./db";
 import { TaskType, TaskPriority } from "./types";
 import log from "encore.dev/log";
 
@@ -12,7 +12,7 @@ export interface CreateTaskRequest {
   description?: string;
   priority: TaskPriority;
   assigneeStaffId?: number;
-  dueAt?: Date;
+  dueAt?: string; // Changed from Date to string for consistency
   estimatedHours?: number;
 }
 
@@ -42,7 +42,10 @@ export interface CreateTaskResponse {
 export const create = api<CreateTaskRequest, CreateTaskResponse>(
   { auth: true, expose: true, method: "POST", path: "/tasks" },
   async (req) => {
-    const authData = getAuthData()!;
+    const authData = getAuthData();
+    if (!authData) {
+      throw APIError.unauthenticated("Authentication required");
+    }
     requireRole("ADMIN", "MANAGER")(authData);
 
     const { propertyId, type, title, description, priority, assigneeStaffId, dueAt, estimatedHours } = req;
@@ -90,10 +93,13 @@ export const create = api<CreateTaskRequest, CreateTaskResponse>(
         }
       }
 
+      // Convert dueAt string to Date object if provided
+      const dueAtDate = dueAt ? new Date(dueAt) : null;
+      
       const taskRow = await tx.queryRow`
-        INSERT INTO tasks (org_id, property_id, type, title, description, priority, assignee_staff_id, due_at, estimated_hours, created_by_user_id)
-        VALUES (${authData.orgId}, ${propertyId}, ${type}, ${title}, ${description || null}, ${priority}, ${assigneeStaffId || null}, ${dueAt || null}, ${estimatedHours || null}, ${parseInt(authData.userID)})
-        RETURNING id, org_id, property_id, type, title, description, priority, status, assignee_staff_id, due_at, estimated_hours, created_by_user_id, created_at, updated_at
+        INSERT INTO tasks (org_id, property_id, type, title, description, priority, assignee_staff_id, due_at, created_by_user_id)
+        VALUES (${authData.orgId}, ${propertyId}, ${type}, ${title}, ${description || null}, ${priority}, ${assigneeStaffId || null}, ${dueAtDate}, ${parseInt(authData.userID)})
+        RETURNING id, org_id, property_id, type, title, description, priority, status, assignee_staff_id, due_at, created_by_user_id, created_at, updated_at
       `;
 
       if (!taskRow) {
@@ -158,7 +164,7 @@ export const create = api<CreateTaskRequest, CreateTaskResponse>(
         assigneeStaffId: taskRow.assignee_staff_id,
         assigneeName,
         dueAt: taskRow.due_at,
-        estimatedHours: taskRow.estimated_hours ? parseFloat(taskRow.estimated_hours) : undefined,
+        estimatedHours: taskRow.estimated_hours ? parseFloat(taskRow.estimated_hours.toString()) : undefined,
         createdByUserId: taskRow.created_by_user_id,
         createdByName: authData.displayName,
         createdAt: taskRow.created_at,
@@ -185,3 +191,4 @@ export const create = api<CreateTaskRequest, CreateTaskResponse>(
     }
   }
 );
+

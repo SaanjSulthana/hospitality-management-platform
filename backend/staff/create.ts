@@ -1,7 +1,7 @@
 import { api, APIError } from "encore.dev/api";
 import { getAuthData } from "~encore/auth";
-import { staffDB } from "./db";
 import { requireRole } from "../auth/middleware";
+import { staffDB } from "./db";
 
 export interface CreateStaffRequest {
   userId: number;
@@ -30,8 +30,11 @@ export interface CreateStaffResponse {
 export const create = api<CreateStaffRequest, CreateStaffResponse>(
   { auth: true, expose: true, method: "POST", path: "/staff" },
   async (req) => {
-    const authData = getAuthData()!;
-    requireRole("ADMIN", "MANAGER")(authData);
+    const authData = getAuthData();
+    if (!authData) {
+      throw APIError.unauthenticated("Authentication required");
+    }
+    requireRole("ADMIN")(authData);
 
     const { userId, propertyId, department, hourlyRateCents = 0, hireDate, notes } = req;
 
@@ -76,7 +79,7 @@ export const create = api<CreateStaffRequest, CreateStaffResponse>(
       const existingStaff = await tx.queryRow`
         SELECT id FROM staff 
         WHERE user_id = ${userId} AND org_id = ${authData.orgId} 
-        AND (property_id = ${propertyId ?? null} OR (property_id IS NULL AND ${propertyId ?? null} IS NULL))
+        AND (property_id = ${propertyId ?? null}::bigint OR (property_id IS NULL AND ${propertyId ?? null}::bigint IS NULL))
       `;
 
       if (existingStaff) {
@@ -86,8 +89,17 @@ export const create = api<CreateStaffRequest, CreateStaffResponse>(
       // Create staff record
       const staffRow = await tx.queryRow`
         INSERT INTO staff (org_id, user_id, property_id, department, hourly_rate_cents, hire_date, notes, status)
-        VALUES (${authData.orgId}, ${userId}, ${propertyId ?? null}, ${department}, ${hourlyRateCents}, ${hireDate ?? null}, ${notes ?? null}, 'active')
-        RETURNING id, org_id, user_id, property_id, department, hourly_rate_cents, performance_rating, hire_date, notes, status
+        VALUES (
+          ${authData.orgId}, 
+          ${userId}, 
+          ${propertyId ?? null}::bigint, 
+          ${department}, 
+          ${hourlyRateCents}, 
+          ${hireDate ?? null}::date, 
+          ${notes ?? null}::text, 
+          'active'
+        )
+        RETURNING id, org_id, user_id, property_id, department, hourly_rate_cents, hire_date, notes, status
       `;
 
       if (!staffRow) {
@@ -104,7 +116,7 @@ export const create = api<CreateStaffRequest, CreateStaffResponse>(
         propertyName,
         department: staffRow.department,
         hourlyRateCents: staffRow.hourly_rate_cents,
-        performanceRating: parseFloat(staffRow.performance_rating) || 0,
+        performanceRating: 0,
         hireDate: staffRow.hire_date,
         notes: staffRow.notes,
         status: staffRow.status,
@@ -119,3 +131,4 @@ export const create = api<CreateStaffRequest, CreateStaffResponse>(
     }
   }
 );
+

@@ -1,7 +1,7 @@
 import { api, APIError } from "encore.dev/api";
 import { getAuthData } from "~encore/auth";
-import { staffDB } from "./db";
 import { requireRole } from "../auth/middleware";
+import { staffDB } from "./db";
 
 export interface ApproveLeaveRequest {
   id: number;
@@ -16,9 +16,12 @@ export interface ApproveLeaveResponse {
 
 // Approves or rejects a leave request
 export const approveLeave = api<ApproveLeaveRequest, ApproveLeaveResponse>(
-  { auth: true, expose: true, method: "PATCH", path: "/staff/leave-requests/:id/approve" },
+  { auth: true, expose: true, method: "POST", path: "/staff/leave/approve" },
   async (req) => {
-    const authData = getAuthData()!;
+    const authData = getAuthData();
+    if (!authData) {
+      throw APIError.unauthenticated("Authentication required");
+    }
     requireRole("ADMIN", "MANAGER")(authData);
 
     const { id, approved } = req;
@@ -88,3 +91,4 @@ export const approveLeave = api<ApproveLeaveRequest, ApproveLeaveResponse>(
     };
   }
 );
+

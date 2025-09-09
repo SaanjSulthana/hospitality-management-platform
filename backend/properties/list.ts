@@ -1,11 +1,12 @@
-import { api, Query } from "encore.dev/api";
+import { api, APIError } from "encore.dev/api";
 import { getAuthData } from "~encore/auth";
 import { propertiesDB } from "./db";
+import { requireRole } from "../auth/middleware";
 import { PropertyType } from "./types";
 
-export interface ListPropertiesRequest {
-  regionId?: Query&lt;number&gt;;
-  type?: Query&lt;PropertyType&gt;;
+interface ListPropertiesRequest {
+  regionId?: number;
+  type?: PropertyType;
 }
 
 export interface PropertyInfo {
@@ -13,9 +14,9 @@ export interface PropertyInfo {
   name: string;
   type: PropertyType;
   regionId?: number;
-  addressJson: Record&lt;string, any&gt;;
-  amenitiesJson: Record&lt;string, any&gt;;
-  capacityJson: Record&lt;string, any&gt;;
+  addressJson: Record<string, any>;
+  amenitiesJson: Record<string, any>;
+  capacityJson: Record<string, any>;
   status: string;
   createdAt: Date;
 }
@@ -25,10 +26,15 @@ export interface ListPropertiesResponse {
 }
 
 // Lists properties with role-based filtering
-export const list = api&lt;ListPropertiesRequest, ListPropertiesResponse&gt;(
+export const list = api<ListPropertiesRequest, ListPropertiesResponse>(
   { auth: true, expose: true, method: "GET", path: "/properties" },
-  async (req) =&gt; {
-    const authData = getAuthData()!;
+  async (req) => {
+    const authData = getAuthData();
+    if (!authData) {
+      throw APIError.unauthenticated("Authentication required");
+    }
+    requireRole("ADMIN", "MANAGER")(authData);
+
     const { regionId, type } = req || {};
 
     let query = `
@@ -66,17 +72,24 @@ export const list = api&lt;ListPropertiesRequest, ListPropertiesResponse&gt;(
     const properties = await propertiesDB.rawQueryAll(query, ...params);
 
     return {
-      properties: properties.map((property) =&gt; ({
+      properties: properties.map((property) => ({
         id: property.id,
         name: property.name,
         type: property.type as PropertyType,
         regionId: property.region_id,
-        addressJson: property.address_json,
-        amenitiesJson: property.amenities_json,
-        capacityJson: property.capacity_json,
+        addressJson: typeof property.address_json === 'string' 
+          ? JSON.parse(property.address_json) 
+          : property.address_json,
+        amenitiesJson: typeof property.amenities_json === 'string' 
+          ? JSON.parse(property.amenities_json) 
+          : property.amenities_json,
+        capacityJson: typeof property.capacity_json === 'string' 
+          ? JSON.parse(property.capacity_json) 
+          : property.capacity_json,
         status: property.status,
         createdAt: property.created_at,
       })),
     };
   }
 );
+

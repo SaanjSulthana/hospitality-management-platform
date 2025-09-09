@@ -64,6 +64,7 @@ export const login = api<LoginRequest, LoginResponse>(
         createdByUserId: userRow.created_by_user_id ?? undefined,
         createdAt: userRow.created_at,
         lastLoginAt: new Date(),
+        loginCount: 1, // Set initial login count
       };
 
       // Generate tokens

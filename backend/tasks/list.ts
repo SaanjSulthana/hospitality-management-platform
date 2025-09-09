@@ -1,15 +1,16 @@
-import { api, Query } from "encore.dev/api";
+import { api, APIError } from "encore.dev/api";
 import { getAuthData } from "~encore/auth";
 import { tasksDB } from "./db";
-import { TaskType, TaskPriority, TaskStatus } from "./types";
+import { requireRole } from "../auth/middleware";
+import { TaskType, TaskPriority, TaskStatus, TaskImage } from "./types";
 
-export interface ListTasksRequest {
-  propertyId?: Query&lt;number&gt;;
-  type?: Query&lt;TaskType&gt;;
-  priority?: Query&lt;TaskPriority&gt;;
-  status?: Query&lt;TaskStatus&gt;;
-  assignee?: Query&lt;string&gt;; // 'me' for current user's tasks
-  overdue?: Query&lt;boolean&gt;;
+interface ListTasksRequest {
+  propertyId?: number;
+  type?: TaskType;
+  priority?: TaskPriority;
+  status?: TaskStatus;
+  assignee?: number | string; // Allow "me" string for current user's tasks
+  overdue?: boolean;
 }
 
 export interface TaskInfo {
@@ -32,6 +33,7 @@ export interface TaskInfo {
   estimatedHours?: number;
   actualHours?: number;
   attachmentCount: number;
+  referenceImages?: TaskImage[];
 }
 
 export interface ListTasksResponse {
@@ -39,10 +41,15 @@ export interface ListTasksResponse {
 }
 
 // Lists tasks with role-based filtering
-export const list = api&lt;ListTasksRequest, ListTasksResponse&gt;(
+export const list = api<ListTasksRequest, ListTasksResponse>(
   { auth: true, expose: true, method: "GET", path: "/tasks" },
-  async (req) =&gt; {
-    const authData = getAuthData()!;
+  async (req) => {
+    const authData = getAuthData();
+    if (!authData) {
+      throw APIError.unauthenticated("Authentication required");
+    }
+    requireRole("ADMIN", "MANAGER")(authData);
+
     const { propertyId, type, priority, status, assignee, overdue } = req || {};
 
     try {
@@ -50,7 +57,7 @@ export const list = api&lt;ListTasksRequest, ListTasksResponse&gt;(
         SELECT 
           t.id, t.property_id, p.name as property_name, t.type, t.title, t.description, 
           t.priority, t.status, t.assignee_staff_id, t.due_at, t.created_by_user_id, 
-          t.created_at, t.updated_at, t.completed_at, t.estimated_hours, t.actual_hours,
+          t.created_at, t.updated_at, t.completed_at,
           u.display_name as created_by_name,
           au.display_name as assignee_name,
           COALESCE(att.attachment_count, 0) as attachment_count
@@ -112,19 +119,52 @@ export const list = api&lt;ListTasksRequest, ListTasksResponse&gt;(
       }
 
       if (overdue) {
-        query += ` AND t.due_at &lt; NOW() AND t.status != 'done'`;
+        query += ` AND t.due_at < NOW() AND t.status != 'done'`;
       }
 
       query += ` ORDER BY 
-        CASE WHEN t.due_at &lt; NOW() AND t.status != 'done' THEN 0 ELSE 1 END,
+        CASE WHEN t.due_at < NOW() AND t.status != 'done' THEN 0 ELSE 1 END,
         CASE t.priority WHEN 'high' THEN 0 WHEN 'med' THEN 1 ELSE 2 END,
         t.created_at DESC
       `;
 
       const tasks = await tasksDB.rawQueryAll(query, ...params);
 
+      // Get reference images for all tasks
+      const taskIds = tasks.map((task: any) => task.id);
+      let referenceImages: Record<number, TaskImage[]> = {};
+      
+      if (taskIds.length > 0) {
+        const imagesQuery = `
+          SELECT id, task_id, file_name, file_url, file_size, mime_type, created_at
+          FROM task_attachments 
+          WHERE task_id = ANY($1) AND org_id = $2
+          ORDER BY created_at ASC
+        `;
+        const images = await tasksDB.rawQueryAll(imagesQuery, taskIds, authData.orgId);
+        
+        // Group images by task_id
+        referenceImages = images.reduce((acc: Record<number, TaskImage[]>, img: any) => {
+          if (!acc[img.task_id]) {
+            acc[img.task_id] = [];
+          }
+          acc[img.task_id].push({
+            id: img.id,
+            taskId: img.task_id,
+            filename: img.file_name,
+            originalName: img.file_name, // We don't store original name in current schema
+            fileSize: img.file_size,
+            mimeType: img.mime_type,
+            filePath: img.file_url,
+            isPrimary: acc[img.task_id].length === 0, // First image is primary
+            createdAt: img.created_at,
+          });
+          return acc;
+        }, {});
+      }
+
       return {
-        tasks: tasks.map((task) =&gt; ({
+        tasks: tasks.map((task) => ({
           id: task.id,
           propertyId: task.property_id,
           propertyName: task.property_name,
@@ -141,9 +181,10 @@ export const list = api&lt;ListTasksRequest, ListTasksResponse&gt;(
           createdAt: task.created_at,
           updatedAt: task.updated_at,
           completedAt: task.completed_at,
-          estimatedHours: task.estimated_hours ? parseFloat(task.estimated_hours) : undefined,
-          actualHours: task.actual_hours ? parseFloat(task.actual_hours) : undefined,
+          estimatedHours: 0,
+          actualHours: 0,
           attachmentCount: parseInt(task.attachment_count) || 0,
+          referenceImages: referenceImages[task.id] || [],
         })),
       };
     } catch (error) {
@@ -152,3 +193,4 @@ export const list = api&lt;ListTasksRequest, ListTasksResponse&gt;(
     }
   }
 );
+

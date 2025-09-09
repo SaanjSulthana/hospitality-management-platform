@@ -2,6 +2,7 @@ import { api, APIError } from "encore.dev/api";
 import { getAuthData } from "~encore/auth";
 import { financeDB } from "./db";
 import { requireRole } from "../auth/middleware";
+import { checkDailyApproval } from "./check_daily_approval";
 
 export interface AddExpenseRequest {
   propertyId: number;
@@ -10,7 +11,10 @@ export interface AddExpenseRequest {
   currency?: string;
   description?: string;
   receiptUrl?: string;
-  expenseDate: Date;
+  receiptFileId?: number;
+  expenseDate: string; // Changed from Date to string for consistency
+  paymentMode?: 'cash' | 'bank';
+  bankReference?: string;
 }
 
 export interface AddExpenseResponse {
@@ -21,8 +25,10 @@ export interface AddExpenseResponse {
   currency: string;
   description?: string;
   receiptUrl?: string;
+  receiptFileId?: number;
   expenseDate: Date;
-  status: string;
+  paymentMode: string;
+  bankReference?: string;
   createdByUserId: number;
   createdAt: Date;
 }
@@ -31,10 +37,29 @@ export interface AddExpenseResponse {
 export const addExpense = api<AddExpenseRequest, AddExpenseResponse>(
   { auth: true, expose: true, method: "POST", path: "/finance/expenses" },
   async (req) => {
-    const authData = getAuthData()!;
+    const authData = getAuthData();
+    if (!authData) {
+      throw APIError.unauthenticated("Authentication required");
+    }
     requireRole("ADMIN", "MANAGER")(authData);
 
-    const { propertyId, category, amountCents, currency = "USD", description, receiptUrl, expenseDate } = req;
+    // Check if manager can add transactions based on daily approval workflow
+    if (authData.role === "MANAGER") {
+      const approvalCheck = await checkDailyApproval({});
+      if (!approvalCheck.canAddTransactions) {
+        throw APIError.permissionDenied(
+          approvalCheck.message || "You cannot add transactions at this time. Please wait for admin approval."
+        );
+      }
+    }
+
+    const { propertyId, category, amountCents, currency = "USD", description, receiptUrl, receiptFileId, expenseDate, paymentMode = "cash", bankReference } = req;
+    
+    // Use provided expense date for expense_date field, but current timestamp for created_at
+    const expenseDateValue = expenseDate ? new Date(expenseDate) : new Date();
+    const currentTimestamp = new Date();
+    console.log('Expense creation - expense_date:', expenseDateValue.toISOString());
+    console.log('Expense creation - current timestamp:', currentTimestamp.toISOString());
 
     if (amountCents <= 0) {
       throw APIError.invalidArgument("Amount must be greater than zero");
@@ -65,9 +90,9 @@ export const addExpense = api<AddExpenseRequest, AddExpenseResponse>(
 
       // Create expense record
       const expenseRow = await tx.queryRow`
-        INSERT INTO expenses (org_id, property_id, category, amount_cents, currency, description, receipt_url, expense_date, created_by_user_id, status)
-        VALUES (${authData.orgId}, ${propertyId}, ${category}, ${amountCents}, ${currency}, ${description || null}, ${receiptUrl || null}, ${expenseDate}, ${parseInt(authData.userID)}, 'pending')
-        RETURNING id, property_id, category, amount_cents, currency, description, receipt_url, expense_date, status, created_by_user_id, created_at
+        INSERT INTO expenses (org_id, property_id, category, amount_cents, currency, description, receipt_url, receipt_file_id, expense_date, created_by_user_id, status, payment_mode, bank_reference, created_at)
+        VALUES (${authData.orgId}, ${propertyId}, ${category}, ${amountCents}, ${currency}, ${description || null}, ${receiptUrl || null}, ${receiptFileId || null}, ${expenseDateValue}, ${parseInt(authData.userID)}, 'pending', ${paymentMode}, ${bankReference || null}, ${currentTimestamp})
+        RETURNING id, property_id, category, amount_cents, currency, description, receipt_url, receipt_file_id, expense_date, status, created_by_user_id, created_at, payment_mode, bank_reference
       `;
 
       if (!expenseRow) {
@@ -94,8 +119,10 @@ export const addExpense = api<AddExpenseRequest, AddExpenseResponse>(
         currency: expenseRow.currency,
         description: expenseRow.description,
         receiptUrl: expenseRow.receipt_url,
+        receiptFileId: expenseRow.receipt_file_id,
         expenseDate: expenseRow.expense_date,
-        status: expenseRow.status,
+        paymentMode: expenseRow.payment_mode,
+        bankReference: expenseRow.bank_reference,
         createdByUserId: expenseRow.created_by_user_id,
         createdAt: expenseRow.created_at,
       };
@@ -109,3 +136,4 @@ export const addExpense = api<AddExpenseRequest, AddExpenseResponse>(
     }
   }
 );
+

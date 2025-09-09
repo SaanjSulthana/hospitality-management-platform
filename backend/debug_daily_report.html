@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Debug Daily Report</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1200px;
+            margin: 50px auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            text-align: center;
+        }
+        .button {
+            background: #007bff;
+            color: white;
+            padding: 15px 30px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+            margin: 10px;
+            width: 100%;
+        }
+        .button:hover {
+            background: #0056b3;
+        }
+        .button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+        .result {
+            margin-top: 20px;
+            padding: 15px;
+            border-radius: 5px;
+            white-space: pre-wrap;
+            font-family: monospace;
+            font-size: 12px;
+            max-height: 500px;
+            overflow-y: auto;
+        }
+        .success {
+            background-color: #d4edda;
+            border: 1px solid #c3e6cb;
+            color: #155724;
+        }
+        .error {
+            background-color: #f8d7da;
+            border: 1px solid #f5c6cb;
+            color: #721c24;
+        }
+        .info {
+            background-color: #d1ecf1;
+            border: 1px solid #bee5eb;
+            color: #0c5460;
+        }
+        .input-group {
+            margin: 15px 0;
+        }
+        .input-group label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+        .input-group input, .input-group select {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            box-sizing: border-box;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔍 Debug Daily Report</h1>
+        <p>This tool helps debug why transactions are not appearing in daily reports.</p>
+        
+        <div class="input-group">
+            <label for="date">Date (YYYY-MM-DD):</label>
+            <input type="date" id="date" value="2025-09-05">
+        </div>
+        
+        <div class="input-group">
+            <label for="propertyId">Property ID (optional):</label>
+            <input type="number" id="propertyId" placeholder="Leave empty for all properties">
+        </div>
+        
+        <button class="button" onclick="debugDailyReport()">
+            🔍 Debug Daily Report
+        </button>
+        
+        <div id="result"></div>
+    </div>
+
+    <script>
+        async function debugDailyReport() {
+            const date = document.getElementById('date').value;
+            const propertyId = document.getElementById('propertyId').value;
+            const resultDiv = document.getElementById('result');
+            
+            if (!date) {
+                showResult('Please select a date', 'error');
+                return;
+            }
+            
+            try {
+                showResult('🔄 Debugging daily report...', 'info');
+                
+                const token = localStorage.getItem('accessToken');
+                if (!token) {
+                    showResult('❌ No access token found. Please login first.', 'error');
+                    return;
+                }
+                
+                const requestBody = {
+                    date: date,
+                    propertyId: propertyId ? parseInt(propertyId) : undefined
+                };
+                
+                const response = await fetch('http://localhost:4000/reports/debug-daily-report', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`
+                    },
+                    body: JSON.stringify(requestBody)
+                });
+                
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    throw new Error(`HTTP ${response.status}: ${errorText}`);
+                }
+                
+                const result = await response.json();
+                showResult(JSON.stringify(result, null, 2), 'success');
+                
+            } catch (error) {
+                showResult(`❌ Error: ${error.message}`, 'error');
+            }
+        }
+        
+        function showResult(message, type) {
+            const resultDiv = document.getElementById('result');
+            resultDiv.textContent = message;
+            resultDiv.className = `result ${type}`;
+        }
+        
+        // Set today's date as default
+        document.getElementById('date').value = new Date().toISOString().split('T')[0];
+    </script>
+</body>
+</html>

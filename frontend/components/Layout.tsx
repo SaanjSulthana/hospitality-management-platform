@@ -9,6 +9,7 @@ import { useToast } from '@/components/ui/use-toast';
 import { LogoutProgress } from '@/components/ui/logout-progress';
 import { useWelcomePopup } from '@/hooks/use-welcome-popup';
 import { WelcomePopup } from '@/components/ui/welcome-popup';
+import { API_CONFIG } from '../src/config/api';
 import { 
   LayoutDashboard, 
   Building2, 
@@ -346,7 +347,7 @@ export default function Layout({ children }: LayoutProps) {
                if (theme.logoUrl && theme.logoUrl.trim() !== '' && !logoFailed) {
                  return (
                    <img 
-                     src={theme.logoUrl.startsWith('http') ? theme.logoUrl : `http://127.0.0.1:4000${theme.logoUrl}`} 
+                     src={theme.logoUrl.startsWith('http') ? theme.logoUrl : `${API_CONFIG.BASE_URL}${theme.logoUrl}`} 
                      alt={theme.brandName} 
                      className="h-8 w-8 object-contain" 
                      onError={async (e) => {
@@ -387,7 +388,7 @@ export default function Layout({ children }: LayoutProps) {
                            console.log('Parsed logo path:', { orgId, filename, originalUrl: theme.logoUrl });
                            
                            if (orgId && filename) {
-                             const response = await fetch(`http://127.0.0.1:4000/uploads/logos/${orgId}/${filename}`, {
+                             const response = await fetch(`${API_CONFIG.BASE_URL}/uploads/logos/${orgId}/${filename}`, {
                                headers: {
                                  'Authorization': `Bearer ${localStorage.getItem('accessToken')}`,
                                },

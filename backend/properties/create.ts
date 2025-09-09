@@ -1,7 +1,7 @@
 import { api, APIError } from "encore.dev/api";
 import { getAuthData } from "~encore/auth";
-import { propertiesDB } from "./db";
 import { requireRole } from "../auth/middleware";
+import { propertiesDB } from "./db";
 import { PropertyType } from "./types";
 import log from "encore.dev/log";
 
@@ -40,8 +40,11 @@ export interface CreatePropertyResponse {
 export const create = api<CreatePropertyRequest, CreatePropertyResponse>(
   { auth: true, expose: true, method: "POST", path: "/properties" },
   async (req) => {
-    const authData = getAuthData()!;
-    requireRole("ADMIN", "MANAGER")(authData);
+    const authData = getAuthData();
+    if (!authData) {
+      throw APIError.unauthenticated("Authentication required");
+    }
+    requireRole("ADMIN")(authData);
 
     const { name, type, regionId, address, amenities, capacity } = req;
 
@@ -118,3 +121,4 @@ export const create = api<CreatePropertyRequest, CreatePropertyResponse>(
     }
   }
 );
+

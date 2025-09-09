@@ -1,15 +1,16 @@
 import { api, APIError } from "encore.dev/api";
 import { getAuthData } from "~encore/auth";
-import { usersDB } from "./db";
 import { requireRole } from "../auth/middleware";
+import { usersDB } from "./db";
 import { hashPassword } from "../auth/utils";
 import log from "encore.dev/log";
 
 export interface UpdateUserRequest {
-  id: number; // path param
+  id: number;
   displayName?: string;
   email?: string;
   password?: string;
+  role?: 'ADMIN' | 'MANAGER';
 }
 
 export interface UpdateUserResponse {
@@ -17,37 +18,58 @@ export interface UpdateUserResponse {
   id: number;
 }
 
-// Updates a manager's details (Admin only).
+// Updates a user's details (Admin only).
 export const update = api<UpdateUserRequest, UpdateUserResponse>(
   { auth: true, expose: true, method: "PATCH", path: "/users/:id" },
   async (req) => {
-    const authData = getAuthData()!;
+    const authData = getAuthData();
+    if (!authData) {
+      throw APIError.unauthenticated("Authentication required");
+    }
+    const { id: userId } = req;
     requireRole("ADMIN")(authData);
 
-    const { id, displayName, email, password } = req;
+    console.log('Update user request:', { 
+      receivedId: userId, 
+      type: typeof userId, 
+      requestBody: req,
+      orgId: authData.orgId 
+    });
+
+    // Convert userId to number if it's a string (from URL path)
+    const userIdNum = typeof userId === 'string' ? parseInt(userId, 10) : userId;
+    
+    if (isNaN(userIdNum)) {
+      console.error('Invalid user ID received:', userId);
+      throw APIError.invalidArgument("Invalid user ID");
+    }
+
+    const { displayName, email, password, role } = req;
 
     const tx = await usersDB.begin();
     try {
       log.info("Updating user", { 
-        userId: id, 
+        userId: userIdNum, 
         displayName, 
         email,
         hasPassword: !!password,
+        role,
         orgId: authData.orgId, 
         updatedBy: authData.userID 
       });
 
       // Validate user in same org
       const userRow = await tx.queryRow`
-        SELECT id, org_id, role, email as current_email FROM users WHERE id = ${id} AND org_id = ${authData.orgId}
+        SELECT id, org_id, role, email as current_email FROM users WHERE id = ${userIdNum} AND org_id = ${authData.orgId}
       `;
       
       if (!userRow) {
         throw APIError.notFound("User not found");
       }
       
-      if (userRow.role !== "MANAGER") {
-        throw APIError.invalidArgument("Only MANAGER users can be updated by admin");
+      // Check if admin is trying to update their own role (not allowed)
+      if (userRow.role === "ADMIN" && authData.userID === userRow.id.toString() && role !== undefined) {
+        throw APIError.invalidArgument("Cannot update your own admin role");
       }
 
       const updates: string[] = [];
@@ -62,7 +84,7 @@ export const update = api<UpdateUserRequest, UpdateUserResponse>(
       if (email !== undefined) {
         // Ensure email unique within org
         const exists = await tx.queryRow`
-          SELECT 1 FROM users WHERE org_id = ${authData.orgId} AND email = ${email} AND id <> ${id}
+          SELECT 1 FROM users WHERE org_id = ${authData.orgId} AND email = ${email} AND id <> ${userIdNum}
         `;
         if (exists) {
           throw APIError.alreadyExists("Email already in use in this organization");
@@ -82,13 +104,36 @@ export const update = api<UpdateUserRequest, UpdateUserResponse>(
         }
       }
 
-      if (updates.length === 0) {
-        await tx.commit();
-        log.info("No updates needed for user", { userId: id });
-        return { success: true, id };
+      if (role !== undefined) {
+        // Validate role value
+        if (role !== 'ADMIN' && role !== 'MANAGER') {
+          throw APIError.invalidArgument("Role must be either 'ADMIN' or 'MANAGER'");
+        }
+        
+        // ADMIN can change any role to ADMIN or MANAGER
+        
+        // If demoting from ADMIN to MANAGER, check if this is the last admin
+        if (userRow.role === 'ADMIN' && role === 'MANAGER') {
+          const adminCount = await tx.queryRow`
+            SELECT COUNT(*) as count FROM users WHERE org_id = ${authData.orgId} AND role = 'ADMIN'
+          `;
+          if (adminCount && adminCount.count <= 1) {
+            throw APIError.invalidArgument("Cannot demote the last admin in the organization");
+          }
+        }
+        
+        
+        updates.push(`role = $${paramIndex++}`);
+        params.push(role);
       }
 
-      params.push(id);
+      if (updates.length === 0) {
+        await tx.commit();
+        log.info("No updates needed for user", { userId: userIdNum });
+        return { success: true, id: userIdNum };
+      }
+
+      params.push(userIdNum);
 
       const query = `
         UPDATE users
@@ -100,17 +145,17 @@ export const update = api<UpdateUserRequest, UpdateUserResponse>(
       await tx.commit();
       
       log.info("User updated successfully", { 
-        userId: id, 
+        userId: userIdNum, 
         updatedFields: updates.length,
         orgId: authData.orgId 
       });
 
-      return { success: true, id };
+      return { success: true, id: userIdNum };
     } catch (error) {
       await tx.rollback();
       log.error('Update user error', { 
         error: error instanceof Error ? error.message : String(error),
-        userId: id,
+        userId: userIdNum,
         orgId: authData.orgId,
         updatedBy: authData.userID
       });
@@ -123,3 +168,4 @@ export const update = api<UpdateUserRequest, UpdateUserResponse>(
     }
   }
 );
+

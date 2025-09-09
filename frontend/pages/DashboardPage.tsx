@@ -12,6 +12,15 @@ import { LoadingCard, LoadingPage } from '@/components/ui/loading-spinner';
 import { NoDataCard } from '@/components/ui/no-data';
 import { useApiError } from '@/hooks/use-api-error';
 import { useDashboardRealtime } from '@/hooks/use-realtime';
+import { API_CONFIG } from '../src/config/api';
+import { 
+  useStandardQuery, 
+  useStandardMutation, 
+  QUERY_KEYS, 
+  STANDARD_QUERY_CONFIGS,
+  API_ENDPOINTS,
+  handleStandardError
+} from '../src/utils/api-standardizer';
 import { 
   Building2, 
   Users, 
@@ -48,198 +57,70 @@ export default function DashboardPage() {
     setPageTitle('Dashboard Overview', 'Monitor your hospitality operations and manage pending tasks');
   }, [setPageTitle]);
 
-  const { data: analytics, isLoading: analyticsLoading, error: analyticsError } = useQuery({
-    queryKey: ['analytics', 'overview'],
-    queryFn: async () => {
-      const backend = getAuthenticatedBackend();
-      return backend.analytics.overview({});
-    },
-    enabled: user?.role === 'ADMIN',
-    refetchInterval: 10000, // Refresh every 10 seconds for real-time updates
-    staleTime: 0, // Always consider data stale for fresh updates
-    gcTime: 0, // Don't cache results
-    retry: (failureCount, error) => {
-      if (failureCount < 2) {
-        handleError(error, 'analytics');
-        return true;
-      }
-      return false;
-    },
-  });
+  const { data: analytics, isLoading: analyticsLoading, error: analyticsError } = useStandardQuery(
+    QUERY_KEYS.ANALYTICS,
+    '/analytics/overview',
+    {
+      enabled: user?.role === 'ADMIN',
+      ...STANDARD_QUERY_CONFIGS.REAL_TIME,
+    }
+  );
 
-  const { data: properties, isLoading: propertiesLoading, error: propertiesError } = useQuery({
-    queryKey: ['properties'],
-    queryFn: async () => {
-      const backend = getAuthenticatedBackend();
-      return backend.properties.list({});
-    },
-    refetchInterval: 15000, // Refresh every 15 seconds for real-time updates
-    staleTime: 0, // Always consider data stale for fresh updates
-    gcTime: 0, // Don't cache results
-    retry: (failureCount, error) => {
-      if (failureCount < 2) {
-        handleError(error, 'properties');
-        return true;
-      }
-      return false;
-    },
-  });
+  const { data: properties, isLoading: propertiesLoading, error: propertiesError } = useStandardQuery(
+    QUERY_KEYS.PROPERTIES,
+    '/properties',
+    STANDARD_QUERY_CONFIGS.REAL_TIME
+  );
 
-  const { data: tasks, isLoading: tasksLoading, error: tasksError } = useQuery({
-    queryKey: ['tasks'],
-    queryFn: async () => {
-      const backend = getAuthenticatedBackend();
-      return backend.tasks.list({});
-    },
-    refetchInterval: 10000, // Refresh every 10 seconds for real-time updates
-    staleTime: 0, // Always consider data stale for fresh updates
-    gcTime: 0, // Don't cache results
-    retry: (failureCount, error) => {
-      if (failureCount < 2) {
-        handleError(error, 'tasks');
-        return true;
-      }
-      return false;
-    },
-  });
+  const { data: tasks, isLoading: tasksLoading, error: tasksError } = useStandardQuery(
+    QUERY_KEYS.TASKS,
+    '/tasks',
+    STANDARD_QUERY_CONFIGS.REAL_TIME
+  );
 
-  const { data: users, isLoading: usersLoading, error: usersError } = useQuery({
-    queryKey: ['users'],
-    queryFn: async () => {
-      const backend = getAuthenticatedBackend();
-      return backend.users.list({});
-    },
-    enabled: user?.role === 'ADMIN',
-    refetchInterval: 15000, // Refresh every 15 seconds for real-time updates
-    staleTime: 0, // Always consider data stale for fresh updates
-    gcTime: 0, // Don't cache results
-    retry: (failureCount, error) => {
-      if (failureCount < 2) {
-        handleError(error, 'users');
-        return true;
-      }
-      return false;
-    },
-  });
+  const { data: users, isLoading: usersLoading, error: usersError } = useStandardQuery(
+    QUERY_KEYS.USERS,
+    '/users',
+    {
+      enabled: user?.role === 'ADMIN',
+      ...STANDARD_QUERY_CONFIGS.REAL_TIME,
+    }
+  );
 
   // New queries for works to be done
-  const { data: expenses, isLoading: expensesLoading, error: expensesError } = useQuery({
-    queryKey: ['expenses'],
-    queryFn: async () => {
-      const backend = getAuthenticatedBackend();
-      // Get expenses for current month to match finance page
-      const now = new Date();
-      const startDate = new Date(now.getFullYear(), now.getMonth(), 1); // First day of current month
-      const endDate = new Date(now.getFullYear(), now.getMonth() + 1, 0); // Last day of current month
-      
-      console.log('Fetching expenses for current month:', {
-        startDate: startDate.toISOString(),
-        endDate: endDate.toISOString()
-      });
-      
-      return backend.finance.listExpenses({
-        startDate: startDate.toISOString().split('T')[0],
-        endDate: endDate.toISOString().split('T')[0],
-      });
-    },
-    refetchInterval: 3000, // Refresh every 3 seconds for real-time updates (increased frequency)
-    staleTime: 0, // Always consider data stale for fresh updates
-    gcTime: 0, // Don't cache results
-    refetchOnWindowFocus: true, // Refetch when window gains focus
-    refetchOnMount: true, // Refetch when component mounts
-    retry: (failureCount, error) => {
-      if (failureCount < 2) {
-        handleError(error, 'expenses');
-        return true;
-      }
-      return false;
-    },
-  });
+  const { data: expenses, isLoading: expensesLoading, error: expensesError } = useStandardQuery(
+    QUERY_KEYS.EXPENSES,
+    API_ENDPOINTS.EXPENSES,
+    {
+      ...STANDARD_QUERY_CONFIGS.REAL_TIME,
+    }
+  );
 
-  const { data: revenues, isLoading: revenuesLoading, error: revenuesError } = useQuery({
-    queryKey: ['revenues'],
-    queryFn: async () => {
-      const backend = getAuthenticatedBackend();
-      // Get revenues for current month to match finance page
-      const now = new Date();
-      const startDate = new Date(now.getFullYear(), now.getMonth(), 1); // First day of current month
-      const endDate = new Date(now.getFullYear(), now.getMonth() + 1, 0); // Last day of current month
-      
-      console.log('Fetching revenues for current month:', {
-        startDate: startDate.toISOString(),
-        endDate: endDate.toISOString()
-      });
-      
-      return backend.finance.listRevenues({
-        startDate: startDate.toISOString().split('T')[0],
-        endDate: endDate.toISOString().split('T')[0],
-      });
-    },
-    refetchInterval: 3000, // Refresh every 3 seconds for real-time updates (increased frequency)
-    staleTime: 0, // Always consider data stale for fresh updates
-    gcTime: 0, // Don't cache results
-    refetchOnWindowFocus: true, // Refetch when window gains focus
-    refetchOnMount: true, // Refetch when component mounts
-    retry: (failureCount, error) => {
-      if (failureCount < 2) {
-        handleError(error, 'revenues');
-        return true;
-      }
-      return false;
-    },
-  });
+  const { data: revenues, isLoading: revenuesLoading, error: revenuesError } = useStandardQuery(
+    QUERY_KEYS.REVENUES,
+    API_ENDPOINTS.REVENUES,
+    {
+      ...STANDARD_QUERY_CONFIGS.REAL_TIME,
+    }
+  );
 
-  const { data: leaveRequests, isLoading: leaveRequestsLoading, error: leaveRequestsError } = useQuery({
-    queryKey: ['leave-requests'],
-    queryFn: async () => {
-      const backend = getAuthenticatedBackend();
-      return backend.staff.listLeaveRequests({});
-    },
-    refetchInterval: 3000, // Refresh every 3 seconds for real-time updates (increased frequency)
-    staleTime: 0, // Always consider data stale for fresh updates
-    gcTime: 0, // Don't cache results
-    refetchOnWindowFocus: true, // Refetch when window gains focus
-    refetchOnMount: true, // Refetch when component mounts
-    retry: (failureCount, error) => {
-      if (failureCount < 2) {
-        handleError(error, 'leave-requests');
-        return true;
-      }
-      return false;
-    },
-  });
+  const { data: leaveRequests, isLoading: leaveRequestsLoading, error: leaveRequestsError } = useStandardQuery(
+    QUERY_KEYS.LEAVE_REQUESTS,
+    API_ENDPOINTS.LEAVE_REQUESTS,
+    {
+      ...STANDARD_QUERY_CONFIGS.REAL_TIME,
+    }
+  );
 
   // Fetch pending approvals for admins
-  const { data: pendingApprovals, isLoading: pendingApprovalsLoading, error: pendingApprovalsError } = useQuery({
-    queryKey: ['pending-approvals'],
-    queryFn: async () => {
-      // Direct API call since the endpoint isn't in generated client yet
-      const response = await fetch('http://127.0.0.1:4000/finance/pending-approvals', {
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('accessToken')}`,
-        },
-      });
-      
-      if (!response.ok) {
-        throw new Error(`Failed to fetch pending approvals: ${response.statusText}`);
-      }
-      
-      return response.json();
-    },
-    enabled: user?.role === 'ADMIN',
-    refetchInterval: 3000, // Refresh every 3 seconds for real-time updates (increased frequency)
-    staleTime: 0, // Always consider data stale for fresh updates
-    gcTime: 0, // Don't cache results
-    refetchOnWindowFocus: true, // Refetch when window gains focus
-    refetchOnMount: true, // Refetch when component mounts
-    retry: (failureCount, error) => {
-      if (failureCount < 2) {
-        handleError(error, 'pending-approvals');
-        return true;
-      }
-      return false;
-    },
-  });
+  const { data: pendingApprovals, isLoading: pendingApprovalsLoading, error: pendingApprovalsError } = useStandardQuery(
+    QUERY_KEYS.PENDING_APPROVALS,
+    API_ENDPOINTS.PENDING_APPROVALS,
+    {
+      enabled: user?.role === 'ADMIN',
+      ...STANDARD_QUERY_CONFIGS.REAL_TIME,
+    }
+  );
 
   const getRoleDisplayName = (role: string) => {
     return role.replace('_', ' ').toLowerCase().replace(/\b\w/g, l => l.toUpperCase());
@@ -316,126 +197,65 @@ export default function DashboardPage() {
   const [showOverdueTasksModal, setShowOverdueTasksModal] = React.useState(false);
   const [showFinancialPendingModal, setShowFinancialPendingModal] = React.useState(false);
 
-  const approveExpenseMutation = useMutation({
-    mutationFn: async ({ id, approved, notes }: { id: number; approved: boolean; notes?: string }) => {
-      const backend = getAuthenticatedBackend();
-      return backend.finance.approveExpense({ id, approved, notes });
-    },
-    onSuccess: () => {
-      console.log('Dashboard: Expense approval successful');
-      
-      // Aggressive cache invalidation for real-time updates
-      queryClient.invalidateQueries({ queryKey: ['expenses'] });
-      queryClient.invalidateQueries({ queryKey: ['revenues'] });
-      queryClient.invalidateQueries({ queryKey: ['pending-approvals'] });
-      queryClient.invalidateQueries({ queryKey: ['analytics'] });
-      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
-      queryClient.invalidateQueries({ queryKey: ['profit-loss'] });
-      queryClient.invalidateQueries({ queryKey: ['daily-approval-check'] });
-      
-      // Force immediate refetch for all users
-      queryClient.refetchQueries({ queryKey: ['expenses'] });
-      queryClient.refetchQueries({ queryKey: ['pending-approvals'] });
-      queryClient.refetchQueries({ queryKey: ['analytics'] });
-      
-      toast({
-        title: "Expense updated",
-        description: "The expense has been processed successfully.",
-      });
-    },
-    onError: (error: any) => {
-      console.error('Dashboard: Approve expense error:', error);
-      toast({
-        variant: "destructive",
-        title: "Failed to process expense",
-        description: error.message || "Please try again.",
-      });
-    },
-  });
+  const approveExpenseMutation = useStandardMutation(
+    '/finance/expenses/:id/approve',
+    'PATCH',
+    {
+      invalidateQueries: [
+        QUERY_KEYS.EXPENSES,
+        QUERY_KEYS.REVENUES,
+        QUERY_KEYS.PENDING_APPROVALS,
+        QUERY_KEYS.ANALYTICS,
+        QUERY_KEYS.DASHBOARD,
+        QUERY_KEYS.PROFIT_LOSS,
+        QUERY_KEYS.DAILY_APPROVAL_CHECK,
+      ],
+      successMessage: "Expense updated successfully",
+      errorMessage: "Failed to process expense",
+    }
+  );
 
-  const approveRevenueMutation = useMutation({
-    mutationFn: async ({ id, approved, notes }: { id: number; approved: boolean; notes?: string }) => {
-      // Direct API call since the endpoint might not be in generated client
-      const response = await fetch(`http://127.0.0.1:4000/finance/revenues/${id}/approve`, {
-        method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('accessToken')}`,
-        },
-        body: JSON.stringify({ id, approved, notes }),
-      });
-      
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.message || `Failed to approve revenue: ${response.statusText}`);
-      }
-      
-      return response.json();
-    },
-    onSuccess: () => {
-      console.log('Dashboard: Revenue approval successful');
-      
-      // Aggressive cache invalidation for real-time updates
-      queryClient.invalidateQueries({ queryKey: ['revenues'] });
-      queryClient.invalidateQueries({ queryKey: ['expenses'] });
-      queryClient.invalidateQueries({ queryKey: ['pending-approvals'] });
-      queryClient.invalidateQueries({ queryKey: ['analytics'] });
-      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
-      queryClient.invalidateQueries({ queryKey: ['profit-loss'] });
-      queryClient.invalidateQueries({ queryKey: ['daily-approval-check'] });
-      
-      // Force immediate refetch for all users
-      queryClient.refetchQueries({ queryKey: ['revenues'] });
-      queryClient.refetchQueries({ queryKey: ['pending-approvals'] });
-      queryClient.refetchQueries({ queryKey: ['analytics'] });
-      
-      toast({
-        title: "Revenue updated",
-        description: "The revenue has been processed successfully.",
-      });
-    },
-    onError: (error: any) => {
-      console.error('Dashboard: Approve revenue error:', error);
-      toast({
-        variant: "destructive",
-        title: "Failed to process revenue",
-        description: error.message || "Please try again.",
-      });
-    },
-  });
+  const approveRevenueMutation = useStandardMutation(
+    '/finance/revenues/:id/approve',
+    'PATCH',
+    {
+      invalidateQueries: [
+        QUERY_KEYS.REVENUES,
+        QUERY_KEYS.EXPENSES,
+        QUERY_KEYS.PENDING_APPROVALS,
+        QUERY_KEYS.ANALYTICS,
+        QUERY_KEYS.DASHBOARD,
+        QUERY_KEYS.PROFIT_LOSS,
+        QUERY_KEYS.DAILY_APPROVAL_CHECK,
+      ],
+      refetchQueries: [
+        QUERY_KEYS.REVENUES,
+        QUERY_KEYS.PENDING_APPROVALS,
+        QUERY_KEYS.ANALYTICS,
+      ],
+      successMessage: "The revenue has been processed successfully.",
+      errorMessage: "Failed to process revenue. Please try again.",
+    }
+  );
 
-  const approveLeaveMutation = useMutation({
-    mutationFn: async ({ id, approved }: { id: number; approved: boolean }) => {
-      const backend = getAuthenticatedBackend();
-      return backend.staff.approveLeave({ id, approved });
-    },
-    onSuccess: () => {
-      console.log('Dashboard: Leave approval successful');
-      
-      // Aggressive cache invalidation for real-time updates
-      queryClient.invalidateQueries({ queryKey: ['leave-requests'] });
-      queryClient.invalidateQueries({ queryKey: ['pending-approvals'] });
-      queryClient.invalidateQueries({ queryKey: ['analytics'] });
-      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
-      
-      // Force immediate refetch for all users
-      queryClient.refetchQueries({ queryKey: ['leave-requests'] });
-      queryClient.refetchQueries({ queryKey: ['pending-approvals'] });
-      
-      toast({
-        title: "Leave request updated",
-        description: "The leave request has been processed.",
-      });
-    },
-    onError: (error: any) => {
-      console.error('Dashboard: Approve leave error:', error);
-      toast({
-        variant: "destructive",
-        title: "Failed to process leave request",
-        description: error.message || "Please try again.",
-      });
-    },
-  });
+  const approveLeaveMutation = useStandardMutation(
+    '/staff/leave-requests/:id/approve',
+    'PATCH',
+    {
+      invalidateQueries: [
+        QUERY_KEYS.LEAVE_REQUESTS,
+        QUERY_KEYS.PENDING_APPROVALS,
+        QUERY_KEYS.ANALYTICS,
+        QUERY_KEYS.DASHBOARD,
+      ],
+      refetchQueries: [
+        QUERY_KEYS.LEAVE_REQUESTS,
+        QUERY_KEYS.PENDING_APPROVALS,
+      ],
+      successMessage: "The leave request has been processed.",
+      errorMessage: "Failed to process leave request. Please try again.",
+    }
+  );
 
   const handleLogout = async () => {
     try {
@@ -455,13 +275,13 @@ export default function DashboardPage() {
     }
   };
 
-  // Show loading state if any critical data is loading
-  if (propertiesLoading || tasksLoading || (user?.role === 'ADMIN' && (analyticsLoading || usersLoading || expensesLoading || revenuesLoading || leaveRequestsLoading || pendingApprovalsLoading))) {
+  // Show loading state only if critical data (properties and tasks) is loading
+  if (propertiesLoading || tasksLoading) {
     return <LoadingPage text="Loading dashboard..." />;
   }
 
-  // Show error state if any critical data failed to load
-  if (propertiesError || tasksError || (user?.role === 'ADMIN' && (analyticsError || usersError || expensesError || revenuesError || leaveRequestsError || pendingApprovalsError))) {
+  // Show error state only if critical data (properties and tasks) failed to load
+  if (propertiesError && tasksError) {
     return (
       <div className="space-y-6">
         <div className="text-center py-12">

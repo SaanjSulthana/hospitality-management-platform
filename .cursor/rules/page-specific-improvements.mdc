@@ -1,0 +1,462 @@
+---
+alwaysApply: true
+---
+
+# Page-Specific UI/UX Improvements
+
+## 🎯 **Dashboard Page Improvements**
+
+### **Current Issues to Fix:**
+- Remove "Real-time updates active" and "Refresh Data" UI elements
+- Optimize card layouts for better mobile responsiveness
+- Enhance loading states and error handling
+- Improve visual hierarchy of metrics cards
+
+### **Implementation Steps:**
+```tsx
+// 1. Remove clutter elements
+// ❌ Remove this section:
+<div className="flex items-center justify-between mb-4">
+  <div className="flex items-center gap-2">
+    <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
+    <span className="text-sm text-gray-600">Real-time updates active</span>
+  </div>
+  <Button variant="outline" size="sm">
+    <RefreshCw className="h-4 w-4 mr-2" />
+    Refresh Data
+  </Button>
+</div>
+
+// 2. Enhance metrics cards
+<Card className="border-l-4 border-l-blue-500 shadow-sm hover:shadow-md transition-shadow duration-200">
+  <CardHeader className="pb-4">
+    <CardTitle className="text-sm font-medium flex items-center gap-2">
+      <Icon className="h-4 w-4 text-muted-foreground" />
+      Metric Title
+    </CardTitle>
+  </CardHeader>
+  <CardContent>
+    <div className="text-2xl font-bold">{value}</div>
+    <p className="text-xs text-muted-foreground">Description</p>
+  </CardContent>
+</Card>
+
+// 3. Improve grid responsiveness
+<div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
+  {/* Metrics cards */}
+</div>
+```
+
+## 🏢 **Properties Page Improvements**
+
+### **Current Issues to Fix:**
+- Move search and filter controls to the top
+- Remove refresh button
+- Position "Add Property" button below search/filter
+- Optimize property cards for mobile
+
+### **Implementation Steps:**
+```tsx
+// 1. Reorganize layout structure
+<div className="space-y-6">
+  {/* Search and Filter Section */}
+  <Card className="border-l-4 border-l-blue-500 shadow-sm">
+    <CardContent className="pt-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        {/* Search input */}
+        {/* Filter dropdowns */}
+      </div>
+      <div className="mt-4">
+        <Button className="bg-blue-600 hover:bg-blue-700">
+          <Plus className="h-4 w-4 mr-2" />
+          Add Property
+        </Button>
+      </div>
+    </CardContent>
+  </Card>
+
+  {/* Properties Grid */}
+  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 sm:gap-6">
+    {/* Property cards */}
+  </div>
+</div>
+
+// 2. Enhance property cards
+<Card className="border-l-4 border-l-green-500 shadow-sm hover:shadow-md transition-all duration-200 cursor-pointer">
+  <CardHeader className="pb-4">
+    <CardTitle className="text-lg font-bold text-gray-900 truncate">
+      {property.name}
+    </CardTitle>
+    <CardDescription className="text-sm text-gray-600">
+      {property.address}
+    </CardDescription>
+  </CardHeader>
+  <CardContent className="space-y-3">
+    {/* Property details */}
+  </CardContent>
+</Card>
+```
+
+## ✅ **Tasks Page Improvements**
+
+### **Current Issues to Fix:**
+- Move search and filter to the top
+- Remove refresh button
+- Position "Create Task" button below search/filter
+- Optimize task cards for mobile responsiveness
+- Improve tab navigation
+
+### **Implementation Steps:**
+```tsx
+// 1. Enhanced search and filter section
+<Card className="border-l-4 border-l-blue-500 shadow-sm">
+  <CardContent className="pt-6">
+    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      {/* Search and filters */}
+    </div>
+    <div className="mt-4">
+      <Button className="bg-blue-600 hover:bg-blue-700">
+        <Plus className="h-4 w-4 mr-2" />
+        Create Task
+      </Button>
+    </div>
+  </CardContent>
+</Card>
+
+// 2. Enhanced task cards
+<Card className="border-l-4 border-l-orange-500 shadow-sm hover:shadow-md transition-all duration-200 cursor-pointer">
+  <CardHeader className="pb-4">
+    <div className="flex items-start justify-between">
+      <div className="flex-1">
+        <CardTitle className="text-lg font-bold text-gray-900 truncate">
+          {task.title}
+        </CardTitle>
+        <CardDescription className="text-sm text-gray-600 line-clamp-2">
+          {task.description}
+        </CardDescription>
+      </div>
+      <Badge variant={getPriorityVariant(task.priority)} className="flex-shrink-0">
+        {task.priority}
+      </Badge>
+    </div>
+  </CardHeader>
+  <CardContent className="space-y-3">
+    {/* Task details */}
+  </CardContent>
+</Card>
+
+// 3. Enhanced tabs
+<div className="sticky top-20 z-30 bg-white border-b border-gray-200 -mx-6 px-4 sm:px-6 py-3 shadow-sm">
+  <div className="overflow-x-auto">
+    <TabsList className="grid w-full grid-cols-5 min-w-max bg-gray-100">
+      <TabsTrigger 
+        value="all" 
+        className="text-xs sm:text-sm px-2 sm:px-4 py-2 data-[state=active]:bg-white data-[state=active]:shadow-sm transition-all duration-200"
+      >
+        All
+      </TabsTrigger>
+      {/* Other tabs */}
+    </TabsList>
+  </div>
+</div>
+```
+
+## 💰 **Finance Page Improvements**
+
+### **Current Issues to Fix:**
+- Move property and date range filters to the top
+- Remove "Live updates active" indicator
+- Position "Add Revenue" and "Add Expense" buttons below filters
+- Optimize transaction cards for mobile
+- Fix modal layering issues
+
+### **Implementation Steps:**
+```tsx
+// 1. Enhanced filter section
+<Card className="border-l-4 border-l-blue-500 shadow-sm">
+  <CardContent className="pt-6">
+    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      {/* Property and date filters */}
+    </div>
+    <div className="mt-4 flex flex-wrap gap-3">
+      <Button className="bg-green-600 hover:bg-green-700">
+        <Plus className="h-4 w-4 mr-2" />
+        Add Revenue
+      </Button>
+      <Button className="bg-red-600 hover:bg-red-700">
+        <Plus className="h-4 w-4 mr-2" />
+        Add Expense
+      </Button>
+    </div>
+  </CardContent>
+</Card>
+
+// 2. Enhanced transaction cards
+<Card className="border-l-4 border-l-green-500 shadow-sm hover:shadow-md transition-all duration-200">
+  <CardContent className="p-4">
+    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+      <div className="flex-1">
+        <h3 className="font-semibold text-gray-900 truncate">
+          {transaction.description}
+        </h3>
+        <p className="text-sm text-gray-600 truncate">
+          {transaction.propertyName}
+        </p>
+        <p className="text-xs text-gray-500 line-clamp-2">
+          {transaction.category}
+        </p>
+      </div>
+      <div className="flex items-center gap-2 flex-shrink-0">
+        <Badge variant="outline" className="border-green-500 text-green-700">
+          Revenue
+        </Badge>
+        <Button size="sm" variant="outline">
+          <Eye className="h-4 w-4" />
+        </Button>
+      </div>
+    </div>
+  </CardContent>
+</Card>
+
+// 3. Fix modal z-index issues
+// Remove conflicting CSS classes from DialogContent
+<DialogContent className="max-w-2xl max-h-[95vh] overflow-hidden flex flex-col">
+  {/* Modal content */}
+</DialogContent>
+```
+
+## 👥 **Staff Page Improvements**
+
+### **Current Issues to Fix:**
+- Enhance staff member cards
+- Improve leave request management
+- Optimize mobile responsiveness
+- Add proper loading states
+
+### **Implementation Steps:**
+```tsx
+// 1. Enhanced staff cards
+<Card className="border-l-4 border-l-blue-500 shadow-sm hover:shadow-md transition-all duration-200">
+  <CardHeader className="pb-4">
+    <div className="flex items-center gap-3">
+      <div className="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center">
+        <User className="h-6 w-6 text-blue-600" />
+      </div>
+      <div className="flex-1">
+        <CardTitle className="text-lg font-bold text-gray-900">
+          {staff.name}
+        </CardTitle>
+        <CardDescription className="text-sm text-gray-600">
+          {staff.role} • {staff.department}
+        </CardDescription>
+      </div>
+      <Badge variant="outline" className="border-green-500 text-green-700">
+        Active
+      </Badge>
+    </div>
+  </CardHeader>
+  <CardContent className="space-y-3">
+    {/* Staff details */}
+  </CardContent>
+</Card>
+
+// 2. Enhanced leave request cards
+<Card className="border-l-4 border-l-orange-500 shadow-sm">
+  <CardContent className="p-4">
+    <div className="flex items-center justify-between">
+      <div className="flex-1">
+        <h3 className="font-semibold text-gray-900">{request.staffName}</h3>
+        <p className="text-sm text-gray-600">{request.leaveType}</p>
+        <p className="text-xs text-gray-500">
+          {formatDateRange(request.startDate, request.endDate)}
+        </p>
+      </div>
+      <div className="flex gap-2">
+        <Button size="sm" className="bg-green-600 hover:bg-green-700">
+          <Check className="h-4 w-4" />
+        </Button>
+        <Button size="sm" variant="destructive">
+          <X className="h-4 w-4" />
+        </Button>
+      </div>
+    </div>
+  </CardContent>
+</Card>
+```
+
+## 📊 **Analytics Page Improvements**
+
+### **Current Issues to Fix:**
+- Enhance chart containers
+- Improve metric cards
+- Optimize data visualization
+- Add proper loading states
+
+### **Implementation Steps:**
+```tsx
+// 1. Enhanced metric cards
+<Card className="border-l-4 border-l-purple-500 shadow-sm hover:shadow-md transition-shadow duration-200">
+  <CardHeader className="pb-4">
+    <CardTitle className="text-sm font-medium flex items-center gap-2">
+      <TrendingUp className="h-4 w-4 text-purple-600" />
+      Revenue Growth
+    </CardTitle>
+  </CardHeader>
+  <CardContent>
+    <div className="text-2xl font-bold text-purple-600">
+      {formatCurrency(metric.value)}
+    </div>
+    <p className="text-xs text-gray-600 flex items-center gap-1">
+      <TrendingUp className="h-3 w-3 text-green-500" />
+      +{metric.percentage}% from last month
+    </p>
+  </CardContent>
+</Card>
+
+// 2. Enhanced chart containers
+<Card className="border-l-4 border-l-blue-500 shadow-sm">
+  <CardHeader className="pb-4">
+    <CardTitle className="text-lg font-bold text-gray-900">
+      Performance Overview
+    </CardTitle>
+    <CardDescription className="text-sm text-gray-600">
+      Key metrics and trends for the selected period
+    </CardDescription>
+  </CardHeader>
+  <CardContent>
+    <div className="h-80 w-full">
+      {/* Chart component */}
+    </div>
+  </CardContent>
+</Card>
+```
+
+## ⚙️ **Settings Page Improvements**
+
+### **Current Issues to Fix:**
+- Organize settings into logical sections
+- Enhance form layouts
+- Improve mobile responsiveness
+- Add proper validation states
+
+### **Implementation Steps:**
+```tsx
+// 1. Enhanced settings sections
+<Card className="border-l-4 border-l-gray-500 shadow-sm">
+  <CardHeader className="pb-4">
+    <CardTitle className="text-lg font-bold text-gray-900 flex items-center gap-2">
+      <Settings className="h-5 w-5 text-gray-600" />
+      General Settings
+    </CardTitle>
+    <CardDescription className="text-sm text-gray-600">
+      Configure your organization's basic settings
+    </CardDescription>
+  </CardHeader>
+  <CardContent className="space-y-6">
+    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+      {/* Form fields */}
+    </div>
+  </CardContent>
+</Card>
+
+// 2. Enhanced form fields
+<div className="space-y-2">
+  <Label htmlFor="setting-input" className="text-sm font-medium text-gray-700">
+    Setting Name
+  </Label>
+  <Input
+    id="setting-input"
+    className="h-11 border-gray-300 focus:border-blue-500 focus:ring-blue-500"
+    placeholder="Enter value"
+  />
+  <p className="text-xs text-gray-500">Help text for the setting</p>
+</div>
+```
+
+## 👤 **Users Page Improvements**
+
+### **Current Issues to Fix:**
+- Enhance user management interface
+- Improve role assignment UI
+- Optimize user cards
+- Add proper permissions display
+
+### **Implementation Steps:**
+```tsx
+// 1. Enhanced user cards
+<Card className="border-l-4 border-l-blue-500 shadow-sm hover:shadow-md transition-all duration-200">
+  <CardHeader className="pb-4">
+    <div className="flex items-center gap-3">
+      <div className="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center">
+        <User className="h-6 w-6 text-blue-600" />
+      </div>
+      <div className="flex-1">
+        <CardTitle className="text-lg font-bold text-gray-900">
+          {user.displayName}
+        </CardTitle>
+        <CardDescription className="text-sm text-gray-600">
+          {user.email}
+        </CardDescription>
+      </div>
+      <Badge variant="outline" className="border-blue-500 text-blue-700">
+        {user.role}
+      </Badge>
+    </div>
+  </CardHeader>
+  <CardContent className="space-y-3">
+    {/* User details and actions */}
+  </CardContent>
+</Card>
+
+// 2. Enhanced role management
+<Card className="border-l-4 border-l-green-500 shadow-sm">
+  <CardHeader className="pb-4">
+    <CardTitle className="text-lg font-bold text-gray-900">
+      Role Management
+    </CardTitle>
+    <CardDescription className="text-sm text-gray-600">
+      Assign and manage user roles and permissions
+    </CardDescription>
+  </CardHeader>
+  <CardContent>
+    <div className="space-y-4">
+      {/* Role assignment interface */}
+    </div>
+  </CardContent>
+</Card>
+```
+
+## 🎯 **Implementation Priority Order**
+
+1. **High Priority** (Core functionality):
+   - Dashboard Page
+   - Properties Page
+   - Tasks Page
+   - Finance Page
+
+2. **Medium Priority** (Management features):
+   - Staff Page
+   - Users Page
+   - Analytics Page
+
+3. **Low Priority** (Configuration):
+   - Settings Page
+
+## ✅ **Quality Assurance Checklist**
+
+For each page implementation:
+
+- [ ] **Layout**: Full-page container with proper background
+- [ ] **Navigation**: Enhanced sticky tabs (if applicable)
+- [ ] **Cards**: Professional design with shadows and transitions
+- [ ] **Forms**: Enhanced inputs with proper focus states
+- [ ] **Loading**: Card-based loading with descriptive text
+- [ ] **Errors**: Professional error handling with retry options
+- [ ] **Buttons**: Enhanced design with responsive labels
+- [ ] **Grids**: Mobile-first responsive layouts
+- [ ] **Mobile**: Touch-friendly design with proper spacing
+- [ ] **Performance**: Minimal DOM and efficient layouts
+- [ ] **Accessibility**: Proper contrast and focus states
+- [ ] **Consistency**: Matches ReportsPage design standards
+
+This ensures all pages achieve the same professional, modern design with consistent visual language and excellent user experience.

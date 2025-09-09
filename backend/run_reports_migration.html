@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Run Reports Migration</title>
+</head>
+<body>
+    <h1>Run Reports Database Migration</h1>
+    <p>This will add new fields to the daily_cash_balances table for automatic balance calculation.</p>
+    <button onclick="runMigration()">Run Migration</button>
+    <div id="result"></div>
+
+    <script>
+        async function runMigration() {
+            const resultDiv = document.getElementById('result');
+            resultDiv.innerHTML = 'Running migration...';
+            
+            try {
+                // Get the access token from localStorage (assuming you're logged in)
+                const token = localStorage.getItem('accessToken');
+                
+                if (!token) {
+                    resultDiv.innerHTML = 'Error: No access token found. Please log in first.';
+                    return;
+                }
+                
+                const response = await fetch('http://localhost:4000/reports/run-migration', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`
+                    }
+                });
+                
+                if (response.ok) {
+                    const result = await response.json();
+                    resultDiv.innerHTML = `<pre>${JSON.stringify(result, null, 2)}</pre>`;
+                } else {
+                    const error = await response.text();
+                    resultDiv.innerHTML = `Error: ${response.status} - ${error}`;
+                }
+            } catch (error) {
+                resultDiv.innerHTML = `Error: ${error.message}`;
+            }
+        }
+    </script>
+</body>
+</html>

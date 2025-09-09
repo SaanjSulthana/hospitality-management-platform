@@ -1,7 +1,7 @@
 import { api, APIError } from "encore.dev/api";
 import { getAuthData } from "~encore/auth";
-import { staffDB } from "./db";
 import { requireRole } from "../auth/middleware";
+import { staffDB } from "./db";
 
 export interface CreateScheduleRequest {
   staffId: number;
@@ -32,7 +32,10 @@ export interface CreateScheduleResponse {
 export const createSchedule = api<CreateScheduleRequest, CreateScheduleResponse>(
   { auth: true, expose: true, method: "POST", path: "/staff/schedules" },
   async (req) => {
-    const authData = getAuthData()!;
+    const authData = getAuthData();
+    if (!authData) {
+      throw APIError.unauthenticated("Authentication required");
+    }
     requireRole("ADMIN", "MANAGER")(authData);
 
     const { staffId, propertyId, shiftDate, startTime, endTime, breakMinutes = 0, notes } = req;
@@ -107,6 +110,10 @@ export const createSchedule = api<CreateScheduleRequest, CreateScheduleResponse>
       RETURNING id, staff_id, property_id, shift_date, start_time, end_time, break_minutes, status, notes, created_at
     `;
 
+    if (!scheduleRow) {
+      throw new Error('Failed to create schedule');
+    }
+
     return {
       id: scheduleRow.id,
       staffId: scheduleRow.staff_id,
@@ -123,3 +130,4 @@ export const createSchedule = api<CreateScheduleRequest, CreateScheduleResponse>
     };
   }
 );
+

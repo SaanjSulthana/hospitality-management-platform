@@ -1,5 +1,6 @@
-import { api } from "encore.dev/api";
+import { api, APIError } from "encore.dev/api";
 import { getAuthData } from "~encore/auth";
+import { authDB } from "./db";
 import { AuthData } from "./types";
 
 export interface MeResponse {
@@ -8,10 +9,13 @@ export interface MeResponse {
 }
 
 // Returns current user information and permissions
-export const me = api<void, MeResponse>(
+export const me = api<{}, MeResponse>(
   { auth: true, expose: true, method: "GET", path: "/auth/me" },
-  async () => {
-    const authData = getAuthData()!;
+  async (req) => {
+    const authData = getAuthData();
+    if (!authData) {
+      throw APIError.unauthenticated("Authentication required");
+    }
     
     const permissions = getPermissionsForRole(authData.role);
     

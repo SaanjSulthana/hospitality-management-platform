@@ -1,4 +1,5 @@
 import Client, { Local } from '../client';
+import { isDevelopment } from '../src/utils/env';
 
 // Test if the import is working
 console.log('=== BACKEND IMPORT TEST ===');
@@ -242,7 +243,7 @@ const cleanExistingTokens = () => {
 };
 
 // Add global debug function for development
-if (typeof window !== 'undefined' && process.env.NODE_ENV === 'development') {
+if (isDevelopment()) {
   (window as any).testBackend = () => {
     console.log('=== TESTING BACKEND ===');
     console.log('Client instance:', clientInstance);

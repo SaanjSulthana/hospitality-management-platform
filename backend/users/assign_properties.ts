@@ -1,11 +1,11 @@
 import { api, APIError } from "encore.dev/api";
 import { getAuthData } from "~encore/auth";
-import { usersDB } from "./db";
 import { requireRole } from "../auth/middleware";
+import { usersDB } from "./db";
 import log from "encore.dev/log";
 
 export interface AssignPropertiesRequest {
-  id: number; // path param
+  id: number;
   propertyIds: number[];
 }
 
@@ -18,17 +18,22 @@ export interface AssignPropertiesResponse {
 // Assigns properties to a manager (Admin only).
 // Replaces existing assignments with the provided list.
 export const assignProperties = api<AssignPropertiesRequest, AssignPropertiesResponse>(
-  { auth: true, expose: true, method: "PATCH", path: "/users/:id/properties" },
+  { auth: true, expose: true, method: "POST", path: "/users/assign-properties" },
   async (req) => {
-    const authData = getAuthData()!;
+    const authData = getAuthData();
+    if (!authData) {
+      throw APIError.unauthenticated("Authentication required");
+    }
     requireRole("ADMIN")(authData);
 
-    const { id, propertyIds } = req;
+    const { id: userId } = req;
+
+    const { propertyIds } = req;
 
     const tx = await usersDB.begin();
     try {
       log.info("Assigning properties to user", { 
-        userId: id, 
+        userId: userId, 
         propertyIds,
         orgId: authData.orgId, 
         assignedBy: authData.userID 
@@ -36,7 +41,7 @@ export const assignProperties = api<AssignPropertiesRequest, AssignPropertiesRes
 
       // Validate user belongs to org and is MANAGER
       const userRow = await tx.queryRow`
-        SELECT id, org_id, role FROM users WHERE id = ${id} AND org_id = ${authData.orgId}
+        SELECT id, org_id, role FROM users WHERE id = ${userId} AND org_id = ${authData.orgId}
       `;
       
       if (!userRow) {
@@ -49,7 +54,7 @@ export const assignProperties = api<AssignPropertiesRequest, AssignPropertiesRes
 
       // Remove existing assignments
       await tx.exec`
-        DELETE FROM user_properties WHERE user_id = ${id}
+        DELETE FROM user_properties WHERE user_id = ${userId}
       `;
 
       let toAssign: number[] = [];
@@ -68,7 +73,7 @@ export const assignProperties = api<AssignPropertiesRequest, AssignPropertiesRes
         for (const pid of toAssign) {
           await tx.exec`
             INSERT INTO user_properties (user_id, property_id)
-            VALUES (${id}, ${pid})
+            VALUES (${userId}, ${pid})
             ON CONFLICT DO NOTHING
           `;
         }
@@ -76,17 +81,17 @@ export const assignProperties = api<AssignPropertiesRequest, AssignPropertiesRes
 
       await tx.commit();
       log.info("Properties assigned successfully", { 
-        userId: id, 
+        userId: userId, 
         assignedProperties: toAssign,
         orgId: authData.orgId 
       });
 
-      return { success: true, userId: id, propertyIds: toAssign };
+      return { success: true, userId: userId, propertyIds: toAssign };
     } catch (error) {
       await tx.rollback();
       log.error('Assign properties error', { 
         error: error instanceof Error ? error.message : String(error),
-        userId: id,
+        userId: userId,
         propertyIds,
         orgId: authData.orgId,
         assignedBy: authData.userID
@@ -100,3 +105,4 @@ export const assignProperties = api<AssignPropertiesRequest, AssignPropertiesRes
     }
   }
 );
+

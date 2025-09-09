@@ -1,13 +1,14 @@
-import { api, Query } from "encore.dev/api";
+import { api, APIError } from "encore.dev/api";
 import { getAuthData } from "~encore/auth";
 import { financeDB } from "./db";
+import { requireRole } from "../auth/middleware";
 
-export interface ListExpensesRequest {
-  propertyId?: Query&lt;number&gt;;
-  category?: Query&lt;string&gt;;
-  status?: Query&lt;string&gt;;
-  startDate?: Query&lt;Date&gt;;
-  endDate?: Query&lt;Date&gt;;
+interface ListExpensesRequest {
+  propertyId?: number;
+  category?: string;
+  status?: string;
+  startDate?: string; // YYYY-MM-DD format
+  endDate?: string; // YYYY-MM-DD format
 }
 
 export interface ExpenseInfo {
@@ -19,7 +20,10 @@ export interface ExpenseInfo {
   currency: string;
   description?: string;
   receiptUrl?: string;
+  receiptFileId?: number;
   expenseDate: Date;
+  paymentMode: string;
+  bankReference?: string;
   status: string;
   createdByUserId: number;
   createdByName: string;
@@ -35,18 +39,25 @@ export interface ListExpensesResponse {
 }
 
 // Lists expenses with filtering
-export const listExpenses = api&lt;ListExpensesRequest, ListExpensesResponse&gt;(
+export const listExpenses = api<ListExpensesRequest, ListExpensesResponse>(
   { auth: true, expose: true, method: "GET", path: "/finance/expenses" },
-  async (req) =&gt; {
-    const authData = getAuthData()!;
+  async (req) => {
+    const authData = getAuthData();
+    if (!authData) {
+      throw APIError.unauthenticated("Authentication required");
+    }
+    requireRole("ADMIN", "MANAGER")(authData);
+
     const { propertyId, category, status, startDate, endDate } = req || {};
+
+    console.log('List expenses request:', { propertyId, category, status, startDate, endDate, orgId: authData.orgId });
 
     try {
       let query = `
         SELECT 
           e.id, e.property_id, p.name as property_name, e.category, e.amount_cents, e.currency,
-          e.description, e.receipt_url, e.expense_date, e.status, e.created_by_user_id,
-          e.approved_by_user_id, e.approved_at, e.created_at,
+          e.description, e.receipt_url, e.receipt_file_id, e.expense_date, e.payment_mode, e.bank_reference,
+          e.status, e.created_by_user_id, e.approved_by_user_id, e.approved_at, e.created_at,
           u.display_name as created_by_name,
           au.display_name as approved_by_name
         FROM expenses e
@@ -87,28 +98,32 @@ export const listExpenses = api&lt;ListExpensesRequest, ListExpensesResponse&gt;
       }
 
       if (startDate) {
-        query += ` AND e.expense_date &gt;= $${paramIndex}`;
-        params.push(startDate);
+        // Start of day: 00:00:00
+        query += ` AND e.expense_date >= $${paramIndex}`;
+        params.push(new Date(`${startDate}T00:00:00.000Z`));
         paramIndex++;
       }
 
       if (endDate) {
-        query += ` AND e.expense_date &lt;= $${paramIndex}`;
-        params.push(endDate);
+        // End of day: 23:59:59.999
+        query += ` AND e.expense_date <= $${paramIndex}`;
+        params.push(new Date(`${endDate}T23:59:59.999Z`));
         paramIndex++;
       }
 
       query += ` ORDER BY e.expense_date DESC, e.created_at DESC`;
 
+      console.log('Executing expenses query:', query);
+      console.log('Query params:', params);
       const expenses = await financeDB.rawQueryAll(query, ...params);
+      console.log('Query result count:', expenses.length);
 
-      // Calculate total amount for approved expenses
+      // Calculate total amount for all expenses (including pending)
       const totalAmount = expenses
-        .filter(expense =&gt; expense.status === 'approved')
-        .reduce((sum, expense) =&gt; sum + (parseInt(expense.amount_cents) || 0), 0);
+        .reduce((sum, expense) => sum + (parseInt(expense.amount_cents) || 0), 0);
 
       return {
-        expenses: expenses.map((expense) =&gt; ({
+        expenses: expenses.map((expense) => ({
           id: expense.id,
           propertyId: expense.property_id,
           propertyName: expense.property_name,
@@ -117,7 +132,10 @@ export const listExpenses = api&lt;ListExpensesRequest, ListExpensesResponse&gt;
           currency: expense.currency,
           description: expense.description,
           receiptUrl: expense.receipt_url,
+          receiptFileId: expense.receipt_file_id,
           expenseDate: expense.expense_date,
+          paymentMode: expense.payment_mode,
+          bankReference: expense.bank_reference,
           status: expense.status,
           createdByUserId: expense.created_by_user_id,
           createdByName: expense.created_by_name,
@@ -134,3 +152,4 @@ export const listExpenses = api&lt;ListExpensesRequest, ListExpensesResponse&gt;
     }
   }
 );
+

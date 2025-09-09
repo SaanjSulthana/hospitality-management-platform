@@ -13,6 +13,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { useToast } from '@/components/ui/use-toast';
+import { API_CONFIG } from '../src/config/api';
 import {
   Calendar,
   TrendingUp,
@@ -635,7 +636,7 @@ function DailyReportManagerContent({ selectedPropertyId, selectedDate, onPropert
     try {
       // Use direct fetch call since the client hasn't been regenerated yet
       const token = localStorage.getItem('accessToken');
-      const response = await fetch('http://localhost:4000/reports/export-daily-pdf', {
+      const response = await fetch(`${API_CONFIG.BASE_URL}/reports/export-daily-pdf`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -691,7 +692,7 @@ function DailyReportManagerContent({ selectedPropertyId, selectedDate, onPropert
     try {
       // Use direct fetch call since the client hasn't been regenerated yet
       const token = localStorage.getItem('accessToken');
-      const response = await fetch('http://localhost:4000/reports/export-daily-excel', {
+      const response = await fetch(`${API_CONFIG.BASE_URL}/reports/export-daily-excel`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,

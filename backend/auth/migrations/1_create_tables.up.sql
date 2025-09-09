@@ -129,6 +129,23 @@ CREATE TABLE IF NOT EXISTS leave_requests (
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
+-- Staff attendance table
+CREATE TABLE IF NOT EXISTS staff_attendance (
+  id BIGSERIAL PRIMARY KEY,
+  org_id BIGINT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+  staff_id BIGINT NOT NULL REFERENCES staff(id) ON DELETE CASCADE,
+  attendance_date DATE NOT NULL,
+  check_in_time TIMESTAMP,
+  check_out_time TIMESTAMP,
+  status TEXT NOT NULL CHECK (status IN ('present', 'absent', 'late', 'half_day')) DEFAULT 'present',
+  notes TEXT,
+  location_latitude DECIMAL(10, 8),
+  location_longitude DECIMAL(11, 8),
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW(),
+  UNIQUE(org_id, staff_id, attendance_date)
+);
+
 -- Guests table
 CREATE TABLE IF NOT EXISTS guests (
   id BIGSERIAL PRIMARY KEY,
@@ -311,6 +328,9 @@ CREATE INDEX IF NOT EXISTS idx_notifications_org_id ON notifications(org_id);
 CREATE INDEX IF NOT EXISTS idx_notifications_user_id ON notifications(user_id);
 CREATE INDEX IF NOT EXISTS idx_signup_tokens_token ON signup_tokens(token);
 CREATE INDEX IF NOT EXISTS idx_signup_tokens_expires_at ON signup_tokens(expires_at);
+CREATE INDEX IF NOT EXISTS idx_staff_attendance_org_staff_date ON staff_attendance(org_id, staff_id, attendance_date);
+CREATE INDEX IF NOT EXISTS idx_staff_attendance_date ON staff_attendance(attendance_date);
+CREATE INDEX IF NOT EXISTS idx_staff_attendance_status ON staff_attendance(status);
 
 -- Insert default organization and admin user (only if they don't exist)
 DO $$

@@ -11,6 +11,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useToast } from '@/components/ui/use-toast';
 import { Settings, Palette, Building2, Save, Upload, X, Image } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import { API_CONFIG } from '../src/config/api';
 
 export default function SettingsPage() {
   const { user } = useAuth();
@@ -56,7 +57,7 @@ export default function SettingsPage() {
     if (theme.logoUrl && theme.logoUrl.trim() !== '') {
       // For relative URLs, construct the full URL
       if (!theme.logoUrl.startsWith('http')) {
-        const logoUrl = `http://127.0.0.1:4000${theme.logoUrl}`;
+        const logoUrl = `${API_CONFIG.BASE_URL}${theme.logoUrl}`;
         setLogoPreview(logoUrl);
         console.log('Setting logo preview (relative):', logoUrl);
       } else {
@@ -202,7 +203,7 @@ export default function SettingsPage() {
       console.log('File converted to base64, length:', base64String.length);
 
       // Upload logo
-      const response = await fetch('http://127.0.0.1:4000/branding/logo', {
+      const response = await fetch(`${API_CONFIG.BASE_URL}/branding/logo`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -285,67 +286,108 @@ export default function SettingsPage() {
   // Only show settings page to Admins
   if (user?.role !== 'ADMIN') {
     return (
-      <div className="space-y-6">
-        <div className="text-center py-12">
-          <Settings className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-          <h3 className="text-lg font-medium text-gray-900 mb-2">Access Restricted</h3>
-          <p className="text-gray-500">
-            Only Administrators can access organization settings.
-          </p>
+      <div className="min-h-screen bg-gray-50">
+        <div className="px-6 py-6">
+          <Card className="border-l-4 border-l-red-500 shadow-sm">
+            <CardContent className="flex items-center justify-center p-12">
+              <div className="text-center">
+                <div className="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                  <Settings className="h-6 w-6 text-red-600" />
+                </div>
+                <h3 className="text-lg font-medium text-red-900 mb-2">Access Restricted</h3>
+                <p className="text-sm text-gray-600">
+                  Only Administrators can access organization settings.
+                </p>
+              </div>
+            </CardContent>
+          </Card>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div>
-        <h1 className="text-3xl font-bold text-gray-900">Settings</h1>
-        <p className="text-gray-600">Manage your organization settings and branding</p>
-      </div>
+    <div className="min-h-screen bg-gray-50">
+      <div className="px-6 py-6">
+        {/* Enhanced Header */}
+        <Card className="border-l-4 border-l-blue-500 shadow-sm hover:shadow-md transition-shadow duration-200 mb-6">
+          <CardHeader className="pb-4">
+            <CardTitle className="text-xl font-bold text-gray-900 flex items-center gap-2">
+              <div className="p-2 bg-blue-100 rounded-lg shadow-sm">
+                <Settings className="h-5 w-5 text-blue-600" />
+              </div>
+              Settings
+            </CardTitle>
+            <CardDescription className="text-sm text-gray-600">
+              Manage your organization settings and branding
+            </CardDescription>
+          </CardHeader>
+        </Card>
 
-      <Tabs defaultValue="branding" className="space-y-6">
-        <TabsList>
-          <TabsTrigger value="branding">Branding</TabsTrigger>
-          <TabsTrigger value="organization">Organization</TabsTrigger>
-          <TabsTrigger value="integrations">Integrations</TabsTrigger>
-        </TabsList>
+        <Tabs defaultValue="branding" className="space-y-6">
+          {/* Enhanced Sticky Tabs */}
+          <div className="sticky top-20 z-30 bg-white border-b border-gray-200 -mx-6 px-4 sm:px-6 py-3 shadow-sm mb-6">
+            <div className="overflow-x-auto">
+              <TabsList className="grid w-full grid-cols-3 min-w-max bg-gray-100">
+                <TabsTrigger 
+                  value="branding" 
+                  className="text-xs sm:text-sm px-3 sm:px-6 py-2 data-[state=active]:bg-white data-[state=active]:shadow-sm transition-all duration-200"
+                >
+                  Branding
+                </TabsTrigger>
+                <TabsTrigger 
+                  value="organization" 
+                  className="text-xs sm:text-sm px-3 sm:px-6 py-2 data-[state=active]:bg-white data-[state=active]:shadow-sm transition-all duration-200"
+                >
+                  Organization
+                </TabsTrigger>
+                <TabsTrigger 
+                  value="integrations" 
+                  className="text-xs sm:text-sm px-3 sm:px-6 py-2 data-[state=active]:bg-white data-[state=active]:shadow-sm transition-all duration-200"
+                >
+                  Integrations
+                </TabsTrigger>
+              </TabsList>
+            </div>
+          </div>
 
-        <TabsContent value="branding">
+        <TabsContent value="branding" className="space-y-6 mt-0">
           <form onSubmit={handleThemeSubmit} className="space-y-6">
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Palette className="h-5 w-5" />
+            <Card className="border-l-4 border-l-purple-500 shadow-sm hover:shadow-md transition-shadow duration-200">
+              <CardHeader className="pb-4">
+                <CardTitle className="text-lg font-bold text-gray-900 flex items-center gap-2">
+                  <div className="p-2 bg-purple-100 rounded-lg shadow-sm">
+                    <Palette className="h-5 w-5 text-purple-600" />
+                  </div>
                   Brand Identity
                 </CardTitle>
-                <CardDescription>
+                <CardDescription className="text-sm text-gray-600">
                   Customize your organization's visual identity and branding
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-6">
                 {/* Brand Name */}
                 <div className="space-y-2">
-                  <Label htmlFor="brandName">Brand Name</Label>
+                  <Label htmlFor="brandName" className="text-sm font-medium text-gray-700">Brand Name</Label>
                   <Input
                     id="brandName"
                     value={themeForm.brandName}
                     onChange={(e) => setThemeForm(prev => ({ ...prev, brandName: e.target.value }))}
                     placeholder="Your organization name"
+                    className="h-11 border-gray-300 focus:border-blue-500 focus:ring-blue-500"
                   />
                 </div>
 
                 {/* Logo Upload */}
                 <div className="space-y-4">
-                  <Label>Organization Logo</Label>
+                  <Label className="text-sm font-medium text-gray-700">Organization Logo</Label>
                   
                   {/* Logo Preview */}
                   {(logoPreview || (themeForm.logoUrl && themeForm.logoUrl.trim() !== '')) && (
                     <div className="flex items-center gap-4 p-4 border rounded-lg bg-gray-50">
                       <div className="relative">
                         <img
-                          src={logoPreview || (themeForm.logoUrl.startsWith('http') ? themeForm.logoUrl : `http://127.0.0.1:4000${themeForm.logoUrl}`)}
+                          src={logoPreview || (themeForm.logoUrl.startsWith('http') ? themeForm.logoUrl : `${API_CONFIG.BASE_URL}${themeForm.logoUrl}`)}
                           alt="Organization Logo"
                           className="h-16 w-16 object-contain rounded border"
                           onError={(e) => {
@@ -382,7 +424,7 @@ export default function SettingsPage() {
                         type="file"
                         accept="image/*"
                         onChange={handleFileSelect}
-                        className="flex-1"
+                        className="flex-1 h-11 border-gray-300 focus:border-blue-500 focus:ring-blue-500"
                         disabled={isUploadingLogo}
                       />
                       <Button
@@ -390,6 +432,7 @@ export default function SettingsPage() {
                         variant="outline"
                         onClick={() => fileInputRef.current?.click()}
                         disabled={isUploadingLogo}
+                        className="h-11 px-4 transition-all duration-200 hover:scale-105 hover:shadow-md flex-shrink-0"
                       >
                         {isUploadingLogo ? (
                           <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-gray-900"></div>
@@ -405,13 +448,13 @@ export default function SettingsPage() {
 
                                      {/* Manual URL Input (Optional) */}
                    <div className="space-y-2">
-                     <Label htmlFor="logoUrl" className="text-sm text-gray-600">Or provide logo URL</Label>
+                     <Label htmlFor="logoUrl" className="text-sm font-medium text-gray-700">Or provide logo URL</Label>
                      <Input
                        id="logoUrl"
                        value={themeForm.logoUrl}
                        onChange={(e) => setThemeForm(prev => ({ ...prev, logoUrl: e.target.value }))}
                        placeholder="https://example.com/logo.png"
-                       className="text-sm"
+                       className="h-11 border-gray-300 focus:border-blue-500 focus:ring-blue-500"
                      />
                    </div>
 
@@ -428,33 +471,33 @@ export default function SettingsPage() {
 
                 {/* Color Scheme */}
                 <div className="space-y-4">
-                  <Label>Color Scheme</Label>
+                  <Label className="text-sm font-medium text-gray-700">Color Scheme</Label>
                   
                   {/* Primary Color */}
                   <div className="space-y-2">
-                    <Label htmlFor="primaryColor" className="text-sm">Primary Color</Label>
+                    <Label htmlFor="primaryColor" className="text-sm font-medium text-gray-700">Primary Color</Label>
                     <div className="flex gap-2 items-center">
                       <Input
                         id="primaryColor"
                         type="color"
                         value={themeForm.primaryColor}
                         onChange={(e) => handleColorChange('primaryColor', e.target.value)}
-                        className="w-16 h-10 p-1 border rounded"
+                        className="w-16 h-11 p-1 border border-gray-300 rounded focus:border-blue-500 focus:ring-blue-500"
                       />
                       <Input
                         value={themeForm.primaryColor}
                         onChange={(e) => handleColorChange('primaryColor', e.target.value)}
                         placeholder="#3b82f6"
-                        className="flex-1"
+                        className="flex-1 h-11 border-gray-300 focus:border-blue-500 focus:ring-blue-500"
                       />
                     </div>
-                    <div className="flex gap-1">
+                    <div className="flex gap-2 flex-wrap">
                       {presetColors.map((color: any) => (
                         <button
                           key={color.name}
                           type="button"
                           onClick={() => handleColorChange('primaryColor', color.value)}
-                          className="w-8 h-8 rounded border-2 border-gray-200 hover:border-gray-400"
+                          className="w-8 h-8 rounded border-2 border-gray-200 hover:border-gray-400 transition-all duration-200 hover:scale-110"
                           style={{ backgroundColor: color.value }}
                           title={color.name}
                         />
@@ -464,40 +507,40 @@ export default function SettingsPage() {
 
                   {/* Secondary Color */}
                   <div className="space-y-2">
-                    <Label htmlFor="secondaryColor" className="text-sm">Secondary Color</Label>
+                    <Label htmlFor="secondaryColor" className="text-sm font-medium text-gray-700">Secondary Color</Label>
                     <div className="flex gap-2 items-center">
                       <Input
                         id="secondaryColor"
                         type="color"
                         value={themeForm.secondaryColor}
                         onChange={(e) => handleColorChange('secondaryColor', e.target.value)}
-                        className="w-16 h-10 p-1 border rounded"
+                        className="w-16 h-11 p-1 border border-gray-300 rounded focus:border-blue-500 focus:ring-blue-500"
                       />
                       <Input
                         value={themeForm.secondaryColor}
                         onChange={(e) => handleColorChange('secondaryColor', e.target.value)}
                         placeholder="#64748b"
-                        className="flex-1"
+                        className="flex-1 h-11 border-gray-300 focus:border-blue-500 focus:ring-blue-500"
                       />
                     </div>
                   </div>
 
                   {/* Accent Color */}
                   <div className="space-y-2">
-                    <Label htmlFor="accentColor" className="text-sm">Accent Color</Label>
+                    <Label htmlFor="accentColor" className="text-sm font-medium text-gray-700">Accent Color</Label>
                     <div className="flex gap-2 items-center">
                       <Input
                         id="accentColor"
                         type="color"
                         value={themeForm.accentColor}
                         onChange={(e) => handleColorChange('accentColor', e.target.value)}
-                        className="w-16 h-10 p-1 border rounded"
+                        className="w-16 h-11 p-1 border border-gray-300 rounded focus:border-blue-500 focus:ring-blue-500"
                       />
                       <Input
                         value={themeForm.accentColor}
                         onChange={(e) => handleColorChange('accentColor', e.target.value)}
                         placeholder="#10b981"
-                        className="flex-1"
+                        className="flex-1 h-11 border-gray-300 focus:border-blue-500 focus:ring-blue-500"
                       />
                     </div>
                   </div>
@@ -505,19 +548,24 @@ export default function SettingsPage() {
               </CardContent>
             </Card>
 
-            <Card>
-              <CardHeader>
-                <CardTitle>Localization</CardTitle>
-                <CardDescription>
+            <Card className="border-l-4 border-l-green-500 shadow-sm hover:shadow-md transition-shadow duration-200">
+              <CardHeader className="pb-4">
+                <CardTitle className="text-lg font-bold text-gray-900 flex items-center gap-2">
+                  <div className="p-2 bg-green-100 rounded-lg shadow-sm">
+                    <Settings className="h-5 w-5 text-green-600" />
+                  </div>
+                  Localization
+                </CardTitle>
+                <CardDescription className="text-sm text-gray-600">
                   Configure regional settings and formats
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                   <div className="space-y-2">
-                    <Label htmlFor="currency">Currency</Label>
+                    <Label htmlFor="currency" className="text-sm font-medium text-gray-700">Currency</Label>
                     <Select value={themeForm.currency} onValueChange={(value) => setThemeForm(prev => ({ ...prev, currency: value }))}>
-                      <SelectTrigger>
+                      <SelectTrigger className="h-11 border-gray-300 focus:border-blue-500 focus:ring-blue-500">
                         <SelectValue placeholder="Select currency" />
                       </SelectTrigger>
                       <SelectContent>
@@ -532,9 +580,9 @@ export default function SettingsPage() {
                   </div>
 
                   <div className="space-y-2">
-                    <Label htmlFor="dateFormat">Date Format</Label>
+                    <Label htmlFor="dateFormat" className="text-sm font-medium text-gray-700">Date Format</Label>
                     <Select value={themeForm.dateFormat} onValueChange={(value) => setThemeForm(prev => ({ ...prev, dateFormat: value }))}>
-                      <SelectTrigger>
+                      <SelectTrigger className="h-11 border-gray-300 focus:border-blue-500 focus:ring-blue-500">
                         <SelectValue placeholder="Select date format" />
                       </SelectTrigger>
                       <SelectContent>
@@ -546,9 +594,9 @@ export default function SettingsPage() {
                   </div>
 
                   <div className="space-y-2">
-                    <Label htmlFor="timeFormat">Time Format</Label>
+                    <Label htmlFor="timeFormat" className="text-sm font-medium text-gray-700">Time Format</Label>
                     <Select value={themeForm.timeFormat} onValueChange={(value) => setThemeForm(prev => ({ ...prev, timeFormat: value }))}>
-                      <SelectTrigger>
+                      <SelectTrigger className="h-11 border-gray-300 focus:border-blue-500 focus:ring-blue-500">
                         <SelectValue placeholder="Select time format" />
                       </SelectTrigger>
                       <SelectContent>
@@ -562,52 +610,75 @@ export default function SettingsPage() {
             </Card>
 
             <div className="flex justify-end">
-              <Button type="submit" disabled={isLoading}>
+              <Button 
+                type="submit" 
+                disabled={isLoading}
+                className="bg-blue-600 hover:bg-blue-700 transition-all duration-200 hover:scale-105 hover:shadow-md h-11 px-6"
+              >
                 {isLoading ? (
-                  <>Saving...</>
+                  <div className="flex items-center gap-2">
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                    <span className="hidden sm:inline">Saving...</span>
+                    <span className="sm:hidden">Save</span>
+                  </div>
                 ) : (
-                  <>
-                    <Save className="mr-2 h-4 w-4" />
-                    Save Changes
-                  </>
+                  <div className="flex items-center gap-2">
+                    <Save className="h-4 w-4" />
+                    <span className="hidden sm:inline">Save Changes</span>
+                    <span className="sm:hidden">Save</span>
+                  </div>
                 )}
               </Button>
             </div>
           </form>
         </TabsContent>
 
-        <TabsContent value="organization">
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Building2 className="h-5 w-5" />
+        <TabsContent value="organization" className="space-y-6 mt-0">
+          <Card className="border-l-4 border-l-orange-500 shadow-sm hover:shadow-md transition-shadow duration-200">
+            <CardHeader className="pb-4">
+              <CardTitle className="text-lg font-bold text-gray-900 flex items-center gap-2">
+                <div className="p-2 bg-orange-100 rounded-lg shadow-sm">
+                  <Building2 className="h-5 w-5 text-orange-600" />
+                </div>
                 Organization Details
               </CardTitle>
-              <CardDescription>
+              <CardDescription className="text-sm text-gray-600">
                 Manage your organization information and settings
               </CardDescription>
             </CardHeader>
-            <CardContent>
+            <CardContent className="space-y-6">
               <div className="space-y-4">
                 <div className="space-y-2">
-                  <Label>Organization Name</Label>
-                  <Input value={theme.brandName} disabled />
+                  <Label className="text-sm font-medium text-gray-700">Organization Name</Label>
+                  <Input 
+                    value={theme.brandName} 
+                    disabled 
+                    className="h-11 border-gray-300 bg-gray-50"
+                  />
                 </div>
                 <div className="space-y-2">
-                  <Label>Subdomain</Label>
-                  <Input value="demo.hospitality.com" disabled />
+                  <Label className="text-sm font-medium text-gray-700">Subdomain</Label>
+                  <Input 
+                    value="demo.hospitality.com" 
+                    disabled 
+                    className="h-11 border-gray-300 bg-gray-50"
+                  />
                   <p className="text-xs text-gray-500">
                     Contact support to change your subdomain
                   </p>
                 </div>
                 <div className="space-y-2">
-                  <Label>Plan</Label>
-                  <div className="flex items-center justify-between p-3 border rounded-lg">
+                  <Label className="text-sm font-medium text-gray-700">Plan</Label>
+                  <div className="flex items-center justify-between p-4 border border-gray-200 rounded-lg bg-gray-50">
                     <div>
-                      <p className="font-medium">Professional Plan</p>
-                      <p className="text-sm text-gray-500">Up to 10 properties, unlimited users</p>
+                      <p className="font-medium text-gray-900">Professional Plan</p>
+                      <p className="text-sm text-gray-600">Up to 10 properties, unlimited users</p>
                     </div>
-                    <Button variant="outline" size="sm">
+                    <Button 
+                      variant="outline" 
+                      size="sm"
+                      className="transition-all duration-200 hover:scale-105 hover:shadow-md"
+                    >
                       Upgrade
                     </Button>
                   </div>
@@ -617,49 +688,70 @@ export default function SettingsPage() {
           </Card>
         </TabsContent>
 
-        <TabsContent value="integrations">
-          <Card>
-            <CardHeader>
-              <CardTitle>Integrations</CardTitle>
-              <CardDescription>
+        <TabsContent value="integrations" className="space-y-6 mt-0">
+          <Card className="border-l-4 border-l-indigo-500 shadow-sm hover:shadow-md transition-shadow duration-200">
+            <CardHeader className="pb-4">
+              <CardTitle className="text-lg font-bold text-gray-900 flex items-center gap-2">
+                <div className="p-2 bg-indigo-100 rounded-lg shadow-sm">
+                  <Settings className="h-5 w-5 text-indigo-600" />
+                </div>
+                Integrations
+              </CardTitle>
+              <CardDescription className="text-sm text-gray-600">
                 Connect with third-party services and platforms
               </CardDescription>
             </CardHeader>
-            <CardContent>
-              <div className="space-y-4">
-                <div className="flex items-center justify-between p-4 border rounded-lg">
+            <CardContent className="space-y-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="flex items-center justify-between p-4 border border-gray-200 rounded-lg bg-gray-50 hover:bg-gray-100 transition-colors duration-200">
                   <div>
-                    <h4 className="font-medium">Booking.com</h4>
-                    <p className="text-sm text-gray-500">Sync reservations and availability</p>
+                    <h4 className="font-medium text-gray-900">Booking.com</h4>
+                    <p className="text-sm text-gray-600">Sync reservations and availability</p>
                   </div>
-                  <Button variant="outline" size="sm">
+                  <Button 
+                    variant="outline" 
+                    size="sm"
+                    className="transition-all duration-200 hover:scale-105 hover:shadow-md"
+                  >
                     Connect
                   </Button>
                 </div>
-                <div className="flex items-center justify-between p-4 border rounded-lg">
+                <div className="flex items-center justify-between p-4 border border-gray-200 rounded-lg bg-gray-50 hover:bg-gray-100 transition-colors duration-200">
                   <div>
-                    <h4 className="font-medium">Airbnb</h4>
-                    <p className="text-sm text-gray-500">Manage Airbnb listings and bookings</p>
+                    <h4 className="font-medium text-gray-900">Airbnb</h4>
+                    <p className="text-sm text-gray-600">Manage Airbnb listings and bookings</p>
                   </div>
-                  <Button variant="outline" size="sm">
+                  <Button 
+                    variant="outline" 
+                    size="sm"
+                    className="transition-all duration-200 hover:scale-105 hover:shadow-md"
+                  >
                     Connect
                   </Button>
                 </div>
-                <div className="flex items-center justify-between p-4 border rounded-lg">
+                <div className="flex items-center justify-between p-4 border border-gray-200 rounded-lg bg-gray-50 hover:bg-gray-100 transition-colors duration-200">
                   <div>
-                    <h4 className="font-medium">Stripe</h4>
-                    <p className="text-sm text-gray-500">Process payments and manage billing</p>
+                    <h4 className="font-medium text-gray-900">Stripe</h4>
+                    <p className="text-sm text-gray-600">Process payments and manage billing</p>
                   </div>
-                  <Button variant="outline" size="sm">
+                  <Button 
+                    variant="outline" 
+                    size="sm"
+                    className="transition-all duration-200 hover:scale-105 hover:shadow-md"
+                  >
                     Connect
                   </Button>
                 </div>
-                <div className="flex items-center justify-between p-4 border rounded-lg">
+                <div className="flex items-center justify-between p-4 border border-gray-200 rounded-lg bg-gray-50 hover:bg-gray-100 transition-colors duration-200">
                   <div>
-                    <h4 className="font-medium">QuickBooks</h4>
-                    <p className="text-sm text-gray-500">Sync financial data and accounting</p>
+                    <h4 className="font-medium text-gray-900">QuickBooks</h4>
+                    <p className="text-sm text-gray-600">Sync financial data and accounting</p>
                   </div>
-                  <Button variant="outline" size="sm">
+                  <Button 
+                    variant="outline" 
+                    size="sm"
+                    className="transition-all duration-200 hover:scale-105 hover:shadow-md"
+                  >
                     Connect
                   </Button>
                 </div>
@@ -667,7 +759,8 @@ export default function SettingsPage() {
             </CardContent>
           </Card>
         </TabsContent>
-      </Tabs>
+        </Tabs>
+      </div>
     </div>
   );
 }

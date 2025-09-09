@@ -1,5 +1,6 @@
 import { api, APIError } from "encore.dev/api";
 import { getAuthData } from "~encore/auth";
+import { requireRole } from "../auth/middleware";
 import { tasksDB } from "./db";
 import { TaskStatus } from "./types";
 import log from "encore.dev/log";
@@ -17,7 +18,12 @@ export interface UpdateTaskStatusResponse {
 export const updateStatus = api<UpdateTaskStatusRequest, UpdateTaskStatusResponse>(
   { auth: true, expose: true, method: "PATCH", path: "/tasks/:id/status" },
   async (req) => {
-    const authData = getAuthData()!;
+    const authData = getAuthData();
+    if (!authData) {
+      throw APIError.unauthenticated("Authentication required");
+    }
+    requireRole("ADMIN", "MANAGER")(authData);
+
     const { id, status } = req;
 
     const tx = await tasksDB.begin();
@@ -100,3 +106,4 @@ export const updateStatus = api<UpdateTaskStatusRequest, UpdateTaskStatusRespons
     }
   }
 );
+

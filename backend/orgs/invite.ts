@@ -19,7 +19,10 @@ export interface InviteUserResponse {
 export const invite = api<InviteUserRequest, InviteUserResponse>(
   { auth: true, expose: true, method: "POST", path: "/orgs/invite" },
   async (req) => {
-    const authData = getAuthData()!;
+    const authData = getAuthData();
+    if (!authData) {
+      throw APIError.unauthenticated("Authentication required");
+    }
     requireRole("ADMIN")(authData);
 
     const { email, role } = req;
@@ -61,6 +64,10 @@ export const invite = api<InviteUserRequest, InviteUserResponse>(
       SELECT subdomain_prefix FROM organizations WHERE id = ${authData.orgId}
     `;
 
+    if (!orgRow) {
+      throw new Error('Organization not found');
+    }
+
     const inviteUrl = `https://${orgRow.subdomain_prefix}.example.com/signup?token=${token}`;
 
     return {
@@ -69,3 +76,4 @@ export const invite = api<InviteUserRequest, InviteUserResponse>(
     };
   }
 );
+

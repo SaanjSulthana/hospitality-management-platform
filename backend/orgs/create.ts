@@ -22,7 +22,10 @@ export interface CreateOrgResponse {
 export const create = api<CreateOrgRequest, CreateOrgResponse>(
   { auth: true, expose: true, method: "POST", path: "/orgs" },
   async (req) => {
-    const authData = getAuthData()!;
+    const authData = getAuthData();
+    if (!authData) {
+      throw APIError.unauthenticated("Authentication required");
+    }
     requireRole("ADMIN")(authData);
 
     const { name, subdomainPrefix, primaryDomain } = req;
@@ -43,6 +46,10 @@ export const create = api<CreateOrgRequest, CreateOrgResponse>(
       RETURNING id, name, subdomain_prefix, primary_domain, theme_json, created_at
     `;
 
+    if (!orgRow) {
+      throw new Error('Failed to create organization');
+    }
+
     return {
       id: orgRow.id,
       name: orgRow.name,
@@ -53,3 +60,4 @@ export const create = api<CreateOrgRequest, CreateOrgResponse>(
     };
   }
 );
+

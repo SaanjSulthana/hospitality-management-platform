@@ -9,6 +9,20 @@ export interface User {
   createdByUserId?: number;
   createdAt: Date;
   lastLoginAt?: Date;
+  lastActivityAt?: Date;
+  loginCount: number;
+  lastLoginIp?: string;
+  lastLoginUserAgent?: string;
+  lastLoginLocation?: {
+    country?: string;
+    region?: string;
+    city?: string;
+    latitude?: number;
+    longitude?: number;
+    timezone?: string;
+  };
+  timezone?: string;
+  locale?: string;
 }
 
 export interface Organization {

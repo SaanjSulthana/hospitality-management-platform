@@ -30,6 +30,216 @@ async function calculateOpeningBalance(
   }
 }
 
+// Helper function to get daily report data for export
+async function getDailyReportData(
+  propertyId: number,
+  date: string,
+  orgId: number,
+  authData: any
+): Promise<DailyReportResponse> {
+  // Get property access for managers
+  let propertyFilter = '';
+  let propertyParams: any[] = [];
+  
+  // Always put propertyId first if provided
+  if (propertyId) {
+    propertyFilter = `AND p.id = $1`;
+    propertyParams.push(propertyId);
+  }
+
+  // Add manager filter after property filter
+  if (authData.role === "MANAGER") {
+    const managerFilter = propertyId 
+      ? `AND p.id IN (SELECT property_id FROM user_properties WHERE user_id = $2)`
+      : `AND p.id IN (SELECT property_id FROM user_properties WHERE user_id = $1)`;
+    propertyFilter += ` ${managerFilter}`;
+    propertyParams.push(parseInt(authData.userID));
+  }
+
+  // Get cash balance for the date
+  const cashBalanceQuery = `
+    SELECT 
+      dcb.id, dcb.property_id, p.name as property_name, dcb.balance_date,
+      dcb.opening_balance_cents, dcb.cash_received_cents, dcb.bank_received_cents,
+      dcb.cash_expenses_cents, dcb.bank_expenses_cents, dcb.closing_balance_cents,
+      dcb.created_at, dcb.updated_at,
+      dcb.is_opening_balance_auto_calculated, dcb.calculated_closing_balance_cents,
+      dcb.balance_discrepancy_cents,
+      (dcb.cash_received_cents + dcb.bank_received_cents) as total_received_cents,
+      (dcb.cash_expenses_cents + dcb.bank_expenses_cents) as total_expenses_cents,
+      (dcb.opening_balance_cents + dcb.cash_received_cents - dcb.cash_expenses_cents) as calculated_closing_balance_cents
+    FROM daily_cash_balances dcb
+    JOIN properties p ON dcb.property_id = p.id
+    WHERE dcb.org_id = $${propertyParams.length + 1} 
+      AND dcb.balance_date = $${propertyParams.length + 2}
+      ${propertyFilter}
+    ORDER BY p.name
+  `;
+
+  const cashBalanceResult = await reportsDB.rawQueryRow(
+    cashBalanceQuery, 
+    ...propertyParams, 
+    orgId, 
+    date
+  );
+
+  // Get all APPROVED transactions for the date
+  const transactionsQuery = `
+    SELECT 
+      r.id, 'revenue' as type, r.property_id, p.name as property_name,
+      r.amount_cents, r.payment_mode, r.bank_reference, r.description,
+      r.source, r.occurred_at, u.display_name as created_by_name, r.status
+    FROM revenues r
+    JOIN properties p ON r.property_id = p.id
+    JOIN users u ON r.created_by_user_id = u.id
+    WHERE r.org_id = $${propertyParams.length + 1} 
+      AND r.occurred_at >= $${propertyParams.length + 2}::date 
+      AND r.occurred_at < ($${propertyParams.length + 2}::date + INTERVAL '1 day')
+      AND r.status = 'approved'
+      ${propertyFilter}
+    
+    UNION ALL
+    
+    SELECT 
+      e.id, 'expense' as type, e.property_id, p.name as property_name,
+      e.amount_cents, e.payment_mode, e.bank_reference, e.description,
+      e.category as source, e.expense_date as occurred_at, u.display_name as created_by_name, e.status
+    FROM expenses e
+    JOIN properties p ON e.property_id = p.id
+    JOIN users u ON e.created_by_user_id = u.id
+    WHERE e.org_id = $${propertyParams.length + 3} 
+      AND e.expense_date >= $${propertyParams.length + 4}::date 
+      AND e.expense_date < ($${propertyParams.length + 4}::date + INTERVAL '1 day')
+      AND e.status = 'approved'
+      ${propertyFilter}
+    
+    ORDER BY occurred_at DESC
+  `;
+
+  const transactions = await reportsDB.rawQueryAll(
+    transactionsQuery, 
+    ...propertyParams, 
+    orgId, 
+    date,
+    orgId, 
+    date
+  );
+
+  // Calculate totals from transactions if no cash balance exists
+  let openingBalanceCents = 0;
+  let cashReceivedCents = 0;
+  let bankReceivedCents = 0;
+  let cashExpensesCents = 0;
+  let bankExpensesCents = 0;
+  let closingBalanceCents = 0;
+  let isOpeningBalanceAutoCalculated = false;
+  let calculatedClosingBalanceCents = 0;
+  let balanceDiscrepancyCents = 0;
+
+  if (cashBalanceResult) {
+    openingBalanceCents = parseInt(cashBalanceResult.opening_balance_cents) || 0;
+    cashReceivedCents = parseInt(cashBalanceResult.cash_received_cents) || 0;
+    bankReceivedCents = parseInt(cashBalanceResult.bank_received_cents) || 0;
+    cashExpensesCents = parseInt(cashBalanceResult.cash_expenses_cents) || 0;
+    bankExpensesCents = parseInt(cashBalanceResult.bank_expenses_cents) || 0;
+    closingBalanceCents = parseInt(cashBalanceResult.closing_balance_cents) || 0;
+    isOpeningBalanceAutoCalculated = cashBalanceResult.is_opening_balance_auto_calculated || false;
+    calculatedClosingBalanceCents = parseInt(cashBalanceResult.calculated_closing_balance_cents) || 0;
+    balanceDiscrepancyCents = parseInt(cashBalanceResult.balance_discrepancy_cents) || 0;
+  } else {
+    // Calculate from transactions
+    transactions.forEach((tx: any) => {
+      const amount = parseInt(tx.amount_cents) || 0;
+      if (tx.type === 'revenue') {
+        if (tx.payment_mode === 'cash') {
+          cashReceivedCents += amount;
+        } else {
+          bankReceivedCents += amount;
+        }
+      } else {
+        if (tx.payment_mode === 'cash') {
+          cashExpensesCents += amount;
+        } else {
+          bankExpensesCents += amount;
+        }
+      }
+    });
+    
+    // Auto-calculate opening balance from previous day if no balance record exists
+    if (propertyId) {
+      openingBalanceCents = await calculateOpeningBalance(propertyId, date, orgId);
+      isOpeningBalanceAutoCalculated = true;
+    }
+  }
+
+  const totalReceivedCents = cashReceivedCents + bankReceivedCents;
+  const totalExpensesCents = cashExpensesCents + bankExpensesCents;
+  const netCashFlowCents = totalReceivedCents - totalExpensesCents;
+  
+  // Calculate closing balance if not set
+  if (!closingBalanceCents) {
+    closingBalanceCents = openingBalanceCents + cashReceivedCents - cashExpensesCents;
+  }
+  
+  // Calculate the theoretical closing balance
+  calculatedClosingBalanceCents = openingBalanceCents + cashReceivedCents - cashExpensesCents;
+  
+  // Calculate discrepancy if we have a manual closing balance
+  if (cashBalanceResult) {
+    balanceDiscrepancyCents = closingBalanceCents - calculatedClosingBalanceCents;
+  }
+
+  return {
+    date,
+    propertyId: cashBalanceResult?.property_id,
+    propertyName: cashBalanceResult?.property_name,
+    openingBalanceCents,
+    cashReceivedCents,
+    bankReceivedCents,
+    totalReceivedCents,
+    cashExpensesCents,
+    bankExpensesCents,
+    totalExpensesCents,
+    closingBalanceCents,
+    netCashFlowCents,
+    isOpeningBalanceAutoCalculated,
+    calculatedClosingBalanceCents,
+    balanceDiscrepancyCents,
+    transactions: transactions.map((tx: any) => ({
+      id: tx.id,
+      type: tx.type,
+      propertyId: tx.property_id,
+      propertyName: tx.property_name,
+      amountCents: parseInt(tx.amount_cents),
+      paymentMode: tx.payment_mode,
+      bankReference: tx.bank_reference,
+      description: tx.description,
+      category: tx.type === 'expense' ? tx.source : undefined,
+      source: tx.type === 'revenue' ? tx.source : undefined,
+      occurredAt: tx.occurred_at,
+      createdByName: tx.created_by_name,
+      status: tx.status,
+    })),
+    cashBalance: cashBalanceResult ? {
+      id: cashBalanceResult.id,
+      propertyId: cashBalanceResult.property_id,
+      propertyName: cashBalanceResult.property_name,
+      balanceDate: cashBalanceResult.balance_date,
+      openingBalanceCents: parseInt(cashBalanceResult.opening_balance_cents),
+      cashReceivedCents: parseInt(cashBalanceResult.cash_received_cents),
+      bankReceivedCents: parseInt(cashBalanceResult.bank_received_cents),
+      totalReceivedCents: parseInt(cashBalanceResult.total_received_cents),
+      cashExpensesCents: parseInt(cashBalanceResult.cash_expenses_cents),
+      bankExpensesCents: parseInt(cashBalanceResult.bank_expenses_cents),
+      totalExpensesCents: parseInt(cashBalanceResult.total_expenses_cents),
+      closingBalanceCents: parseInt(cashBalanceResult.closing_balance_cents),
+      calculatedClosingBalanceCents: parseInt(cashBalanceResult.calculated_closing_balance_cents),
+      createdAt: cashBalanceResult.created_at,
+      updatedAt: cashBalanceResult.updated_at,
+    } : null,
+  };
+}
+
 export interface DailyReportRequest {
   propertyId?: number;
   date?: string; // YYYY-MM-DD format
@@ -607,6 +817,9 @@ export const getDailyReports = api<DailyReportRequest, DailyReportsListResponse>
           totalExpensesCents,
           closingBalanceCents,
           netCashFlowCents,
+          isOpeningBalanceAutoCalculated: false, // Default for date range reports
+          calculatedClosingBalanceCents: openingBalanceCents + cashReceivedCents - cashExpensesCents,
+          balanceDiscrepancyCents: 0, // Default for date range reports
           transactions: transactions.map((tx: any) => ({
             id: tx.id,
             type: tx.type,
@@ -936,6 +1149,381 @@ export const calculateOpeningBalanceEndpoint = api<{
     } catch (error) {
       console.error('Calculate opening balance error:', error);
       throw APIError.internal("Failed to calculate opening balance");
+    }
+  }
+);
+
+// Export daily report to PDF
+export const exportDailyReportPDF = api<{
+  propertyId: number;
+  date: string;
+}, {
+  pdfData: string; // Base64 encoded PDF
+  filename: string;
+}>(
+  { auth: true, expose: true, method: "POST", path: "/reports/export-daily-pdf" },
+  async (req) => {
+    const authData = getAuthData();
+    if (!authData) {
+      throw APIError.unauthenticated("Authentication required");
+    }
+    requireRole("ADMIN", "MANAGER")(authData);
+
+    const { propertyId, date } = req;
+
+    try {
+      // Get organization and property information
+      const orgPropertyInfo = await reportsDB.queryRow`
+        SELECT 
+          o.name as org_name,
+          p.name as property_name,
+          p.address_json as property_address
+        FROM organizations o
+        JOIN properties p ON o.id = p.org_id
+        WHERE p.id = ${propertyId} AND p.org_id = ${authData.orgId}
+      `;
+
+      if (!orgPropertyInfo) {
+        throw APIError.notFound("Property not found");
+      }
+
+      // Get daily report data using helper function
+      const dailyReport = await getDailyReportData(propertyId, date, authData.orgId, authData);
+      
+      console.log('PDF Export - Daily report data:', {
+        openingBalance: dailyReport.openingBalanceCents,
+        cashRevenue: dailyReport.cashReceivedCents,
+        bankRevenue: dailyReport.bankReceivedCents,
+        cashExpenses: dailyReport.cashExpensesCents,
+        bankExpenses: dailyReport.bankExpensesCents,
+        closingBalance: dailyReport.closingBalanceCents,
+        transactionCount: dailyReport.transactions.length
+      });
+      
+      // Dynamic import for PDFKit
+      const PDFDocument = (await import('pdfkit')).default;
+      
+      // Create PDF document with better formatting
+      const doc = new PDFDocument({ 
+        margin: 50,
+        size: 'A4',
+        info: {
+          Title: 'Daily Cash Balance Report',
+          Author: 'Hospitality Management Platform',
+          Subject: `Daily Report for ${orgPropertyInfo.property_name}`,
+          Keywords: 'daily, cash, balance, report, hospitality'
+        }
+      });
+      const chunks: Buffer[] = [];
+      
+      doc.on('data', (chunk: Buffer) => chunks.push(chunk));
+      
+      return new Promise((resolve, reject) => {
+        doc.on('end', () => {
+          const pdfBuffer = Buffer.concat(chunks);
+          const base64PDF = pdfBuffer.toString('base64');
+          
+          const filename = `Daily_Report_${orgPropertyInfo.property_name.replace(/\s+/g, '_')}_${date}.pdf`;
+          
+          resolve({
+            pdfData: base64PDF,
+            filename: filename
+          });
+        });
+
+        doc.on('error', reject);
+
+        // PDF Content with improved formatting
+        // Header with background
+        doc.rect(50, 50, 500, 60).fill('#f8fafc');
+        doc.fillColor('#1e293b');
+        doc.fontSize(24).font('Helvetica-Bold').text('Daily Cash Balance Report', 70, 70, { align: 'left' });
+        doc.fontSize(12).font('Helvetica').fillColor('#64748b').text('Financial Summary Report', 70, 95, { align: 'left' });
+        doc.moveDown(3);
+        
+        // Organization and Property Info with better formatting
+        doc.fillColor('#1e293b');
+        doc.fontSize(16).font('Helvetica-Bold').text('Report Information', { align: 'left' });
+        doc.moveDown(0.5);
+        
+        // Create info box
+        const infoY = doc.y;
+        doc.rect(50, infoY, 500, 80).stroke('#e2e8f0');
+        doc.fillColor('#1e293b');
+        doc.fontSize(12).font('Helvetica-Bold').text('Organization:', 60, infoY + 10);
+        doc.font('Helvetica').text(orgPropertyInfo.org_name, 150, infoY + 10);
+        
+        doc.font('Helvetica-Bold').text('Property:', 60, infoY + 30);
+        doc.font('Helvetica').text(orgPropertyInfo.property_name, 150, infoY + 30);
+        
+        if (orgPropertyInfo.property_address) {
+          const address = typeof orgPropertyInfo.property_address === 'string' 
+            ? JSON.parse(orgPropertyInfo.property_address) 
+            : orgPropertyInfo.property_address;
+          const addressStr = [address.street, address.city, address.state, address.country, address.zipCode]
+            .filter(Boolean)
+            .join(', ');
+          if (addressStr) {
+            doc.font('Helvetica-Bold').text('Address:', 60, infoY + 50);
+            doc.font('Helvetica').text(addressStr, 150, infoY + 50);
+          }
+        }
+        
+        doc.font('Helvetica-Bold').text('Report Date:', 60, infoY + 70);
+        doc.font('Helvetica').text(new Date(date).toLocaleDateString('en-US', { 
+          weekday: 'long', 
+          year: 'numeric', 
+          month: 'long', 
+          day: 'numeric' 
+        }), 150, infoY + 70);
+        
+        doc.moveDown(2);
+
+        // Financial Summary Section with better formatting
+        doc.fillColor('#1e293b');
+        doc.fontSize(18).font('Helvetica-Bold').text('Financial Summary', { align: 'left' });
+        doc.moveDown(0.5);
+        
+        const formatCurrency = (cents: number) => `₹${(cents / 100).toFixed(2)}`;
+        
+        // Create summary table
+        const summaryY = doc.y;
+        doc.rect(50, summaryY, 500, 120).stroke('#e2e8f0');
+        
+        // Opening Balance
+        doc.fillColor('#1e293b');
+        doc.fontSize(12).font('Helvetica-Bold').text('Opening Balance (Cash):', 60, summaryY + 15);
+        doc.font('Helvetica').text(formatCurrency(dailyReport.openingBalanceCents), 400, summaryY + 15, { align: 'right' });
+        
+        // Revenue Section
+        doc.font('Helvetica-Bold').text('Revenue:', 60, summaryY + 35);
+        doc.font('Helvetica').text(`Cash Revenue: ${formatCurrency(dailyReport.cashReceivedCents)}`, 80, summaryY + 50);
+        doc.text(`Bank Revenue: ${formatCurrency(dailyReport.bankReceivedCents)}`, 80, summaryY + 65);
+        doc.font('Helvetica-Bold').text(`Total Revenue: ${formatCurrency(dailyReport.totalReceivedCents)}`, 80, summaryY + 80);
+        
+        // Expenses Section
+        doc.font('Helvetica-Bold').text('Expenses:', 60, summaryY + 100);
+        doc.font('Helvetica').text(`Cash Expenses: ${formatCurrency(dailyReport.cashExpensesCents)}`, 80, summaryY + 115);
+        doc.text(`Bank Expenses: ${formatCurrency(dailyReport.bankExpensesCents)}`, 80, summaryY + 130);
+        doc.font('Helvetica-Bold').text(`Total Expenses: ${formatCurrency(dailyReport.totalExpensesCents)}`, 80, summaryY + 145);
+        
+        // Closing Balance (highlighted)
+        doc.moveDown(2);
+        doc.rect(50, doc.y, 500, 30).fill('#f0f9ff');
+        doc.fillColor('#1e40af');
+        doc.fontSize(16).font('Helvetica-Bold').text('Closing Balance (Cash):', 60, doc.y + 8);
+        doc.text(formatCurrency(dailyReport.closingBalanceCents), 400, doc.y + 8, { align: 'right' });
+        doc.moveDown(1.5);
+
+        // Transactions Section with better formatting
+        if (dailyReport.transactions.length > 0) {
+          doc.fillColor('#1e293b');
+          doc.fontSize(18).font('Helvetica-Bold').text('Transaction Details', { align: 'left' });
+          doc.moveDown(0.5);
+          
+          dailyReport.transactions.forEach((tx, index) => {
+            const txY = doc.y;
+            const isRevenue = tx.type === 'revenue';
+            const bgColor = isRevenue ? '#f0fdf4' : '#fef2f2';
+            const borderColor = isRevenue ? '#22c55e' : '#ef4444';
+            
+            // Transaction box
+            doc.rect(50, txY, 500, 50).fill(bgColor).stroke(borderColor);
+            
+            // Transaction type and amount
+            doc.fillColor(isRevenue ? '#16a34a' : '#dc2626');
+            doc.fontSize(12).font('Helvetica-Bold').text(`${tx.type.toUpperCase()}`, 60, txY + 8);
+            doc.text(formatCurrency(tx.amountCents), 450, txY + 8, { align: 'right' });
+            
+            // Description
+            doc.fillColor('#1e293b');
+            doc.fontSize(10).font('Helvetica').text(tx.description || 'No description', 60, txY + 25);
+            
+            // Details
+            doc.fontSize(9).text(`Mode: ${tx.paymentMode.toUpperCase()} | Status: ${tx.status} | By: ${tx.createdByName}`, 60, txY + 35);
+            doc.text(new Date(tx.occurredAt).toLocaleString(), 450, txY + 35, { align: 'right' });
+            
+            doc.moveDown(1.2);
+          });
+        }
+
+        // Footer with better formatting
+        doc.moveDown(2);
+        doc.rect(50, doc.y, 500, 30).fill('#f8fafc');
+        doc.fillColor('#64748b');
+        doc.fontSize(10).font('Helvetica').text(`Generated on: ${new Date().toLocaleString()}`, 70, doc.y + 8);
+        doc.text(`Data Source: Finance Transactions`, 70, doc.y + 20);
+
+        doc.end();
+      });
+    } catch (error) {
+      console.error('Export daily report PDF error:', error);
+      throw APIError.internal("Failed to export daily report to PDF");
+    }
+  }
+);
+
+// Export daily report to Excel
+export const exportDailyReportExcel = api<{
+  propertyId: number;
+  date: string;
+}, {
+  excelData: string; // Base64 encoded Excel file
+  filename: string;
+}>(
+  { auth: true, expose: true, method: "POST", path: "/reports/export-daily-excel" },
+  async (req) => {
+    const authData = getAuthData();
+    if (!authData) {
+      throw APIError.unauthenticated("Authentication required");
+    }
+    requireRole("ADMIN", "MANAGER")(authData);
+
+    const { propertyId, date } = req;
+
+    try {
+      // Get organization and property information
+      const orgPropertyInfo = await reportsDB.queryRow`
+        SELECT 
+          o.name as org_name,
+          p.name as property_name,
+          p.address_json as property_address
+        FROM organizations o
+        JOIN properties p ON o.id = p.org_id
+        WHERE p.id = ${propertyId} AND p.org_id = ${authData.orgId}
+      `;
+
+      if (!orgPropertyInfo) {
+        throw APIError.notFound("Property not found");
+      }
+
+      // Get daily report data using helper function
+      const dailyReport = await getDailyReportData(propertyId, date, authData.orgId, authData);
+      
+      console.log('Excel Export - Daily report data:', {
+        openingBalance: dailyReport.openingBalanceCents,
+        cashRevenue: dailyReport.cashReceivedCents,
+        bankRevenue: dailyReport.bankReceivedCents,
+        cashExpenses: dailyReport.cashExpensesCents,
+        bankExpenses: dailyReport.bankExpensesCents,
+        closingBalance: dailyReport.closingBalanceCents,
+        transactionCount: dailyReport.transactions.length
+      });
+      
+      // Dynamic import for XLSX
+      const XLSX = await import('xlsx');
+      
+      // Create Excel workbook
+      const workbook = XLSX.utils.book_new();
+      
+      // Summary Sheet with better formatting
+      const summaryData = [
+        ['DAILY CASH BALANCE REPORT'],
+        [''],
+        ['REPORT INFORMATION'],
+        ['Organization', orgPropertyInfo.org_name],
+        ['Property', orgPropertyInfo.property_name],
+        ['Address', (() => {
+          if (!orgPropertyInfo.property_address) return 'N/A';
+          const address = typeof orgPropertyInfo.property_address === 'string' 
+            ? JSON.parse(orgPropertyInfo.property_address) 
+            : orgPropertyInfo.property_address;
+          return [address.street, address.city, address.state, address.country, address.zipCode]
+            .filter(Boolean)
+            .join(', ') || 'N/A';
+        })()],
+        ['Report Date', new Date(date).toLocaleDateString('en-US', { 
+          weekday: 'long', 
+          year: 'numeric', 
+          month: 'long', 
+          day: 'numeric' 
+        })],
+        ['Generated On', new Date().toLocaleString()],
+        [''],
+        ['FINANCIAL SUMMARY'],
+        [''],
+        ['Opening Balance (Cash)', `₹${(dailyReport.openingBalanceCents / 100).toFixed(2)}`],
+        [''],
+        ['REVENUE'],
+        ['Cash Revenue', `₹${(dailyReport.cashReceivedCents / 100).toFixed(2)}`],
+        ['Bank Revenue', `₹${(dailyReport.bankReceivedCents / 100).toFixed(2)}`],
+        ['Total Revenue', `₹${(dailyReport.totalReceivedCents / 100).toFixed(2)}`],
+        [''],
+        ['EXPENSES'],
+        ['Cash Expenses', `₹${(dailyReport.cashExpensesCents / 100).toFixed(2)}`],
+        ['Bank Expenses', `₹${(dailyReport.bankExpensesCents / 100).toFixed(2)}`],
+        ['Total Expenses', `₹${(dailyReport.totalExpensesCents / 100).toFixed(2)}`],
+        [''],
+        ['CLOSING BALANCE (CASH)', `₹${(dailyReport.closingBalanceCents / 100).toFixed(2)}`],
+        ['Net Cash Flow', `₹${(dailyReport.netCashFlowCents / 100).toFixed(2)}`],
+        [''],
+        ['CALCULATIONS'],
+        ['Total Cash = Opening Balance + Cash Revenue', `₹${((dailyReport.openingBalanceCents + dailyReport.cashReceivedCents) / 100).toFixed(2)}`],
+        ['Closing Balance = Total Cash - Cash Expenses', `₹${(dailyReport.closingBalanceCents / 100).toFixed(2)}`],
+        ['Next Day Opening Balance', `₹${(dailyReport.closingBalanceCents / 100).toFixed(2)}`]
+      ];
+
+      const summarySheet = XLSX.utils.aoa_to_sheet(summaryData);
+      
+      // Set column widths
+      summarySheet['!cols'] = [
+        { width: 30 },
+        { width: 20 }
+      ];
+      
+      XLSX.utils.book_append_sheet(workbook, summarySheet, 'Summary');
+
+      // Transactions Sheet with better formatting
+      if (dailyReport.transactions.length > 0) {
+        const transactionData = [
+          ['TRANSACTION DETAILS'],
+          [''],
+          ['ID', 'Type', 'Description', 'Amount (₹)', 'Payment Mode', 'Status', 'Created By', 'Date/Time']
+        ];
+
+        dailyReport.transactions.forEach(tx => {
+          transactionData.push([
+            tx.id.toString(),
+            tx.type.toUpperCase(),
+            tx.description || 'No description',
+            (tx.amountCents / 100).toFixed(2),
+            tx.paymentMode.toUpperCase(),
+            tx.status,
+            tx.createdByName,
+            new Date(tx.occurredAt).toLocaleString()
+          ]);
+        });
+
+        const transactionSheet = XLSX.utils.aoa_to_sheet(transactionData);
+        
+        // Set column widths for better readability
+        transactionSheet['!cols'] = [
+          { width: 8 },   // ID
+          { width: 12 },  // Type
+          { width: 30 },  // Description
+          { width: 15 },  // Amount
+          { width: 15 },  // Payment Mode
+          { width: 12 },  // Status
+          { width: 20 },  // Created By
+          { width: 25 }   // Date/Time
+        ];
+        
+        XLSX.utils.book_append_sheet(workbook, transactionSheet, 'Transactions');
+      }
+
+      // Generate Excel file
+      const excelBuffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
+      const base64Excel = excelBuffer.toString('base64');
+      
+      const filename = `Daily_Report_${orgPropertyInfo.property_name.replace(/\s+/g, '_')}_${date}.xlsx`;
+      
+      return {
+        excelData: base64Excel,
+        filename: filename
+      };
+    } catch (error) {
+      console.error('Export daily report Excel error:', error);
+      throw APIError.internal("Failed to export daily report to Excel");
     }
   }
 );

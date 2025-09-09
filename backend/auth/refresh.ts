@@ -68,6 +68,7 @@ export const refresh = api<RefreshRequest, RefreshResponse>(
         createdByUserId: userRow.created_by_user_id ?? undefined,
         createdAt: userRow.created_at,
         lastLoginAt: userRow.last_login_at ?? undefined,
+        loginCount: 1, // Set login count
       };
 
       // Generate new tokens

@@ -2,8 +2,36 @@
   "name": "backend",
   "version": "1.0.0",
   "type": "module",
-  "packageManager": "bun",
   "scripts": {
-    "build": "cd ../frontend \u0026\u0026 bun install \u0026\u0026 vite build --outDir=../backend/frontend/dist"
+    "dev": "encore run",
+    "build": "encore build",
+    "build:docker": "encore build docker",
+    "build:frontend": "cd ../frontend && bun install && bun run build",
+    "db:migrate": "encore db migrate",
+    "db:reset": "encore db reset",
+    "db:seed": "encore run --seed",
+    "gen:client": "encore gen client --lang typescript",
+    "test": "jest",
+    "test:watch": "jest --watch",
+    "test:coverage": "jest --coverage"
+  },
+  "dependencies": {
+    "@types/bcrypt": "^6.0.0",
+    "@types/jsonwebtoken": "^9.0.10",
+    "bcrypt": "^6.0.0",
+    "encore.dev": "^1.49.1",
+    "jsonwebtoken": "^9.0.2",
+    "pdfkit": "^0.14.0",
+    "xlsx": "^0.18.5"
+  },
+  "devDependencies": {
+    "@testing-library/jest-dom": "^6.8.0",
+    "@testing-library/react": "^16.3.0",
+    "@types/jest": "^30.0.0",
+    "@types/node": "^20.0.0",
+    "@types/pdfkit": "^0.12.12",
+    "jest": "^29.7.0",
+    "ts-jest": "^29.1.1",
+    "typescript": "^5.9.2"
   }
 }

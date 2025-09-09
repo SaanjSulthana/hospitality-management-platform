@@ -1,5 +1,6 @@
 import { api, APIError } from "encore.dev/api";
 import { getAuthData } from "~encore/auth";
+import { requireRole } from "../auth/middleware";
 import { staffDB } from "./db";
 
 export interface RequestLeaveRequest {
@@ -24,7 +25,12 @@ export interface RequestLeaveResponse {
 export const requestLeave = api<RequestLeaveRequest, RequestLeaveResponse>(
   { auth: true, expose: true, method: "POST", path: "/staff/leave-requests" },
   async (req) => {
-    const authData = getAuthData()!;
+    const authData = getAuthData();
+    if (!authData) {
+      throw APIError.unauthenticated("Authentication required");
+    }
+    requireRole("ADMIN", "MANAGER")(authData);
+
     const { leaveType, startDate, endDate, reason } = req;
 
     // Validate dates
@@ -69,6 +75,10 @@ export const requestLeave = api<RequestLeaveRequest, RequestLeaveResponse>(
       RETURNING id, staff_id, leave_type, start_date, end_date, reason, status, created_at
     `;
 
+    if (!leaveRequestRow) {
+      throw new Error('Failed to create leave request');
+    }
+
     // Notify admins about the leave request
     const admins = await staffDB.queryAll`
       SELECT id FROM users WHERE org_id = ${authData.orgId} AND role = 'ADMIN'
@@ -106,3 +116,4 @@ export const requestLeave = api<RequestLeaveRequest, RequestLeaveResponse>(
     };
   }
 );
+

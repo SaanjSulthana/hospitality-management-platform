@@ -123,6 +123,7 @@ describe('SalaryManagement', () => {
       trackActivity: jest.fn(),
       showLogoutProgress: false,
       setShowLogoutProgress: jest.fn(),
+      setIsTestingLogoutDialog: jest.fn(),
       clearCorruptedTokens: jest.fn(),
       clearAllAuthData: jest.fn(),
     });
@@ -504,6 +505,7 @@ describe('SalaryManagement', () => {
       trackActivity: jest.fn(),
       showLogoutProgress: false,
       setShowLogoutProgress: jest.fn(),
+      setIsTestingLogoutDialog: jest.fn(),
       clearCorruptedTokens: jest.fn(),
       clearAllAuthData: jest.fn(),
     });

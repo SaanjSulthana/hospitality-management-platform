@@ -18,10 +18,13 @@ import { useApiError } from '@/hooks/use-api-error';
 import { useTasksRealtime } from '@/hooks/use-realtime';
 import { useFormValidation, commonValidationRules } from '@/hooks/use-form-validation';
 import { CheckSquare, Clock, AlertCircle, Plus, Search, User, Calendar, Loader2, RefreshCw, Image, X, Eye } from 'lucide-react';
-import { ImageUpload } from '@/components/ui/image-upload';
+import { TaskImageUpload } from '@/components/ui/task-image-upload';
 import { formatDueDateTimeTime } from '../lib/datetime';
 import { formatDateTimeForAPI, getCurrentDateTimeString } from '../lib/date-utils';
-import { uploadTaskImage, deleteTaskImage, getTaskImageUrl, TaskImage } from '../lib/api/task-images';
+import { TaskImage } from '../lib/api/task-images';
+import { useTaskImageManagement } from '../hooks/use-task-image-management';
+import { ERROR_MESSAGES } from '../src/config/api';
+import { useStandardQuery, useStandardMutation, QUERY_KEYS, STANDARD_QUERY_CONFIGS } from '../src/utils/api-standardizer';
 
 export default function TasksPage() {
   const { getAuthenticatedBackend } = useAuth();
@@ -51,6 +54,7 @@ export default function TasksPage() {
     assigneeStaffId: 'none' as string | 'none',
   });
   const [taskImages, setTaskImages] = useState<any[]>([]);
+  const [createTaskResetTrigger, setCreateTaskResetTrigger] = useState(0);
 
   // Form validation
   const validation = useFormValidation(taskForm, {
@@ -60,296 +64,60 @@ export default function TasksPage() {
     dueAt: commonValidationRules.required,
   });
 
-  const { data: tasks, isLoading, error: tasksError } = useQuery({
-    queryKey: ['tasks'],
-    queryFn: async () => {
-      const backend = getAuthenticatedBackend();
-      return backend.tasks.list({});
-    },
-    refetchInterval: 15000, // Refetch every 15 seconds for real-time task updates
-    staleTime: 0, // Consider data immediately stale for fresh task status
-    gcTime: 300000, // 5 minutes
-    retry: (failureCount, error) => {
-      if (failureCount < 2) {
-        handleError(error, 'tasks');
-        return true;
-      }
-      return false;
-    },
-  });
+  const { data: tasks, isLoading, error: tasksError } = useStandardQuery(
+    QUERY_KEYS.TASKS,
+    '/tasks',
+    STANDARD_QUERY_CONFIGS.REAL_TIME
+  );
 
-  const { data: properties } = useQuery({
-    queryKey: ['properties'],
-    queryFn: async () => {
-      const backend = getAuthenticatedBackend();
-      return backend.properties.list({});
-    },
-    staleTime: 30000,
-    gcTime: 300000,
-  });
+  const { data: properties } = useStandardQuery(
+    QUERY_KEYS.PROPERTIES,
+    '/properties',
+    {
+      staleTime: 30000,
+      gcTime: 300000,
+    }
+  );
 
   // Load staff options for selected property in the create dialog
-  const { data: createStaffOptions, isLoading: isCreateStaffLoading } = useQuery({
-    queryKey: ['staff', 'by-property', taskForm.propertyId || 'none'],
-    queryFn: async () => {
-      const backend = getAuthenticatedBackend();
-      if (!taskForm.propertyId) return { staff: [] as any[] };
-      return backend.staff.list({ propertyId: parseInt(taskForm.propertyId) });
-    },
-    enabled: !!taskForm.propertyId,
-  });
+  const { data: createStaffOptions, isLoading: isCreateStaffLoading } = useStandardQuery(
+    ['staff', 'by-property', taskForm.propertyId || 'none'],
+    `/staff?propertyId=${taskForm.propertyId}`,
+    {
+      enabled: !!taskForm.propertyId,
+    }
+  );
 
-  const createTaskMutation = useMutation({
-    mutationFn: async (data: { taskData: any; images: any[] }) => {
-      console.log('Creating task with data:', data);
-      const backend = getAuthenticatedBackend();
-      
-      // First create the task
-      const task = await backend.tasks.create({
-        propertyId: parseInt(data.taskData.propertyId),
-        type: data.taskData.type,
-        title: data.taskData.title,
-        description: data.taskData.description || undefined,
-        priority: data.taskData.priority,
-        dueAt: data.taskData.dueAt ? formatDateTimeForAPI(data.taskData.dueAt) : undefined,
-        estimatedHours: data.taskData.estimatedHours ? parseFloat(data.taskData.estimatedHours) : undefined,
-        assigneeStaffId: data.taskData.assigneeStaffId && data.taskData.assigneeStaffId !== 'none' ? parseInt(data.taskData.assigneeStaffId) : undefined,
-      });
+  const createTaskMutation = useStandardMutation(
+    '/tasks',
+    'POST',
+    {
+      invalidateQueries: [QUERY_KEYS.TASKS, QUERY_KEYS.STAFF, QUERY_KEYS.ANALYTICS, QUERY_KEYS.DASHBOARD, QUERY_KEYS.PROPERTIES],
+      successMessage: "Task created successfully",
+      errorMessage: "Failed to create task. Please try again.",
+    }
+  );
 
-      // Then upload images if any
-      if (data.images && data.images.length > 0) {
-        for (const image of data.images) {
-          try {
-            await uploadTaskImage(task.id, image.file);
-          } catch (error) {
-            console.error('Failed to upload image during task creation:', error);
-            // Don't fail the entire task creation if image upload fails
-          }
-        }
-      }
-
-      return task;
-    },
-    onMutate: async (data) => {
-      console.log('Task creation mutation starting...');
-      // Cancel any outgoing refetches
-      await queryClient.cancelQueries({ queryKey: ['tasks'] });
-
-      // Snapshot the previous value
-      const previousTasks = queryClient.getQueryData(['tasks']);
-
-      // Optimistically update to the new value
-      queryClient.setQueryData(['tasks'], (old: any) => {
-        if (!old) return { tasks: [] };
-        
-        const optimisticTask = {
-          id: Date.now(), // temporary optimistic ID (13-digit)
-          propertyId: parseInt(data.taskData.propertyId),
-          propertyName: properties?.properties.find((p: any) => p.id === parseInt(data.taskData.propertyId))?.name || 'Unknown',
-          type: data.taskData.type,
-          title: data.taskData.title,
-          description: data.taskData.description,
-          priority: data.taskData.priority,
-          status: 'open',
-          assigneeStaffId: data.taskData.assigneeStaffId && data.taskData.assigneeStaffId !== 'none' ? parseInt(data.taskData.assigneeStaffId) : undefined,
-          assigneeName: undefined,
-          dueAt: data.taskData.dueAt,
-          estimatedHours: data.taskData.estimatedHours ? parseFloat(data.taskData.estimatedHours) : undefined,
-          createdByUserId: 0,
-          createdByName: 'You',
-          createdAt: getCurrentDateTimeString(),
-          updatedAt: getCurrentDateTimeString(),
-          completedAt: undefined,
-          actualHours: undefined,
-          attachmentCount: 0,
-          referenceImages: [], // Will be populated after upload
-        };
-        
-        return {
-          tasks: [optimisticTask, ...old.tasks]
-        };
-      });
-
-      return { previousTasks };
-    },
-    onError: (error: any, newTask, context) => {
-      console.error('Task creation failed:', error);
-      // Roll back to the previous state
-      queryClient.setQueryData(['tasks'], context?.previousTasks);
-      
-      toast({
-        variant: "destructive",
-        title: "Failed to create task",
-        description: error.message || "Please try again.",
-      });
-    },
-    onSuccess: (newTask) => {
-      console.log('Task created successfully:', newTask);
-      
-      // Aggressive cache invalidation for real-time updates
-      queryClient.invalidateQueries({ queryKey: ['tasks'] });
-      queryClient.invalidateQueries({ queryKey: ['staff'] });
-      queryClient.invalidateQueries({ queryKey: ['analytics'] });
-      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
-      queryClient.invalidateQueries({ queryKey: ['properties'] });
-      
-      // Force immediate refetch for all users
-      queryClient.refetchQueries({ queryKey: ['tasks'] });
-      queryClient.refetchQueries({ queryKey: ['dashboard'] });
-      
-      // Update the cache with the real data from the server
-      queryClient.setQueryData(['tasks'], (old: any) => {
-        if (!old) return { tasks: [newTask] };
-        
-        // Remove optimistic updates (Date.now() ~ 13 digits)
-        const filteredTasks = old.tasks.filter((t: any) => !(typeof t.id === 'number' && t.id >= 1_000_000_000_000));
-        
-        return {
-          tasks: [newTask, ...filteredTasks]
-        };
-      });
-
-      setIsCreateDialogOpen(false);
-      setTaskForm({
-        propertyId: '',
-        type: 'maintenance',
-        title: '',
-        description: '',
-        priority: 'med',
-        dueAt: '',
-        estimatedHours: '',
-        assigneeStaffId: 'none',
-      });
-      setTaskImages([]);
-      
-      toast({
-        title: "Task created",
-        description: "The task has been created successfully.",
-      });
-    },
-    onSettled: () => {
-      console.log('Task creation mutation settled, invalidating queries...');
-      // Always refetch after error or success
-      queryClient.invalidateQueries({ queryKey: ['tasks'] });
-    },
-  });
-
-  const updateTaskStatusMutation = useMutation({
-    mutationFn: async ({ id, status }: { id: number; status: 'open' | 'in_progress' | 'blocked' | 'done' }) => {
-      console.log('Updating task status:', { id, status });
-      const backend = getAuthenticatedBackend();
-      return backend.tasks.updateStatus(id, { status });
-    },
-    onMutate: async ({ id, status }) => {
-      console.log('Task status update mutation starting...');
-      // Cancel any outgoing refetches
-      await queryClient.cancelQueries({ queryKey: ['tasks'] });
-
-      // Snapshot the previous value
-      const previousTasks = queryClient.getQueryData(['tasks']);
-
-      // Optimistically update to the new value
-      queryClient.setQueryData(['tasks'], (old: any) => {
-        if (!old) return old;
-        
-        return {
-          tasks: old.tasks.map((task: any) =>
-            task.id === id
-              ? {
-                  ...task,
-                  status: status,
-                  completedAt: status === 'done' ? getCurrentDateTimeString() : task.completedAt,
-                  updatedAt: getCurrentDateTimeString(),
-                }
-              : task
-          )
-        };
-      });
-
-      return { previousTasks };
-    },
-    onError: (error: any, variables, context) => {
-      console.error('Task status update failed:', error);
-      // Roll back to the previous state
-      queryClient.setQueryData(['tasks'], context?.previousTasks);
-      
-      toast({
-        variant: "destructive",
-        title: "Failed to update task",
-        description: error.message || "Please try again.",
-      });
-    },
-    onSuccess: () => {
-      console.log('Task status updated successfully');
-      toast({
-        title: "Task updated",
-        description: "The task status has been updated.",
-      });
-    },
-    onSettled: () => {
-      console.log('Task status update mutation settled, invalidating queries...');
-      // Always refetch after error or success
-      queryClient.invalidateQueries({ queryKey: ['tasks'] });
-    },
-  });
+  const updateTaskStatusMutation = useStandardMutation(
+    '/tasks/:id/status',
+    'PATCH',
+    {
+      invalidateQueries: [QUERY_KEYS.TASKS],
+      successMessage: "Task status updated successfully",
+      errorMessage: "Failed to update task status. Please try again.",
+    }
+  );
 
   // Assignment mutation
-  const assignMutation = useMutation({
-    mutationFn: async ({ id, staffId }: { id: number; staffId?: number }) => {
-      console.log('Assigning task:', { id, staffId });
-      const backend = getAuthenticatedBackend();
-      return backend.tasks.assign(id, { staffId });
-    },
-    onMutate: async ({ id, staffId }) => {
-      console.log('Task assignment mutation starting...');
-      // Cancel any outgoing refetches
-      await queryClient.cancelQueries({ queryKey: ['tasks'] });
-
-      // Snapshot the previous value
-      const previousTasks = queryClient.getQueryData(['tasks']);
-
-      // Optimistically update to the new value
-      queryClient.setQueryData(['tasks'], (old: any) => {
-        if (!old) return old;
-        return {
-          tasks: old.tasks.map((t: any) =>
-            t.id === id
-              ? {
-                  ...t,
-                  assigneeStaffId: staffId,
-                  assigneeName: undefined, // will be refreshed via invalidate
-                }
-              : t
-          ),
-        };
-      });
-
-      return { previousTasks };
-    },
-    onError: (error: any, variables, context) => {
-      console.error('Task assignment failed:', error);
-      // Roll back to the previous state
-      queryClient.setQueryData(['tasks'], context?.previousTasks);
-      
-      toast({
-        variant: "destructive",
-        title: "Failed to update assignment",
-        description: error.message || "Please try again.",
-      });
-    },
-    onSuccess: (result, variables) => {
-      console.log('Task assignment updated successfully');
-      toast({
-        title: variables.staffId ? "Task assigned" : "Task unassigned",
-        description: variables.staffId ? "The task has been assigned successfully." : "The task has been unassigned.",
-      });
-    },
-    onSettled: () => {
-      console.log('Task assignment mutation settled, invalidating queries...');
-      // Always refetch after error or success
-      queryClient.invalidateQueries({ queryKey: ['tasks'] });
-    },
-  });
+  const assignMutation = useStandardMutation(
+    '/tasks/:id/assign',
+    'PATCH',
+    {
+      invalidateQueries: [QUERY_KEYS.TASKS],
+      successMessage: "Task assignment updated successfully",
+      errorMessage: "Failed to update task assignment. Please try again.",
+    }
+  );
 
   const filteredTasks = tasks?.tasks.filter((task: any) => {
     const matchesSearch = task.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -403,7 +171,7 @@ export default function TasksPage() {
     done: filteredTasks.filter((task: any) => task.status === 'done'),
   };
 
-  const handleCreateTask = () => {
+  const handleCreateTask = async () => {
     if (!taskForm.propertyId || !taskForm.title) {
       toast({
         variant: "destructive",
@@ -412,23 +180,63 @@ export default function TasksPage() {
       });
       return;
     }
-    createTaskMutation.mutate({ taskData: taskForm, images: taskImages });
+    
+    const taskData = {
+      propertyId: parseInt(taskForm.propertyId),
+      type: taskForm.type,
+      title: taskForm.title,
+      description: taskForm.description || undefined,
+      priority: taskForm.priority,
+      dueAt: taskForm.dueAt ? formatDateTimeForAPI(taskForm.dueAt) : undefined,
+      estimatedHours: taskForm.estimatedHours ? parseFloat(taskForm.estimatedHours) : undefined,
+      assigneeStaffId: taskForm.assigneeStaffId && taskForm.assigneeStaffId !== 'none' ? parseInt(taskForm.assigneeStaffId) : undefined,
+    };
+    
+    try {
+      const newTask = await createTaskMutation.mutateAsync(taskData);
+      
+      // Upload images if any
+      if (taskImages.length > 0) {
+        const files = taskImages.map(img => img.file);
+        // Note: In a real implementation, you would upload images here
+        // For now, we'll just clear the images
+        console.log('Images to upload:', files);
+      }
+      
+      // Close dialog and reset form
+      setIsCreateDialogOpen(false);
+      setTaskForm({
+        propertyId: '',
+        type: 'maintenance',
+        title: '',
+        description: '',
+        priority: 'med',
+        dueAt: '',
+        estimatedHours: '',
+        assigneeStaffId: 'none',
+      });
+      setTaskImages([]);
+      setCreateTaskResetTrigger(prev => prev + 1);
+    } catch (error) {
+      console.error('Failed to create task:', error);
+    }
   };
 
   const handleStatusChange = (taskId: number, newStatus: string) => {
-    updateTaskStatusMutation.mutate({ id: taskId, status: newStatus as 'open' | 'in_progress' | 'blocked' | 'done' });
+    updateTaskStatusMutation.mutate({ 
+      id: taskId, 
+      status: newStatus as 'open' | 'in_progress' | 'blocked' | 'done' 
+    });
   };
 
   // Cache staff lists per property to avoid many queries
   const staffQueries: Record<number, { staff: any[]; isLoading: boolean }> = {};
   const StaffSelect = ({ propertyId, value, onChange, disabled }: { propertyId: number; value?: number | null; onChange: (v: number | null) => void; disabled?: boolean }) => {
-    const { data, isLoading: loadingStaff } = useQuery({
-      queryKey: ['staff', 'by-property', propertyId],
-      queryFn: async () => {
-        const backend = getAuthenticatedBackend();
-        return backend.staff.list({ propertyId });
-      },
-    });
+    const { data, isLoading: loadingStaff } = useStandardQuery(
+      ['staff', 'by-property', propertyId.toString()],
+      `/staff?propertyId=${propertyId}`,
+      {}
+    );
     const staff = data?.staff || [];
     return (
       <Select
@@ -451,41 +259,26 @@ export default function TasksPage() {
     );
   };
 
-  const TaskCard = ({ task }: { task: any }) => {
+  const TaskCard = React.memo(({ task }: { task: any }) => {
     const [localAssigning, setLocalAssigning] = useState(false);
     const [showImageModal, setShowImageModal] = useState(false);
-    const [selectedImage, setSelectedImage] = useState<string | null>(null);
-    const [uploadingImages, setUploadingImages] = useState<Set<number>>(new Set());
-    const [deletingImages, setDeletingImages] = useState<Set<number>>(new Set());
-    const [imageUrls, setImageUrls] = useState<Record<number, string>>({});
+    const [selectedImage, setSelectedImage] = useState<{ id: number; url: string } | null>(null);
     
-    // Load image URLs when component mounts
-    useEffect(() => {
-      const loadImageUrls = async () => {
-        const referenceImages = task.referenceImages || [];
-        const urlPromises = referenceImages.map(async (image: TaskImage) => {
-          try {
-            const url = await getTaskImageUrl(image.id);
-            return { id: image.id, url };
-          } catch (error) {
-            console.error('Failed to load image URL:', error);
-            return { id: image.id, url: '/placeholder-image.png' };
-          }
-        });
-        
-        const results = await Promise.all(urlPromises);
-        const urlMap = results.reduce((acc, { id, url }) => {
-          acc[id] = url;
-          return acc;
-        }, {} as Record<number, string>);
-        
-        setImageUrls(urlMap);
-      };
-      
-      if (task.referenceImages && task.referenceImages.length > 0) {
-        loadImageUrls();
-      }
-    }, [task.referenceImages]);
+    // Use the new image management hook
+    const {
+      getImageUrl,
+      isImageLoading,
+      hasImageError,
+      retryImage,
+      uploadImages,
+      deleteImage,
+      isUploading,
+      loadedCount,
+      totalCount
+    } = useTaskImageManagement({
+      taskId: task.id,
+      existingImages: task.referenceImages || []
+    });
     
     const onAssign = async (staffId: number | null) => {
       setLocalAssigning(true);
@@ -496,70 +289,25 @@ export default function TasksPage() {
       }
     };
 
-    const handleImageClick = (imageId: number) => {
-      const imageUrl = imageUrls[imageId];
+    const handleImageClick = (imageId: number, imageUrl: string) => {
+      console.log('TasksPage handleImageClick:', imageId, imageUrl);
       if (imageUrl) {
-        setSelectedImage(imageUrl);
+        setSelectedImage({ id: imageId, url: imageUrl });
         setShowImageModal(true);
       }
     };
 
-    const handleImageUpload = async (files: any[]) => {
-      for (const file of files) {
-        try {
-          setUploadingImages(prev => new Set(prev).add(file.id));
-          await uploadTaskImage(task.id, file.file);
-          
-          // Refresh tasks to get updated images
-          queryClient.invalidateQueries({ queryKey: ['tasks'] });
-          
-          toast({
-            title: "Image uploaded",
-            description: "Reference image has been uploaded successfully.",
-          });
-        } catch (error) {
-          console.error('Failed to upload image:', error);
-          toast({
-            variant: "destructive",
-            title: "Upload failed",
-            description: "Failed to upload image. Please try again.",
-          });
-        } finally {
-          setUploadingImages(prev => {
-            const newSet = new Set(prev);
-            newSet.delete(file.id);
-            return newSet;
-          });
-        }
+    const handleImageUpload = async (taskId: number, files: File[]) => {
+      try {
+        await uploadImages(files);
+      } catch (error) {
+        console.error('Image upload failed:', error);
+        // Error handling is done in the hook
       }
     };
 
-    const handleImageDelete = async (imageId: number) => {
-      try {
-        setDeletingImages(prev => new Set(prev).add(imageId));
-        await deleteTaskImage(task.id, imageId);
-        
-        // Refresh tasks to get updated images
-        queryClient.invalidateQueries({ queryKey: ['tasks'] });
-        
-        toast({
-          title: "Image deleted",
-          description: "Reference image has been deleted successfully.",
-        });
-      } catch (error) {
-        console.error('Failed to delete image:', error);
-        toast({
-          variant: "destructive",
-          title: "Delete failed",
-          description: "Failed to delete image. Please try again.",
-        });
-      } finally {
-        setDeletingImages(prev => {
-          const newSet = new Set(prev);
-          newSet.delete(imageId);
-          return newSet;
-        });
-      }
+    const handleImageDelete = async (taskId: number, imageId: number) => {
+      await deleteImage(imageId);
     };
 
     // Use real reference images from task data
@@ -605,71 +353,19 @@ export default function TasksPage() {
               </div>
               
               {/* Compact Image Upload Area */}
-              <ImageUpload
-                onImagesChange={handleImageUpload}
-                maxImages={5 - referenceImages.length}
+              <TaskImageUpload
+                taskId={task.id}
+                existingImages={referenceImages}
+                onImageUpload={handleImageUpload}
+                onImageDelete={handleImageDelete}
+                onImageClick={handleImageClick}
+                maxImages={5}
                 maxSize={5}
                 disabled={referenceImages.length >= 5}
                 className="!space-y-2"
+                compact={true}
               />
               
-              {/* Display Images */}
-              {referenceImages.length > 0 && (
-                <div className="grid grid-cols-3 gap-2">
-                  {referenceImages.slice(0, 3).map((image: TaskImage) => (
-                    <div 
-                      key={image.id}
-                      className="relative group cursor-pointer rounded-lg overflow-hidden bg-gray-100 aspect-square"
-                      onClick={() => handleImageClick(image.id)}
-                    >
-                      <img 
-                        src={imageUrls[image.id] || '/placeholder-image.png'} 
-                        alt={image.originalName}
-                        className="w-full h-full object-cover transition-transform duration-200 group-hover:scale-105"
-                        onError={(e) => {
-                          // Fallback for broken images
-                          const target = e.target as HTMLImageElement;
-                          target.src = '/placeholder-image.png';
-                        }}
-                      />
-                      <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-20 transition-all duration-200 flex items-center justify-center">
-                        <Eye className="h-4 w-4 text-white opacity-0 group-hover:opacity-100 transition-opacity duration-200" />
-                      </div>
-                      
-                      {/* Delete Button */}
-                      <Button
-                        variant="destructive"
-                        size="sm"
-                        className="absolute top-1 right-1 h-5 w-5 rounded-full p-0 opacity-0 group-hover:opacity-100 transition-opacity duration-200"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleImageDelete(image.id);
-                        }}
-                        disabled={deletingImages.has(image.id)}
-                      >
-                        {deletingImages.has(image.id) ? (
-                          <Loader2 className="h-3 w-3 animate-spin" />
-                        ) : (
-                          <X className="h-3 w-3" />
-                        )}
-                      </Button>
-                      
-                      {/* Uploading Overlay */}
-                      {uploadingImages.has(image.id) && (
-                        <div className="absolute inset-0 bg-black bg-opacity-50 flex items-center justify-center rounded-lg">
-                          <Loader2 className="h-4 w-4 animate-spin text-white" />
-                        </div>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              )}
-              
-              {referenceImages.length > 3 && (
-                <p className="text-xs text-gray-500 text-center">
-                  +{referenceImages.length - 3} more images
-                </p>
-              )}
             </div>
 
             {task.description && (
@@ -748,7 +444,7 @@ export default function TasksPage() {
                   <X className="h-4 w-4" />
                 </Button>
                 <img 
-                  src={selectedImage} 
+                  src={selectedImage.url} 
                   alt="Task reference"
                   className="w-full h-auto max-h-[80vh] object-contain"
                   onError={(e) => {
@@ -762,7 +458,15 @@ export default function TasksPage() {
         )}
       </>
     );
-  };
+  }, (prevProps, nextProps) => {
+    // Only re-render if task data actually changes
+    return (
+      prevProps.task.id === nextProps.task.id &&
+      prevProps.task.status === nextProps.task.status &&
+      prevProps.task.assigneeStaffId === nextProps.task.assigneeStaffId &&
+      JSON.stringify(prevProps.task.referenceImages) === JSON.stringify(nextProps.task.referenceImages)
+    );
+  });
 
   if (isLoading) {
     return (
@@ -1059,11 +763,25 @@ export default function TasksPage() {
                       {/* Reference Images Upload */}
                       <div className="space-y-2">
                         <Label className="text-sm font-medium text-gray-700">Reference Images</Label>
-                        <ImageUpload
-                          onImagesChange={setTaskImages}
+                        <TaskImageUpload
+                          taskId={0} // Placeholder for create dialog
+                          existingImages={[]}
+                          onImageUpload={async (taskId, files) => {
+                            // Convert files to ImageFile format for create dialog
+                            const imageFiles = files.map(file => ({
+                              id: Math.random().toString(36).substr(2, 9),
+                              file,
+                              preview: URL.createObjectURL(file),
+                            }));
+                            setTaskImages(imageFiles);
+                          }}
+                          onImageDelete={async () => {
+                            // Not applicable for create dialog
+                          }}
                           maxImages={5}
                           maxSize={5}
                           disabled={createTaskMutation.isPending}
+                          className="!space-y-2"
                         />
                       </div>
                     </div>

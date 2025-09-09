@@ -1,0 +1,365 @@
+---
+alwaysApply: true
+---
+
+# UI/UX Improvement Guide for All Pages
+
+## 🎯 **Core Principles Applied from ReportsPage Success**
+
+### **1. Layout Foundation & Structure**
+
+#### **Page Container Standards:**
+```tsx
+// ✅ CORRECT: Full-page container with proper background
+<div className="min-h-screen bg-gray-50">
+  <Tabs defaultValue="default" className="space-y-0">
+    {/* Content */}
+  </Tabs>
+</div>
+
+// ❌ AVOID: Basic container without background
+<div className="space-y-6">
+  {/* Content */}
+</div>
+```
+
+#### **Content Container Standards:**
+```tsx
+// ✅ CORRECT: Proper content padding and spacing
+<div className="px-6 py-6">
+  <TabsContent value="content" className="space-y-6 mt-0">
+    {/* Page content */}
+  </TabsContent>
+</div>
+
+// ❌ AVOID: Inconsistent spacing
+<TabsContent value="content" className="pt-4">
+  {/* Content */}
+</TabsContent>
+```
+
+### **2. Sticky Navigation Enhancement**
+
+#### **Tab Navigation Standards:**
+```tsx
+// ✅ CORRECT: Enhanced sticky tabs with proper styling
+<div className="sticky top-20 z-30 bg-white border-b border-gray-200 -mx-6 px-4 sm:px-6 py-3 shadow-sm">
+  <div className="overflow-x-auto">
+    <TabsList className="grid w-full grid-cols-3 min-w-max bg-gray-100">
+      <TabsTrigger 
+        value="tab1" 
+        className="text-xs sm:text-sm px-3 sm:px-6 py-2 data-[state=active]:bg-white data-[state=active]:shadow-sm transition-all duration-200"
+      >
+        Tab Label
+      </TabsTrigger>
+    </TabsList>
+  </div>
+</div>
+
+// ❌ AVOID: Basic tabs without enhancements
+<TabsList className="grid w-full grid-cols-3">
+  <TabsTrigger value="tab1">Tab Label</TabsTrigger>
+</TabsList>
+```
+
+### **3. Card Design Standards**
+
+#### **Enhanced Card Structure:**
+```tsx
+// ✅ CORRECT: Professional card with all enhancements
+<Card className="border-l-4 border-l-blue-500 shadow-sm hover:shadow-md transition-shadow duration-200">
+  <CardHeader className="pb-4">
+    <CardTitle className="text-lg flex items-center gap-2">
+      <div className="w-3 h-3 bg-blue-500 rounded-full animate-pulse"></div>
+      Card Title
+      <span className="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded-full font-medium">Live Data</span>
+    </CardTitle>
+    <CardDescription className="text-sm text-gray-600">
+      Card description
+    </CardDescription>
+  </CardHeader>
+  <CardContent className="space-y-3">
+    {/* Content */}
+  </CardContent>
+</Card>
+
+// ❌ AVOID: Basic card without enhancements
+<Card>
+  <CardHeader>
+    <CardTitle>Card Title</CardTitle>
+  </CardHeader>
+  <CardContent>
+    {/* Content */}
+  </CardContent>
+</Card>
+```
+
+### **4. Form Input Standards**
+
+#### **Enhanced Form Controls:**
+```tsx
+// ✅ CORRECT: Professional form inputs
+<div className="space-y-2">
+  <Label htmlFor="input-id" className="text-sm font-medium text-gray-700">Label</Label>
+  <Input
+    id="input-id"
+    className="h-11 border-gray-300 focus:border-blue-500 focus:ring-blue-500"
+    placeholder="Placeholder"
+  />
+</div>
+
+// ✅ CORRECT: Enhanced Select components
+<Select>
+  <SelectTrigger className="h-11 border-gray-300 focus:border-blue-500 focus:ring-blue-500">
+    <SelectValue placeholder="Select option" />
+  </SelectTrigger>
+  <SelectContent>
+    {/* Options */}
+  </SelectContent>
+</Select>
+
+// ❌ AVOID: Basic form inputs
+<Label>Label</Label>
+<Input className="mt-1" />
+```
+
+### **5. Loading & Error States**
+
+#### **Professional Loading States:**
+```tsx
+// ✅ CORRECT: Card-based loading with proper styling
+{isLoading ? (
+  <Card className="border-l-4 border-l-blue-500">
+    <CardContent className="flex items-center justify-center p-12">
+      <div className="text-center">
+        <RefreshCw className="h-8 w-8 animate-spin text-blue-600 mx-auto mb-4" />
+        <p className="text-lg font-medium text-gray-900">Loading data...</p>
+        <p className="text-sm text-gray-600 mt-2">Please wait while we fetch your data</p>
+      </div>
+    </CardContent>
+  </Card>
+) : (
+  // Content
+)}
+
+// ❌ AVOID: Basic loading without context
+{isLoading ? (
+  <div className="flex items-center justify-center p-8">
+    <RefreshCw className="h-6 w-6 animate-spin mr-2" />
+    <span>Loading...</span>
+  </div>
+) : (
+  // Content
+)}
+```
+
+#### **Enhanced Error States:**
+```tsx
+// ✅ CORRECT: Professional error handling
+{error ? (
+  <Card className="border-l-4 border-l-red-500">
+    <CardContent className="flex items-center justify-center p-12">
+      <div className="text-center">
+        <div className="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
+          <AlertCircle className="h-6 w-6 text-red-600" />
+        </div>
+        <p className="text-lg font-medium text-red-900 mb-2">Error loading data</p>
+        <p className="text-sm text-gray-600 mb-4">{error.message}</p>
+        <Button 
+          variant="outline" 
+          onClick={() => window.location.reload()}
+          className="border-red-300 text-red-700 hover:bg-red-50"
+        >
+          <RefreshCw className="h-4 w-4 mr-2" />
+          Try Again
+        </Button>
+      </div>
+    </CardContent>
+  </Card>
+) : (
+  // Content
+)}
+```
+
+### **6. Button & Action Standards**
+
+#### **Enhanced Button Design:**
+```tsx
+// ✅ CORRECT: Professional buttons with proper sizing
+<Button 
+  variant="outline"
+  size="sm"
+  className="transition-all duration-200 hover:scale-105 hover:shadow-md flex-shrink-0"
+  disabled={isLoading}
+>
+  {isLoading ? (
+    <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+  ) : (
+    <Icon className="h-4 w-4 mr-2" />
+  )}
+  <span className="hidden sm:inline">Full Label</span>
+  <span className="sm:hidden">Short</span>
+</Button>
+
+// ❌ AVOID: Basic buttons without enhancements
+<Button size="sm" disabled={isLoading}>
+  <Icon className="h-4 w-4 mr-2" />
+  Label
+</Button>
+```
+
+### **7. Grid & Layout Standards**
+
+#### **Responsive Grid Systems:**
+```tsx
+// ✅ CORRECT: Mobile-first responsive grids
+<div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+  {/* Cards */}
+</div>
+
+<div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
+  {/* Items */}
+</div>
+
+// ❌ AVOID: Fixed grids without mobile consideration
+<div className="grid grid-cols-4 gap-4">
+  {/* Items */}
+</div>
+```
+
+### **8. Visual Enhancement Standards**
+
+#### **Consistent Visual Elements:**
+```tsx
+// ✅ CORRECT: Consistent icon containers
+<div className="p-3 bg-blue-100 rounded-xl shadow-sm">
+  <Icon className="h-6 w-6 text-blue-600" />
+</div>
+
+// ✅ CORRECT: Consistent status indicators
+<div className="w-3 h-3 bg-green-500 rounded-full animate-pulse"></div>
+
+// ✅ CORRECT: Consistent badges
+<span className="text-xs bg-green-100 text-green-700 px-2 py-1 rounded-full font-medium">
+  Live Data
+</span>
+```
+
+### **9. Mobile Responsiveness Rules**
+
+#### **Touch-Friendly Design:**
+- **Minimum Touch Target**: 44px height for all interactive elements
+- **Button Spacing**: Minimum 8px gap between touch targets
+- **Text Sizing**: Minimum 16px font size to prevent zoom on iOS
+- **Responsive Text**: Use `hidden sm:inline` and `sm:hidden` for adaptive labels
+
+#### **Mobile-First Breakpoints:**
+```tsx
+// ✅ CORRECT: Mobile-first approach
+className="text-xs sm:text-sm px-2 sm:px-4 py-2"
+className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4"
+className="flex flex-col sm:flex-row items-start sm:items-center gap-4"
+
+// ❌ AVOID: Desktop-first approach
+className="text-sm lg:text-xs px-4 lg:px-2"
+```
+
+### **10. Performance Optimization Rules**
+
+#### **DOM Structure:**
+- **Minimize Nesting**: Keep DOM depth under 6 levels
+- **Efficient Layouts**: Use CSS Grid and Flexbox over absolute positioning
+- **Conditional Rendering**: Use proper loading states instead of hiding elements
+- **Lazy Loading**: Implement for heavy components and images
+
+#### **Animation Standards:**
+```tsx
+// ✅ CORRECT: Hardware-accelerated animations
+className="transition-all duration-200 hover:scale-105 hover:shadow-md"
+className="animate-pulse" // For loading states
+className="animate-spin" // For spinners
+
+// ❌ AVOID: Heavy animations or transitions
+className="transition-all duration-1000" // Too slow
+```
+
+## 🎨 **Color & Branding Standards**
+
+### **Consistent Color Usage:**
+- **Primary Actions**: `bg-blue-600 hover:bg-blue-700`
+- **Success States**: `text-green-600 bg-green-50 border-green-200`
+- **Error States**: `text-red-600 bg-red-50 border-red-200`
+- **Warning States**: `text-orange-600 bg-orange-50 border-orange-200`
+- **Info States**: `text-blue-600 bg-blue-50 border-blue-200`
+
+### **Border Accent Colors:**
+- **Primary**: `border-l-4 border-l-blue-500`
+- **Success**: `border-l-4 border-l-green-500`
+- **Error**: `border-l-4 border-l-red-500`
+- **Warning**: `border-l-4 border-l-orange-500`
+- **Info**: `border-l-4 border-l-purple-500`
+
+## 📱 **App-Ready Standards**
+
+### **Cross-Platform Compatibility:**
+- **WebView Ready**: Avoid platform-specific CSS
+- **Touch Optimization**: Proper touch targets and gestures
+- **Responsive Images**: Use proper aspect ratios and sizing
+- **Accessibility**: WCAG 2.1 AA compliance
+
+### **Performance Targets:**
+- **First Contentful Paint**: < 1.5s
+- **Largest Contentful Paint**: < 2.5s
+- **Cumulative Layout Shift**: < 0.1
+- **First Input Delay**: < 100ms
+
+## ✅ **Implementation Checklist**
+
+For each page, ensure:
+
+- [ ] **Layout Foundation**: Full-page container with proper background
+- [ ] **Sticky Navigation**: Enhanced tabs with proper styling
+- [ ] **Card Design**: Professional cards with shadows and transitions
+- [ ] **Form Controls**: Enhanced inputs with proper focus states
+- [ ] **Loading States**: Card-based loading with descriptive text
+- [ ] **Error Handling**: Professional error cards with retry options
+- [ ] **Button Design**: Enhanced buttons with responsive labels
+- [ ] **Grid Layouts**: Mobile-first responsive grids
+- [ ] **Visual Elements**: Consistent icons, indicators, and badges
+- [ ] **Mobile Optimization**: Touch-friendly design with proper spacing
+- [ ] **Performance**: Minimal DOM and efficient layouts
+- [ ] **Accessibility**: Proper contrast, focus states, and semantic HTML
+
+## 🚀 **Quick Implementation Template**
+
+```tsx
+// Page Structure Template
+export default function PageName() {
+  return (
+    <div className="min-h-screen bg-gray-50">
+      <Tabs defaultValue="default" className="space-y-0">
+        {/* Enhanced Sticky Tabs */}
+        <div className="sticky top-20 z-30 bg-white border-b border-gray-200 -mx-6 px-4 sm:px-6 py-3 shadow-sm">
+          <div className="overflow-x-auto">
+            <TabsList className="grid w-full grid-cols-3 min-w-max bg-gray-100">
+              {/* Tab triggers with enhanced styling */}
+            </TabsList>
+          </div>
+        </div>
+
+        {/* Content Container */}
+        <div className="px-6 py-6">
+          <TabsContent value="content" className="space-y-6 mt-0">
+            {/* Enhanced Cards with proper structure */}
+            {/* Loading and Error States */}
+            {/* Responsive Grids */}
+            {/* Professional Buttons */}
+          </TabsContent>
+        </div>
+      </Tabs>
+    </div>
+  );
+}
+```
+
+This guide ensures all pages achieve the same professional, modern design with consistent visual language and excellent user experience across all devices.

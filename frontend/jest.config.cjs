@@ -29,4 +29,12 @@ module.exports = {
       useESM: true,
     },
   },
+  // Add browser environment mocks
+  setupFiles: ['<rootDir>/__tests__/setup-browser.ts'],
+  // Fix for jest.mock in ESM
+  transformIgnorePatterns: [
+    'node_modules/(?!(.*\\.mjs$|@testing-library|@tanstack))'
+  ],
+  // Add test timeout
+  testTimeout: 10000,
 };

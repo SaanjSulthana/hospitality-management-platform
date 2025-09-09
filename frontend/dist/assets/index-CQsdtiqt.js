@@ -36022,6 +36022,12 @@ function reducer(state, action) {
 }
 function noop$1() {
 }
+const imageCache = /* @__PURE__ */ new Map();
+const loadingPromises = /* @__PURE__ */ new Map();
+const clearImageCache = (imageId) => {
+  imageCache.delete(imageId);
+  loadingPromises.delete(imageId);
+};
 function TaskImageUpload({
   taskId,
   existingImages = [],
@@ -36037,8 +36043,24 @@ function TaskImageUpload({
   const [uploadingFiles, setUploadingFiles] = reactExports.useState([]);
   const [selectedImage, setSelectedImage] = reactExports.useState(null);
   const [showImageModal, setShowImageModal] = reactExports.useState(false);
+  const [imageLoading, setImageLoading] = reactExports.useState(false);
   const { toast: toast2 } = useToast();
   const abortControllerRef = reactExports.useRef(null);
+  reactExports.useEffect(() => {
+    const handleKeyDown = (event) => {
+      if (event.key === "Escape" && showImageModal) {
+        setShowImageModal(false);
+      }
+    };
+    if (showImageModal) {
+      document.addEventListener("keydown", handleKeyDown);
+      document.body.style.overflow = "hidden";
+    }
+    return () => {
+      document.removeEventListener("keydown", handleKeyDown);
+      document.body.style.overflow = "unset";
+    };
+  }, [showImageModal]);
   const availableSlots = maxImages - existingImages.length - uploadingFiles.length;
   const canUpload = availableSlots > 0 && !disabled;
   reactExports.useEffect(() => {
@@ -36049,7 +36071,9 @@ function TaskImageUpload({
     };
   }, []);
   const onDrop = reactExports.useCallback((acceptedFiles) => {
+    console.log("onDrop called with files:", acceptedFiles.length, "canUpload:", canUpload, "availableSlots:", availableSlots, "existingImages:", existingImages.length);
     if (!canUpload || acceptedFiles.length === 0) {
+      console.log("Upload not allowed - canUpload:", canUpload, "files:", acceptedFiles.length);
       toast2({
         variant: "destructive",
         title: "Upload not allowed",
@@ -36087,21 +36111,65 @@ function TaskImageUpload({
     handleUpload(validFiles, newUploadingFiles);
   }, [canUpload, availableSlots, maxImages, maxSize, onImageUpload, toast2]);
   const handleUpload = async (files, uploadingFiles2) => {
+    console.log("handleUpload called with files:", files.length, "uploadingFiles:", uploadingFiles2.length);
     try {
-      await onImageUpload(taskId, files);
       setUploadingFiles(
-        (prev) => prev.filter((uf) => !uploadingFiles2.some((nf) => nf.id === uf.id))
+        (prev) => prev.map((uf) => {
+          const isUploading = uploadingFiles2.some((nf) => nf.id === uf.id);
+          return isUploading ? { ...uf, progress: 5 } : uf;
+        })
       );
+      const progressIntervals = [];
+      uploadingFiles2.forEach((uploadingFile) => {
+        const interval = setInterval(() => {
+          setUploadingFiles(
+            (prev) => prev.map((uf) => {
+              if (uf.id === uploadingFile.id && uf.progress < 85) {
+                const increment = Math.random() * 8 + 2;
+                return { ...uf, progress: Math.min(uf.progress + increment, 85) };
+              }
+              return uf;
+            })
+          );
+        }, 150 + Math.random() * 100);
+        progressIntervals.push(interval);
+      });
+      setUploadingFiles(
+        (prev) => prev.map((uf) => {
+          const isUploading = uploadingFiles2.some((nf) => nf.id === uf.id);
+          return isUploading ? { ...uf, progress: 15 } : uf;
+        })
+      );
+      await onImageUpload(taskId, files);
+      progressIntervals.forEach((interval) => clearInterval(interval));
+      setUploadingFiles(
+        (prev) => prev.map((uf) => {
+          const isUploading = uploadingFiles2.some((nf) => nf.id === uf.id);
+          return isUploading ? { ...uf, progress: 100 } : uf;
+        })
+      );
+      setTimeout(() => {
+        setUploadingFiles(
+          (prev) => prev.filter((uf) => !uploadingFiles2.some((nf) => nf.id === uf.id))
+        );
+      }, 2e3);
       toast2({
         title: "Images uploaded successfully",
         description: `${files.length} image(s) uploaded to task.`
       });
     } catch (error) {
       console.error("Upload failed:", error);
+      const allIntervals = document.querySelectorAll("[data-progress-interval]");
+      allIntervals.forEach((interval) => clearInterval(interval));
       setUploadingFiles(
         (prev) => prev.map((uf) => {
-          const isErrored = uploadingFiles2.some((nf) => nf.id === uf.id);
-          return isErrored ? { ...uf, error: error.message || "Upload failed" } : uf;
+          const isUploading = uploadingFiles2.some((nf) => nf.id === uf.id);
+          return isUploading ? {
+            ...uf,
+            error: error.message || "Upload failed",
+            progress: 0
+            // Reset progress on error
+          } : uf;
         })
       );
       toast2({
@@ -36114,6 +36182,7 @@ function TaskImageUpload({
   const handleDelete = async (imageId) => {
     try {
       await onImageDelete(taskId, imageId);
+      clearImageCache(imageId);
       toast2({
         title: "Image deleted",
         description: "Image has been removed from task."
@@ -36128,21 +36197,27 @@ function TaskImageUpload({
     }
   };
   const handleImageClick = (imageId, imageUrl) => {
+    console.log("Image clicked:", imageId, imageUrl);
     if (onImageClick) {
       onImageClick(imageId, imageUrl);
     } else {
       setSelectedImage({ id: imageId, url: imageUrl });
       setShowImageModal(true);
+      setImageLoading(true);
     }
   };
-  const { getRootProps, getInputProps, isDragActive: isDragActive2 } = useDropzone({
+  const { getRootProps, getInputProps, isDragActive: isDragActive2, open } = useDropzone({
     onDrop,
     accept: {
       "image/*": [".jpeg", ".jpg", ".png", ".gif", ".webp"]
     },
     maxFiles: availableSlots,
     disabled: !canUpload,
-    multiple: true
+    multiple: true,
+    noClick: true,
+    // Disable default click behavior
+    noKeyboard: false
+    // Allow keyboard navigation
   });
   if (compact) {
     return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: `space-y-2 ${className}`, children: [
@@ -36151,15 +36226,28 @@ function TaskImageUpload({
         {
           ...getRootProps(),
           className: `
-              border-2 border-dashed rounded-lg p-3 text-center cursor-pointer transition-colors
-              ${isDragActive2 ? "border-blue-400 bg-blue-50" : "border-gray-300 hover:border-gray-400"}
+              border-2 border-dashed rounded-lg p-3 text-center cursor-pointer transition-all duration-200
+              ${isDragActive2 ? "border-blue-400 bg-blue-50 scale-105" : "border-gray-300 hover:border-gray-400 hover:bg-gray-50"}
               ${disabled ? "opacity-50 cursor-not-allowed" : ""}
             `,
+          onClick: (e) => {
+            console.log("Upload area clicked, canUpload:", canUpload, "disabled:", disabled);
+            if (!disabled && canUpload) {
+              console.log("Opening file picker...");
+              open();
+            }
+          },
           children: [
             /* @__PURE__ */ jsxRuntimeExports.jsx("input", { ...getInputProps() }),
             /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center justify-center gap-2", children: [
               /* @__PURE__ */ jsxRuntimeExports.jsx(Upload, { className: "h-4 w-4 text-gray-500" }),
-              /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-sm text-gray-600", children: isDragActive2 ? "Drop images here" : "Add images" })
+              /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-sm text-gray-600", children: isDragActive2 ? "Drop images here" : "Click to add images" })
+            ] }),
+            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "text-xs text-gray-500 mt-1", children: [
+              availableSlots,
+              " of ",
+              maxImages,
+              " slots available"
             ] })
           ]
         }
@@ -36187,25 +36275,40 @@ function TaskImageUpload({
           file.id
         ))
       ] }),
-      showImageModal && selectedImage && /* @__PURE__ */ jsxRuntimeExports.jsx(Dialog, { open: showImageModal, onOpenChange: setShowImageModal, children: /* @__PURE__ */ jsxRuntimeExports.jsx(DialogContent, { className: "max-w-4xl max-h-[90vh] p-0", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "relative", children: [
+      showImageModal && selectedImage && /* @__PURE__ */ jsxRuntimeExports.jsx(Dialog, { open: showImageModal, onOpenChange: setShowImageModal, children: /* @__PURE__ */ jsxRuntimeExports.jsx(DialogContent, { className: "max-w-6xl max-h-[95vh] p-0 bg-black/95", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "relative flex items-center justify-center min-h-[80vh]", children: [
         /* @__PURE__ */ jsxRuntimeExports.jsx(
           Button,
           {
             variant: "ghost",
             size: "sm",
-            className: "absolute top-4 right-4 z-10 bg-black bg-opacity-50 text-white hover:bg-opacity-70",
+            className: "absolute top-4 right-4 z-20 bg-black/50 text-white hover:bg-black/70 rounded-full w-10 h-10",
             onClick: () => setShowImageModal(false),
-            children: /* @__PURE__ */ jsxRuntimeExports.jsx(X, { className: "h-4 w-4" })
+            children: /* @__PURE__ */ jsxRuntimeExports.jsx(X, { className: "h-5 w-5" })
           }
         ),
-        /* @__PURE__ */ jsxRuntimeExports.jsx(
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "absolute top-4 left-4 z-20 bg-black/50 text-white px-3 py-2 rounded-lg", children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-sm font-medium", children: "Task Reference Image" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { className: "text-xs opacity-75", children: [
+            "ID: ",
+            selectedImage.id
+          ] })
+        ] }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "relative max-w-full max-h-full", children: /* @__PURE__ */ jsxRuntimeExports.jsx(
           "img",
           {
             src: selectedImage.url,
             alt: "Task reference",
-            className: "w-full h-auto max-h-[80vh] object-contain"
+            className: "max-w-full max-h-[80vh] object-contain rounded-lg shadow-2xl",
+            onError: (e) => {
+              const target = e.target;
+              target.src = "/placeholder-image.png";
+            },
+            onLoad: () => {
+              console.log("Image loaded successfully");
+            }
           }
-        )
+        ) }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "absolute bottom-4 left-1/2 transform -translate-x-1/2 bg-black/50 text-white px-4 py-2 rounded-lg text-sm", children: "Click outside or press ESC to close" })
       ] }) }) })
     ] });
   }
@@ -36226,10 +36329,17 @@ function TaskImageUpload({
       {
         ...getRootProps(),
         className: `
-            border-2 border-dashed rounded-lg p-6 text-center cursor-pointer transition-colors
-            ${isDragActive2 ? "border-blue-400 bg-blue-50" : "border-gray-300 hover:border-gray-400"}
+            border-2 border-dashed rounded-lg p-6 text-center cursor-pointer transition-all duration-200
+            ${isDragActive2 ? "border-blue-400 bg-blue-50 scale-105" : "border-gray-300 hover:border-gray-400 hover:bg-gray-50"}
             ${disabled ? "opacity-50 cursor-not-allowed" : ""}
           `,
+        onClick: (e) => {
+          console.log("Full upload area clicked, canUpload:", canUpload, "disabled:", disabled);
+          if (!disabled && canUpload) {
+            console.log("Opening file picker from full interface...");
+            open();
+          }
+        },
         children: [
           /* @__PURE__ */ jsxRuntimeExports.jsx("input", { ...getInputProps() }),
           /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex flex-col items-center gap-2", children: [
@@ -36270,25 +36380,77 @@ function TaskImageUpload({
         file.id
       ))
     ] }),
-    showImageModal && selectedImage && /* @__PURE__ */ jsxRuntimeExports.jsx(Dialog, { open: showImageModal, onOpenChange: setShowImageModal, children: /* @__PURE__ */ jsxRuntimeExports.jsx(DialogContent, { className: "max-w-4xl max-h-[90vh] p-0", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "relative", children: [
+    showImageModal && selectedImage && /* @__PURE__ */ jsxRuntimeExports.jsx(Dialog, { open: showImageModal, onOpenChange: setShowImageModal, children: /* @__PURE__ */ jsxRuntimeExports.jsx(DialogContent, { className: "max-w-7xl max-h-[98vh] p-0 bg-black/98 border-0", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "relative flex items-center justify-center min-h-[90vh] w-full", children: [
       /* @__PURE__ */ jsxRuntimeExports.jsx(
         Button,
         {
           variant: "ghost",
           size: "sm",
-          className: "absolute top-4 right-4 z-10 bg-black bg-opacity-50 text-white hover:bg-opacity-70",
+          className: "absolute top-6 right-6 z-30 bg-black/60 text-white hover:bg-black/80 rounded-full w-12 h-12 transition-all duration-200 hover:scale-110",
           onClick: () => setShowImageModal(false),
-          children: /* @__PURE__ */ jsxRuntimeExports.jsx(X, { className: "h-4 w-4" })
+          "aria-label": "Close image preview",
+          children: /* @__PURE__ */ jsxRuntimeExports.jsx(X, { className: "h-6 w-6" })
         }
       ),
-      /* @__PURE__ */ jsxRuntimeExports.jsx(
-        "img",
-        {
-          src: selectedImage.url,
-          alt: "Task reference",
-          className: "w-full h-auto max-h-[80vh] object-contain"
-        }
-      )
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "absolute top-6 left-6 z-30 bg-black/60 text-white px-4 py-3 rounded-xl backdrop-blur-sm", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center gap-2 mb-1", children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx(Image, { className: "h-4 w-4 text-blue-400" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-sm font-semibold", children: "Task Reference Image" })
+        ] }),
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "space-y-1", children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { className: "text-xs text-gray-300", children: [
+            "Image ID: ",
+            /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-white font-mono", children: selectedImage.id })
+          ] }),
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { className: "text-xs text-gray-300", children: [
+            "Task ID: ",
+            /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-white font-mono", children: taskId })
+          ] })
+        ] })
+      ] }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "relative max-w-full max-h-full flex items-center justify-center p-8", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "relative group", children: [
+        imageLoading && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "absolute inset-0 flex items-center justify-center bg-black/50 rounded-xl z-10", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "text-center", children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx(LoaderCircle, { className: "h-8 w-8 animate-spin text-white mx-auto mb-2" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-white text-sm", children: "Loading image..." })
+        ] }) }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(
+          "img",
+          {
+            src: selectedImage.url,
+            alt: "Task reference",
+            className: "max-w-full max-h-[85vh] object-contain rounded-xl shadow-2xl transition-all duration-300 group-hover:shadow-3xl cursor-pointer",
+            onError: (e) => {
+              const target = e.target;
+              target.src = "/placeholder-image.png";
+              setImageLoading(false);
+            },
+            onLoad: () => {
+              console.log("Image loaded successfully in preview");
+              setImageLoading(false);
+            },
+            onClick: () => {
+              const link = document.createElement("a");
+              link.href = selectedImage.url;
+              link.download = `task-${taskId}-image-${selectedImage.id}.jpg`;
+              document.body.appendChild(link);
+              link.click();
+              document.body.removeChild(link);
+            }
+          }
+        ),
+        !imageLoading && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "absolute inset-0 flex items-center justify-center bg-black/20 rounded-xl opacity-0 group-hover:opacity-100 transition-opacity duration-300", children: /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "bg-black/60 text-white px-3 py-2 rounded-lg text-sm", children: "Click to download" }) })
+      ] }) }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "absolute bottom-6 left-1/2 transform -translate-x-1/2 bg-black/60 text-white px-6 py-3 rounded-xl backdrop-blur-sm", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center gap-4 text-sm", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center gap-2", children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx("kbd", { className: "px-2 py-1 bg-white/20 rounded text-xs", children: "ESC" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: "Close" })
+        ] }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "w-px h-4 bg-white/30" }),
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center gap-2", children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx("kbd", { className: "px-2 py-1 bg-white/20 rounded text-xs", children: "Click" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: "Outside to close" })
+        ] })
+      ] }) })
     ] }) }) })
   ] });
 }
@@ -36302,11 +36464,85 @@ function ImageThumbnail({
   const [imageUrl, setImageUrl] = reactExports.useState("/placeholder-image.png");
   const [isLoading, setIsLoading] = reactExports.useState(true);
   const [hasError, setHasError] = reactExports.useState(false);
+  const [loaded, setLoaded] = reactExports.useState(false);
+  const [objectUrl, setObjectUrl] = reactExports.useState(null);
+  const loadImageUrl = reactExports.useCallback(async () => {
+    try {
+      console.log("ImageThumbnail: Starting load for imageId:", imageId);
+      setIsLoading(true);
+      setHasError(false);
+      if (imageCache.has(imageId)) {
+        const cachedUrl = imageCache.get(imageId);
+        console.log("ImageThumbnail: Using cached image URL for imageId:", imageId);
+        setImageUrl(cachedUrl);
+        setLoaded(true);
+        setIsLoading(false);
+        return;
+      }
+      if (loadingPromises.has(imageId)) {
+        console.log("ImageThumbnail: Image already being loaded, waiting for existing promise...");
+        const url2 = await loadingPromises.get(imageId);
+        console.log("ImageThumbnail: Got URL from existing promise:", url2);
+        setImageUrl(url2);
+        setLoaded(true);
+        setIsLoading(false);
+        return;
+      }
+      const { getTaskImageUrl: getTaskImageUrl2 } = await __vitePreload(async () => {
+        const { getTaskImageUrl: getTaskImageUrl3 } = await Promise.resolve().then(() => taskImages);
+        return { getTaskImageUrl: getTaskImageUrl3 };
+      }, true ? [] : void 0);
+      const loadingPromise = getTaskImageUrl2(imageId);
+      loadingPromises.set(imageId, loadingPromise);
+      console.log("ImageThumbnail: Calling getTaskImageUrl for imageId:", imageId);
+      const url = await loadingPromise;
+      console.log("ImageThumbnail: Successfully loaded image URL for imageId:", imageId, "URL length:", url.length);
+      imageCache.set(imageId, url);
+      console.log("ImageThumbnail: Cached image for imageId:", imageId, "cache size:", imageCache.size);
+      loadingPromises.delete(imageId);
+      if (objectUrl && objectUrl.startsWith("blob:")) {
+        URL.revokeObjectURL(objectUrl);
+      }
+      console.log("ImageThumbnail: Setting image URL and loaded state for imageId:", imageId);
+      setImageUrl(url);
+      setLoaded(true);
+      console.log("ImageThumbnail: Image state updated for imageId:", imageId);
+    } catch (error) {
+      console.error("ImageThumbnail: Failed to load image:", error);
+      setHasError(true);
+      loadingPromises.delete(imageId);
+    } finally {
+      console.log("ImageThumbnail: Finally block reached for imageId:", imageId, "setting isLoading to false");
+      setIsLoading(false);
+      console.log("ImageThumbnail: isLoading set to false for imageId:", imageId);
+    }
+  }, [imageId, objectUrl]);
   reactExports.useEffect(() => {
-    if (isExisting) {
+    console.log("ImageThumbnail useEffect: isExisting:", isExisting, "loaded:", loaded, "isLoading:", isLoading, "imageId:", imageId, "cached:", imageCache.has(imageId));
+    if (isExisting && !loaded) {
+      console.log("ImageThumbnail: Triggering loadImageUrl for imageId:", imageId);
+      loadImageUrl();
+    } else if (!isExisting) {
+      console.log("ImageThumbnail: Not existing image, setting loading to false");
       setIsLoading(false);
     }
-  }, [isExisting]);
+  }, [isExisting, loaded, imageId]);
+  reactExports.useEffect(() => {
+    return () => {
+      if (objectUrl && objectUrl.startsWith("blob:")) {
+        URL.revokeObjectURL(objectUrl);
+      }
+    };
+  }, [objectUrl]);
+  const handleClick = () => {
+    console.log("Image clicked:", imageId, imageUrl, "hasError:", hasError, "loaded:", loaded);
+    if (!hasError && imageUrl && imageUrl !== "/placeholder-image.png" && loaded) {
+      console.log("Calling onImageClick with:", imageId, imageUrl);
+      onImageClick(imageId, imageUrl);
+    } else {
+      console.log("Image click ignored - hasError:", hasError, "url:", imageUrl, "loaded:", loaded);
+    }
+  };
   return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "relative group aspect-square bg-gray-100 rounded-lg overflow-hidden", children: [
     isLoading ? /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "w-full h-full flex items-center justify-center", children: /* @__PURE__ */ jsxRuntimeExports.jsx(LoaderCircle, { className: "h-6 w-6 animate-spin text-gray-400" }) }) : hasError ? /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "w-full h-full flex flex-col items-center justify-center bg-red-50", children: [
       /* @__PURE__ */ jsxRuntimeExports.jsx(CircleAlert, { className: "h-6 w-6 text-red-400 mb-1" }),
@@ -36317,11 +36553,19 @@ function ImageThumbnail({
         {
           src: imageUrl,
           alt: imageName,
-          className: "w-full h-full object-cover transition-transform duration-200 group-hover:scale-105",
-          onError: () => setHasError(true)
+          className: "w-full h-full object-cover transition-transform duration-200 group-hover:scale-105 cursor-pointer",
+          onError: () => setHasError(true),
+          onClick: handleClick
         }
       ),
-      /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-20 transition-all duration-200 flex items-center justify-center", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Eye, { className: "h-4 w-4 text-white opacity-0 group-hover:opacity-100 transition-opacity duration-200" }) })
+      /* @__PURE__ */ jsxRuntimeExports.jsx(
+        "div",
+        {
+          className: "absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-20 transition-all duration-200 flex items-center justify-center cursor-pointer",
+          onClick: handleClick,
+          children: /* @__PURE__ */ jsxRuntimeExports.jsx(Eye, { className: "h-4 w-4 text-white opacity-0 group-hover:opacity-100 transition-opacity duration-200" })
+        }
+      )
     ] }),
     /* @__PURE__ */ jsxRuntimeExports.jsx(
       Button,
@@ -36343,44 +36587,108 @@ function UploadingThumbnail({
   onRemove
 }) {
   const [preview, setPreview] = reactExports.useState("");
+  const [showSuccess, setShowSuccess] = reactExports.useState(false);
+  const [uploadSpeed, setUploadSpeed] = reactExports.useState("");
+  const [eta, setEta] = reactExports.useState("");
   reactExports.useEffect(() => {
-    const url = URL.createObjectURL(file.file);
-    setPreview(url);
-    return () => {
-      URL.revokeObjectURL(url);
-    };
+    if (file.file) {
+      const url = URL.createObjectURL(file.file);
+      setPreview(url);
+      return () => {
+        URL.revokeObjectURL(url);
+      };
+    }
   }, [file.file]);
+  reactExports.useEffect(() => {
+    if (file.progress > 0 && file.progress < 100) {
+      const fileSizeKB = file.file.size / 1024;
+      const uploadedKB = fileSizeKB * file.progress / 100;
+      const speed = uploadedKB / 2;
+      setUploadSpeed(`${speed.toFixed(1)} KB/s`);
+      const remainingKB = fileSizeKB - uploadedKB;
+      const remainingSeconds = remainingKB / speed;
+      setEta(`${remainingSeconds.toFixed(0)}s`);
+    }
+  }, [file.progress, file.file.size]);
+  reactExports.useEffect(() => {
+    if (file.progress === 100 && !file.error) {
+      setShowSuccess(true);
+      setTimeout(() => setShowSuccess(false), 2e3);
+    }
+  }, [file.progress, file.error]);
+  const formatFileSize = (bytes) => {
+    if (bytes === 0) return "0 Bytes";
+    const k = 1024;
+    const sizes = ["Bytes", "KB", "MB", "GB"];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + " " + sizes[i];
+  };
   return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "relative group aspect-square bg-gray-100 rounded-lg overflow-hidden", children: [
-    /* @__PURE__ */ jsxRuntimeExports.jsx(
+    preview ? /* @__PURE__ */ jsxRuntimeExports.jsx(
       "img",
       {
         src: preview,
         alt: file.file.name,
         className: "w-full h-full object-cover"
       }
-    ),
-    /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "absolute inset-0 bg-black bg-opacity-50 flex items-center justify-center", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "text-center text-white", children: [
-      /* @__PURE__ */ jsxRuntimeExports.jsx(LoaderCircle, { className: "h-6 w-6 animate-spin mx-auto mb-2" }),
-      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "text-xs", children: [
-        file.progress,
-        "%"
+    ) : /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "w-full h-full flex items-center justify-center bg-gray-200", children: /* @__PURE__ */ jsxRuntimeExports.jsx(LoaderCircle, { className: "h-6 w-6 animate-spin text-gray-400" }) }),
+    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "absolute inset-0 bg-black/60 backdrop-blur-sm flex flex-col items-center justify-center", children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "w-3/4 mb-3", children: /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "bg-white/20 rounded-full h-2 overflow-hidden", children: /* @__PURE__ */ jsxRuntimeExports.jsx(
+        "div",
+        {
+          className: "h-full bg-gradient-to-r from-blue-500 to-green-500 rounded-full transition-all duration-300 ease-out relative",
+          style: { width: `${file.progress}%` },
+          children: /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "absolute inset-0 bg-gradient-to-r from-transparent via-white/30 to-transparent animate-pulse" })
+        }
+      ) }) }),
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "text-center text-white", children: [
+        file.progress === 100 && showSuccess ? /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "w-8 h-8 bg-green-500 rounded-full flex items-center justify-center mx-auto mb-2 animate-bounce", children: /* @__PURE__ */ jsxRuntimeExports.jsx("svg", { className: "w-5 h-5 text-white", fill: "none", stroke: "currentColor", viewBox: "0 0 24 24", children: /* @__PURE__ */ jsxRuntimeExports.jsx("path", { strokeLinecap: "round", strokeLinejoin: "round", strokeWidth: 2, d: "M5 13l4 4L19 7" }) }) }) : /* @__PURE__ */ jsxRuntimeExports.jsx(LoaderCircle, { className: "h-6 w-6 animate-spin mx-auto mb-2" }),
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "text-sm font-semibold mb-1", children: [
+          file.progress,
+          "%"
+        ] }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "text-xs text-white/80 mb-1", children: file.file.name }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "text-xs text-white/60", children: formatFileSize(file.file.size) }),
+        file.progress > 0 && file.progress < 100 && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "text-xs text-white/70 mt-2", children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx("div", { children: uploadSpeed }),
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
+            "ETA: ",
+            eta
+          ] })
+        ] }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "text-xs text-white/80 mt-2", children: file.progress === 100 ? "Upload complete!" : "Uploading..." })
       ] })
-    ] }) }),
-    file.error && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "absolute inset-0 bg-red-500 bg-opacity-90 flex flex-col items-center justify-center text-white", children: [
-      /* @__PURE__ */ jsxRuntimeExports.jsx(CircleAlert, { className: "h-6 w-6 mb-1" }),
-      /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "text-xs text-center px-2", children: file.error })
     ] }),
+    file.error && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "absolute inset-0 bg-red-500/90 backdrop-blur-sm flex flex-col items-center justify-center text-white", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "text-center", children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsx(CircleAlert, { className: "h-8 w-8 mx-auto mb-2 text-red-200" }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "text-sm font-medium mb-2", children: "Upload Failed" }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "text-xs text-center px-3 mb-3", children: file.error }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx(
+        Button,
+        {
+          variant: "outline",
+          size: "sm",
+          className: "bg-white/20 border-white/30 text-white hover:bg-white/30 text-xs",
+          onClick: (e) => {
+            e.stopPropagation();
+            [file.file];
+            console.log("Retry upload for file:", file.file.name);
+          },
+          children: "Retry"
+        }
+      )
+    ] }) }),
     /* @__PURE__ */ jsxRuntimeExports.jsx(
       Button,
       {
         variant: "destructive",
         size: "sm",
-        className: "absolute top-1 right-1 h-6 w-6 rounded-full p-0 opacity-0 group-hover:opacity-100 transition-opacity duration-200",
+        className: "absolute top-2 right-2 h-7 w-7 rounded-full p-0 opacity-0 group-hover:opacity-100 transition-all duration-200 hover:scale-110",
         onClick: (e) => {
           e.stopPropagation();
           onRemove();
         },
-        children: /* @__PURE__ */ jsxRuntimeExports.jsx(X, { className: "h-3 w-3" })
+        children: /* @__PURE__ */ jsxRuntimeExports.jsx(X, { className: "h-4 w-4" })
       }
     )
   ] });
@@ -36547,13 +36855,22 @@ async function deleteTaskImage(taskId, imageId) {
 }
 async function getTaskImageUrl(imageId) {
   try {
+    console.log("getTaskImageUrl: Starting request for imageId:", imageId);
     const response = await apiClient.request(`/uploads/tasks/${imageId}`, {
       method: "GET"
     });
+    console.log("getTaskImageUrl: Response received:", response);
     const result = response.data;
-    return `data:${result.mimeType};base64,${result.data}`;
+    console.log("getTaskImageUrl: Result data:", result);
+    if (!result || !result.mimeType || !result.data) {
+      console.error("getTaskImageUrl: Invalid response data:", result);
+      return "/placeholder-image.png";
+    }
+    const dataUrl = `data:${result.mimeType};base64,${result.data}`;
+    console.log("getTaskImageUrl: Generated data URL length:", dataUrl.length);
+    return dataUrl;
   } catch (error) {
-    console.error("Failed to load image:", error);
+    console.error("getTaskImageUrl: Failed to load image:", error);
     return "/placeholder-image.png";
   }
 }
@@ -36561,17 +36878,27 @@ function fileToBase64(file, onProgress) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onprogress = (event) => {
-      if (event.lengthComputable && onProgress) ;
+      if (event.lengthComputable && onProgress) {
+        const progress2 = event.loaded / event.total * 100;
+        onProgress(progress2);
+      }
     };
     reader.readAsDataURL(file);
     reader.onload = () => {
       const result = reader.result;
       const base64 = result.split(",")[1];
+      if (onProgress) onProgress(100);
       resolve(base64);
     };
     reader.onerror = (error) => reject(error);
   });
 }
+const taskImages = /* @__PURE__ */ Object.freeze(/* @__PURE__ */ Object.defineProperty({
+  __proto__: null,
+  deleteTaskImage,
+  getTaskImageUrl,
+  uploadTaskImage
+}, Symbol.toStringTag, { value: "Module" }));
 function useTaskImageManagement({ taskId, existingImages }) {
   const queryClient2 = useQueryClient();
   const { toast: toast2 } = useToast();
@@ -36668,7 +36995,9 @@ function useTaskImageManagement({ taskId, existingImages }) {
       const uploadPromises = files.map(async (file, index2) => {
         const fileId = fileIds[index2];
         try {
-          const uploadedImage = await uploadTaskImage(taskId, file);
+          const uploadedImage = await uploadTaskImage(taskId, file, (progress2) => {
+            console.log(`Upload progress for ${file.name}: ${progress2}%`);
+          });
           setUploadingFiles((prev) => {
             const newSet = new Set(prev);
             newSet.delete(fileId);
@@ -36686,6 +37015,7 @@ function useTaskImageManagement({ taskId, existingImages }) {
       });
       await Promise.all(uploadPromises);
       await queryClient2.invalidateQueries({ queryKey: ["tasks"] });
+      console.log("Invalidated tasks query after upload");
       toast2({
         title: "Images uploaded successfully",
         description: `${files.length} image(s) uploaded to task.`
@@ -36744,7 +37074,7 @@ function useTaskImageManagement({ taskId, existingImages }) {
     return errorImages.has(imageId);
   }, [errorImages]);
   const isUploading = uploadingFiles.size > 0;
-  return {
+  return reactExports.useMemo(() => ({
     // Image management
     getImageUrl,
     isImageLoading,
@@ -36758,7 +37088,18 @@ function useTaskImageManagement({ taskId, existingImages }) {
     loadedCount: Object.keys(imageUrls).length,
     totalCount: existingImages.length,
     uploadingCount: uploadingFiles.size
-  };
+  }), [
+    getImageUrl,
+    isImageLoading,
+    hasImageError,
+    retryImage,
+    uploadImages,
+    deleteImage,
+    isUploading,
+    imageUrls,
+    existingImages.length,
+    uploadingFiles.size
+  ]);
 }
 function TasksPage() {
   const { getAuthenticatedBackend: getAuthenticatedBackend2 } = useAuth();
@@ -36784,7 +37125,7 @@ function TasksPage() {
     estimatedHours: "",
     assigneeStaffId: "none"
   });
-  const [taskImages, setTaskImages] = reactExports.useState([]);
+  const [taskImages2, setTaskImages] = reactExports.useState([]);
   const [createTaskResetTrigger, setCreateTaskResetTrigger] = reactExports.useState(0);
   useFormValidation(taskForm, {
     propertyId: commonValidationRules.required,
@@ -36903,8 +37244,8 @@ function TasksPage() {
     };
     try {
       const newTask = await createTaskMutation.mutateAsync(taskData);
-      if (taskImages.length > 0) {
-        const files = taskImages.map((img) => img.file);
+      if (taskImages2.length > 0) {
+        const files = taskImages2.map((img) => img.file);
         console.log("Images to upload:", files);
       }
       setIsCreateDialogOpen(false);
@@ -36957,13 +37298,20 @@ function TasksPage() {
       }
     );
   };
-  const TaskCard = ({ task }) => {
+  const TaskCard = React.memo(({ task }) => {
     const [localAssigning, setLocalAssigning] = reactExports.useState(false);
     const [showImageModal, setShowImageModal] = reactExports.useState(false);
     const [selectedImage, setSelectedImage] = reactExports.useState(null);
     const {
+      getImageUrl,
+      isImageLoading,
+      hasImageError,
+      retryImage,
       uploadImages,
-      deleteImage
+      deleteImage,
+      isUploading,
+      loadedCount,
+      totalCount
     } = useTaskImageManagement({
       taskId: task.id,
       existingImages: task.referenceImages || []
@@ -36977,13 +37325,18 @@ function TasksPage() {
       }
     };
     const handleImageClick = (imageId, imageUrl) => {
-      if (imageUrl && imageUrl !== "/placeholder-image.png") {
+      console.log("TasksPage handleImageClick:", imageId, imageUrl);
+      if (imageUrl) {
         setSelectedImage({ id: imageId, url: imageUrl });
         setShowImageModal(true);
       }
     };
     const handleImageUpload = async (taskId, files) => {
-      await uploadImages(files);
+      try {
+        await uploadImages(files);
+      } catch (error) {
+        console.error("Image upload failed:", error);
+      }
     };
     const handleImageDelete = async (taskId, imageId) => {
       await deleteImage(imageId);
@@ -37100,7 +37453,9 @@ function TasksPage() {
         )
       ] }) }) })
     ] });
-  };
+  }, (prevProps, nextProps) => {
+    return prevProps.task.id === nextProps.task.id && prevProps.task.status === nextProps.task.status && prevProps.task.assigneeStaffId === nextProps.task.assigneeStaffId && JSON.stringify(prevProps.task.referenceImages) === JSON.stringify(nextProps.task.referenceImages);
+  });
   if (isLoading) {
     return /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "min-h-screen bg-gray-50", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "space-y-6", children: [
       /* @__PURE__ */ jsxRuntimeExports.jsx(Card, { className: "border-l-4 border-l-blue-500", children: /* @__PURE__ */ jsxRuntimeExports.jsx(CardContent, { className: "flex items-center justify-center p-12", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "text-center", children: [
@@ -54724,8 +55079,8 @@ function Layout({ children }) {
   ] });
 }
 if (isDevelopment()) {
-  __vitePreload(() => import("./test-env-BXUL9gCY.js"), true ? [] : void 0);
-  __vitePreload(() => import("./test-uploads-BzfqtB0z.js"), true ? [] : void 0);
+  __vitePreload(() => import("./test-env-PzJ0eyPQ.js"), true ? [] : void 0);
+  __vitePreload(() => import("./test-uploads-BXzH3FnI.js"), true ? [] : void 0);
 }
 const queryClient = new QueryClient({
   defaultOptions: {

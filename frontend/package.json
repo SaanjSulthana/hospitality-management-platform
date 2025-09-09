@@ -38,6 +38,7 @@
     "@tailwindcss/oxide": "^4.1.12",
     "@testing-library/jest-dom": "^6.6.3",
     "@testing-library/react": "^16.1.0",
+    "@testing-library/user-event": "^14.6.1",
     "@types/jest": "^29.5.12",
     "@types/react": "^19.1.10",
     "@types/react-dom": "^19.1.7",

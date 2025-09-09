@@ -263,7 +263,9 @@ describe('TaskImageUpload - Mobile Responsiveness', () => {
 
       // Test mobile touch interaction (click outside to close)
       const modal = screen.getByText('Task Reference Image').closest('div');
-      fireEvent.click(modal);
+      if (modal) {
+        fireEvent.click(modal);
+      }
 
       // Verify modal closes
       await waitFor(() => {

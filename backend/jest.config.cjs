@@ -30,4 +30,10 @@ module.exports = {
       tsconfig: 'tsconfig.json',
     },
   },
+  // Add ESM support
+  extensionsToTreatAsEsm: ['.ts'],
+  // Fix for jest.mock in ESM
+  transformIgnorePatterns: [
+    'node_modules/(?!(.*\\.mjs$))'
+  ],
 };

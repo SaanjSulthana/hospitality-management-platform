@@ -60,18 +60,12 @@ export const list = api<ListTasksRequest, ListTasksResponse>(
           t.created_at, t.updated_at, t.completed_at,
           u.display_name as created_by_name,
           au.display_name as assignee_name,
-          COALESCE(att.attachment_count, 0) as attachment_count
+          0 as attachment_count
         FROM tasks t
         JOIN properties p ON t.property_id = p.id AND p.org_id = $1
         JOIN users u ON t.created_by_user_id = u.id AND u.org_id = $1
         LEFT JOIN staff s ON t.assignee_staff_id = s.id AND s.org_id = $1
         LEFT JOIN users au ON s.user_id = au.id AND au.org_id = $1
-        LEFT JOIN (
-          SELECT task_id, COUNT(*) as attachment_count
-          FROM task_attachments
-          WHERE org_id = $1
-          GROUP BY task_id
-        ) att ON t.id = att.task_id
         WHERE t.org_id = $1
       `;
       const params: any[] = [authData.orgId];

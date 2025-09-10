@@ -1,26 +1,3 @@
-<<<<<<< HEAD
-# CRITICAL: Ignore frontend source code completely
-frontend/
-frontend-build/
-frontend-service/
-**/frontend/**
-**/frontend-build/**
-**/frontend-service/**
-
-# Ignore all frontend-related files
-**/*.tsx
-**/*.jsx
-**/vite.config.*
-**/tailwind.config.*
-**/App.tsx
-**/main.tsx
-**/index.html
-**/index.css
-**/client.ts
-**/setupTests.ts
-**/jest.config.*
-**/tsconfig.test.*
-
 # Ignore build artifacts
 **/dist/
 **/node_modules/
@@ -81,33 +58,5 @@ frontend-service/
 **/tmp/
 **/temp/
 **/*.tmp
-**/*.log=======
-# Ignore frontend source code
-_frontend/
-frontend/
-frontend-source/
-
-# Ignore build outputs
-dist/
-build/
-frontend-service/dist/
-
-# Ignore dependencies
-node_modules/
-
-# Ignore git
-.git/
-
-# Ignore logs
-*.log
-*.tmp
-
-# Ignore specific frontend files
-**/*.tsx
-**/*.ts
-**/vite.config.*
-**/tailwind.config.*
-**/jest.config.*
-**/tsconfig.*
->>>>>>> f3c325932d789790b6197d61920113c80db7d060
+**/*.log
 

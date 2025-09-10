@@ -160,7 +160,7 @@ const stagingConfig: BackendEnvironmentConfig = {
     enableRemote: true,
   },
   database: {
-    name: 'hospitality_staging',
+    name: 'hospitality',
     maxConnections: 20,
     connectionTimeout: 15000,
     queryTimeout: 45000,

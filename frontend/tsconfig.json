@@ -23,6 +23,18 @@
       "@/*": [
         "./*"
       ],
+      "@/components/*": [
+        "./components/*"
+      ],
+      "@/contexts/*": [
+        "./contexts/*"
+      ],
+      "@/lib/*": [
+        "./lib/*"
+      ],
+      "@/pages/*": [
+        "./pages/*"
+      ],
       "~backend/*": [
         "../backend/*"
       ],

@@ -1,13 +1,15 @@
 import { defineConfig } from 'vite'
 import path from 'path'
+import { fileURLToPath, URL } from 'node:url'
 import tailwindcss from '@tailwindcss/vite'
 import react from '@vitejs/plugin-react'
+
 export default defineConfig({
   resolve: {
     alias: {
-      '@': path.resolve(__dirname),
-      '~backend/client': path.resolve(__dirname, './client.ts'),
-      '~backend': path.resolve(__dirname, '../backend'),
+      '@': fileURLToPath(new URL('.', import.meta.url)),
+      '~backend/client': fileURLToPath(new URL('./client.ts', import.meta.url)),
+      '~backend': fileURLToPath(new URL('../backend', import.meta.url)),
     },
   },
   plugins: [

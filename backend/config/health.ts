@@ -3,9 +3,9 @@ import { getEnvironmentConfig, validateEnvironmentConfig, getEnvironmentName } f
 import { SQLDatabase } from "encore.dev/storage/sqldb";
 import log from "encore.dev/log";
 
-// Database connection for health checks - use the same instance as auth service
-const healthDB = new SQLDatabase("hospitality", {
-  migrations: "../auth/migrations",
+// Database connection for health checks
+const healthDB = new SQLDatabase("health_check", {
+  migrations: "./migrations",
 });
 
 /**

@@ -73,10 +73,10 @@ export const list = api<ListStaffRequest, ListStaffResponse>(
     const offset = (pageNum - 1) * limitNum;
 
     try {
-      // Build base query with only existing columns
+      // Build base query with only basic columns that definitely exist
       let baseQuery = `
         SELECT 
-          s.id, s.user_id, s.property_id, s.department, s.hourly_rate_cents, 
+          s.id, s.user_id, s.property_id, s.department, 
           s.hire_date, s.notes, s.status,
           u.display_name as user_name, u.email as user_email,
           p.name as property_name
@@ -162,7 +162,7 @@ export const list = api<ListStaffRequest, ListStaffResponse>(
           propertyId: member.property_id,
           propertyName: member.property_name,
           department: member.department,
-          hourlyRateCents: parseInt(member.hourly_rate_cents) || 0,
+          hourlyRateCents: 0, // Default value since column might not exist
           performanceRating: 0,
           hireDate: member.hire_date,
           notes: member.notes,

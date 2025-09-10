@@ -3,8 +3,10 @@ import { getEnvironmentConfig, validateEnvironmentConfig, getEnvironmentName } f
 import { SQLDatabase } from "encore.dev/storage/sqldb";
 import log from "encore.dev/log";
 
-// Database connection for health checks
-const healthDB = SQLDatabase.named("hospitality");
+// Database connection for health checks - use the same instance as auth service
+const healthDB = new SQLDatabase("hospitality", {
+  migrations: "../auth/migrations",
+});
 
 /**
  * Health check response
@@ -228,9 +230,11 @@ async function checkDatabaseHealth(): Promise<ServiceStatus> {
   
   try {
     // Simple query to check database connectivity
-    const result = await healthDB.query("SELECT 1 as health_check");
+    const result = await healthDB.queryRow`
+      SELECT 1 as health_check
+    `;
     
-    if (result.rows.length > 0 && result.rows[0].health_check === 1) {
+    if (result && result.health_check === 1) {
       return {
         status: 'healthy',
         message: 'Database is accessible',
@@ -246,11 +250,12 @@ async function checkDatabaseHealth(): Promise<ServiceStatus> {
       };
     }
   } catch (error) {
-    log.error('Database health check failed', { error: error.message });
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    log.error('Database health check failed', { error: errorMessage });
     
     return {
       status: 'unhealthy',
-      message: `Database error: ${error.message}`,
+      message: `Database error: ${errorMessage}`,
       responseTime: Date.now() - startTime,
       lastChecked: timestamp,
     };
@@ -284,38 +289,38 @@ export const testDatabaseConnection = api(
       const startTime = Date.now();
       
       // Test basic connectivity
-      const connectivityResult = await healthDB.query("SELECT 1 as test");
+      const connectivityResult = await healthDB.queryRow`
+        SELECT 1 as test
+      `;
       
       // Test table existence
-      const tablesResult = await healthDB.query(`
+      const tablesResult = await healthDB.queryAll`
         SELECT table_name 
         FROM information_schema.tables 
         WHERE table_schema = 'public' 
         ORDER BY table_name
-      `);
+      `;
       
       // Test a simple operation
-      const operationResult = await healthDB.query("SELECT NOW() as current_time");
+      const operationResult = await healthDB.queryRow`
+        SELECT NOW() as current_time
+      `;
       
       const responseTime = Date.now() - startTime;
       
       return {
         success: true,
         responseTime,
-        connectivity: connectivityResult.rows.length > 0,
-        tables: tablesResult.rows.map(row => row.table_name),
-        currentTime: operationResult.rows[0]?.current_time,
+        connectivity: connectivityResult !== null,
+        tables: tablesResult.map((row: any) => row.table_name),
+        currentTime: operationResult?.current_time,
         message: 'Database connection test successful',
       };
     } catch (error) {
-      log.error('Database connection test failed', { error: error.message });
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      log.error('Database connection test failed', { error: errorMessage });
       
-      throw new APIError(
-        'Database connection test failed',
-        'INTERNAL_ERROR',
-        500,
-        { error: error.message }
-      );
+      throw APIError.internal('Database connection test failed');
     }
   }
 );

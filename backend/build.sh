@@ -13,6 +13,10 @@ echo "Creating build output for Encore..."
 # Create dist directory
 mkdir -p dist
 
+# Copy frontend dist files to backend dist
+echo "Copying frontend build files..."
+cp -r ../frontend/dist/* dist/
+
 # Copy encore.app to dist
 cp encore.app dist/
 

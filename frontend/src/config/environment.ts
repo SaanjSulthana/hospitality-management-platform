@@ -125,7 +125,7 @@ const testConfig: EnvironmentConfig = {
  */
 const stagingConfig: EnvironmentConfig = {
   name: 'staging',
-  apiUrl: getEnvVar('VITE_API_URL') || 'https://staging-api.hospitality-platform.com',
+  apiUrl: getEnvVar('VITE_API_URL') || 'https://api.curat.ai',
   debug: true,
   logging: {
     level: 'info',

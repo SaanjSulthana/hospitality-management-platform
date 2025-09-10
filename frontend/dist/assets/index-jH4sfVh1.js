@@ -23483,7 +23483,20 @@ function getEnvVar(key, fallback = "") {
   return fallback;
 }
 function getApiUrl() {
-  return getEnvVar("VITE_API_URL") || getEnvVar("REACT_APP_API_URL") || "http://localhost:4000";
+  const viteApiUrl = getEnvVar("VITE_API_URL");
+  const reactApiUrl = getEnvVar("REACT_APP_API_URL");
+  if (viteApiUrl) return viteApiUrl;
+  if (reactApiUrl) return reactApiUrl;
+  if (typeof window !== "undefined") {
+    const hostname = window.location.hostname;
+    if (hostname.includes("staging-hospitality-management-platform-cr8i.frontend.encr.app")) {
+      return "https://api.curat.ai";
+    }
+    if (hostname.includes("hospitality-management-platform-cr8i.frontend.encr.app")) {
+      return "https://api.curat.ai";
+    }
+  }
+  return "http://localhost:4000";
 }
 console.log("=== BACKEND IMPORT TEST ===");
 console.log("Client class:", Client);
@@ -55079,8 +55092,8 @@ function Layout({ children }) {
   ] });
 }
 if (isDevelopment()) {
-  __vitePreload(() => import("./test-env-PzJ0eyPQ.js"), true ? [] : void 0);
-  __vitePreload(() => import("./test-uploads-BXzH3FnI.js"), true ? [] : void 0);
+  __vitePreload(() => import("./test-env-Bv9zjKN-.js"), true ? [] : void 0);
+  __vitePreload(() => import("./test-uploads-CWrCa1aa.js"), true ? [] : void 0);
 }
 const queryClient = new QueryClient({
   defaultOptions: {

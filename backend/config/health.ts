@@ -57,7 +57,21 @@ export interface ConfigValidationResponse {
  * Health check endpoint
  */
 export const healthCheck = api(
-  { method: "GET", path: "/health" },
+  { 
+    method: "GET", 
+    path: "/health",
+    cors: {
+      allowOrigins: [
+        "http://localhost:5173",
+        "http://localhost:5174", 
+        "https://staging-hospitality-management-platform-cr8i.frontend.encr.app",
+        "https://hospitality-management-platform-cr8i.frontend.encr.app"
+      ],
+      allowMethods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+      allowHeaders: ["Content-Type", "Authorization", "X-Requested-With"],
+      allowCredentials: true
+    }
+  },
   async (): Promise<HealthCheckResponse> => {
     const startTime = Date.now();
     const timestamp = new Date().toISOString();

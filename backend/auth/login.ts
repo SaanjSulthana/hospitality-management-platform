@@ -23,7 +23,22 @@ export interface LoginResponse {
 
 // Authenticates user and returns JWT tokens
 export const login = api<LoginRequest, LoginResponse>(
-  { expose: true, method: "POST", path: "/auth/login" },
+  { 
+    expose: true, 
+    method: "POST", 
+    path: "/auth/login",
+    cors: {
+      allowOrigins: [
+        "http://localhost:5173",
+        "http://localhost:5174", 
+        "https://staging-hospitality-management-platform-cr8i.frontend.encr.app",
+        "https://hospitality-management-platform-cr8i.frontend.encr.app"
+      ],
+      allowMethods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+      allowHeaders: ["Content-Type", "Authorization", "X-Requested-With"],
+      allowCredentials: true
+    }
+  },
   async (req) => {
     const { email, password } = req;
 

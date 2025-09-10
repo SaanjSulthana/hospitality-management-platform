@@ -57,7 +57,7 @@ export interface ConfigValidationResponse {
  * Health check endpoint
  */
 export const healthCheck = api(
-  { method: "GET", path: "/health" },
+  { expose: true, method: "GET", path: "/health" },
   async (): Promise<HealthCheckResponse> => {
     const startTime = Date.now();
     const timestamp = new Date().toISOString();

@@ -1,0 +1,113 @@
+<<<<<<< HEAD
+# CRITICAL: Ignore frontend source code completely
+frontend/
+frontend-build/
+frontend-service/
+**/frontend/**
+**/frontend-build/**
+**/frontend-service/**
+
+# Ignore all frontend-related files
+**/*.tsx
+**/*.jsx
+**/vite.config.*
+**/tailwind.config.*
+**/App.tsx
+**/main.tsx
+**/index.html
+**/index.css
+**/client.ts
+**/setupTests.ts
+**/jest.config.*
+**/tsconfig.test.*
+
+# Ignore build artifacts
+**/dist/
+**/node_modules/
+**/.encore/
+**/encore.gen/
+
+# Ignore test files
+**/__tests__/
+**/*.test.ts
+**/*.test.tsx
+**/*.spec.ts
+**/*.spec.tsx
+
+# Ignore development files
+**/debug_*.html
+**/test_*.html
+**/run_*.html
+**/setup_*.html
+
+# Ignore database files
+**/migrations/
+**/*.sql
+
+# Ignore configuration files
+**/jest.config.*
+**/tsconfig.*
+**/package-lock.json
+**/bun.lock
+
+# Ignore documentation
+**/docs/
+**/*.md
+
+# Ignore scripts
+**/scripts/
+**/*.ps1
+**/*.sh
+
+# Ignore Docker files
+**/docker-compose.yml
+**/Dockerfile
+
+# Ignore environment files
+**/.env
+**/env.example
+
+# Ignore Git files
+**/.git/
+**/.gitignore
+
+# Ignore IDE files
+**/.vscode/
+**/.idea/
+**/*.swp
+**/*.swo
+
+# Ignore temporary files
+**/tmp/
+**/temp/
+**/*.tmp
+**/*.log=======
+# Ignore frontend source code
+_frontend/
+frontend/
+frontend-source/
+
+# Ignore build outputs
+dist/
+build/
+frontend-service/dist/
+
+# Ignore dependencies
+node_modules/
+
+# Ignore git
+.git/
+
+# Ignore logs
+*.log
+*.tmp
+
+# Ignore specific frontend files
+**/*.tsx
+**/*.ts
+**/vite.config.*
+**/tailwind.config.*
+**/jest.config.*
+**/tsconfig.*
+>>>>>>> f3c325932d789790b6197d61920113c80db7d060
+

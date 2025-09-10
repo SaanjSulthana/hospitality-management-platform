@@ -75,7 +75,30 @@ export function getEnvVar(key: string, fallback: string = ''): string {
  * Get API URL from environment or use default
  */
 export function getApiUrl(): string {
-  return getEnvVar('VITE_API_URL') || getEnvVar('REACT_APP_API_URL') || 'http://localhost:4000';
+  // Check for explicit environment variables first
+  const viteApiUrl = getEnvVar('VITE_API_URL');
+  const reactApiUrl = getEnvVar('REACT_APP_API_URL');
+  
+  if (viteApiUrl) return viteApiUrl;
+  if (reactApiUrl) return reactApiUrl;
+  
+  // Auto-detect based on current hostname for Encore Cloud
+  if (typeof window !== 'undefined') {
+    const hostname = window.location.hostname;
+    
+    // If running on Encore Cloud staging frontend, use staging API
+    if (hostname.includes('staging-hospitality-management-platform-cr8i.frontend.encr.app')) {
+      return 'https://api.curat.ai';
+    }
+    
+    // If running on Encore Cloud production frontend, use production API
+    if (hostname.includes('hospitality-management-platform-cr8i.frontend.encr.app')) {
+      return 'https://api.curat.ai'; // Update this when you have production API
+    }
+  }
+  
+  // Default to localhost for development
+  return 'http://localhost:4000';
 }
 
 /**

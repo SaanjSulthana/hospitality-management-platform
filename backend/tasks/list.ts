@@ -53,6 +53,7 @@ export const list = api<ListTasksRequest, ListTasksResponse>(
     const { propertyId, type, priority, status, assignee, overdue } = req || {};
 
     try {
+      // Updated query to remove task_attachments reference - v3 - FORCE DEPLOYMENT
       let query = `
         SELECT 
           t.id, t.property_id, p.name as property_name, t.type, t.title, t.description, 

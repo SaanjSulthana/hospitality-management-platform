@@ -1,5 +1,5 @@
 -- Enhance daily cash balances table for automatic balance calculation
--- Migration 1: Add fields to track balance calculation method and validation
+-- Migration 12: Add fields to track balance calculation method and validation
 
 -- Add fields to track balance calculation method
 ALTER TABLE daily_cash_balances ADD COLUMN is_opening_balance_auto_calculated BOOLEAN DEFAULT FALSE;

@@ -73,7 +73,7 @@ export const list = api<ListStaffRequest, ListStaffResponse>(
     const offset = (pageNum - 1) * limitNum;
 
     try {
-      // Build base query with only basic columns that definitely exist (updated to remove hourly_rate_cents)
+      // Build base query with only basic columns that definitely exist (updated to remove hourly_rate_cents - v2)
       let baseQuery = `
         SELECT 
           s.id, s.user_id, s.property_id, s.department, 

@@ -4,7 +4,7 @@ import { SQLDatabase } from "encore.dev/storage/sqldb";
 import log from "encore.dev/log";
 
 // Database connection for health checks
-const healthDB = new SQLDatabase("health_check", {
+const healthDB = new SQLDatabase("health_check_db", {
   migrations: "./migrations",
 });
 

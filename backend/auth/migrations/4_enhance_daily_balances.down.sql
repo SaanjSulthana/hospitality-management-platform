@@ -1,4 +1,4 @@
--- Rollback migration 1: Remove enhanced daily balances fields
+-- Rollback migration 4: Remove enhanced daily balances fields
 
 -- Drop the index first
 DROP INDEX IF EXISTS idx_daily_cash_balances_prev_day;

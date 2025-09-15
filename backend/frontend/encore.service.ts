@@ -33,6 +33,7 @@ export const serveStatic = api.raw(
 
     try {
       const filePath = `./dist${req.url}`;
+      console.log(`Serving static file: ${filePath}`);
       const fileContent = readFileSync(filePath);
       const ext = extname(filePath).toLowerCase();
       let contentType = "application/octet-stream";
@@ -82,6 +83,14 @@ export const serveStatic = api.raw(
       res.setHeader("Content-Type", contentType);
       res.end(fileContent);
     } catch (error) {
+      // Check if this is a JavaScript module request
+      if (req.url?.endsWith('.js') || req.url?.includes('/assets/')) {
+        res.statusCode = 404;
+        res.setHeader("Content-Type", "application/javascript");
+        res.end("// Module not found");
+        return;
+      }
+      
       // If file not found, serve index.html for SPA routing
       try {
         const indexPath = "./dist/index.html";

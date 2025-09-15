@@ -1,4 +1,4 @@
-import { g as getEnvMode, i as isDevelopment, a as getApiUrl, b as getEnvVar } from "./index-CluqVwGa.js";
+import { g as getEnvMode, i as isDevelopment, a as getApiUrl, b as getEnvVar } from "./index-CVGAEqb3.js";
 const __vite_import_meta_env__ = { "BASE_URL": "/", "DEV": false, "MODE": "development", "PROD": true, "SSR": false, "VITE_CLIENT_TARGET": "http://localhost:4000" };
 var define_process_env_default = {};
 function testEnvironmentConfig() {

@@ -22359,6 +22359,9 @@ function Toaster() {
   ] });
 }
 const Local = "http://localhost:4000";
+function Environment(name) {
+  return `https://${name}-hospitality-management-platform-cr8i.encr.app`;
+}
 const BROWSER = typeof globalThis === "object" && "window" in globalThis;
 class Client {
   /**
@@ -24481,7 +24484,7 @@ function getEnvVar(key, fallback = "") {
   }
   return fallback;
 }
-function getApiUrl() {
+function getApiUrl$1() {
   const viteApiUrl = getEnvVar("VITE_API_URL");
   const reactApiUrl = getEnvVar("REACT_APP_API_URL");
   if (viteApiUrl) return viteApiUrl;
@@ -24500,9 +24503,18 @@ function getApiUrl() {
 console.log("=== BACKEND IMPORT TEST ===");
 console.log("Client class:", Client);
 console.log("Local constant:", Local);
+console.log("Environment function:", Environment);
 console.log("Client type:", typeof Client);
 console.log("Local type:", typeof Local);
-const clientInstance = new Client(Local);
+function getApiUrl() {
+  if (isDevelopment()) {
+    return Local;
+  }
+  return "https://api.curat.ai";
+}
+const apiUrl = getApiUrl();
+console.log("Using API URL:", apiUrl);
+const clientInstance = new Client(apiUrl);
 console.log("Client instance created:", clientInstance);
 console.log("Client instance type:", typeof clientInstance);
 console.log("=== END IMPORT TEST ===");
@@ -28299,7 +28311,7 @@ function useTasksRealtime() {
   return useDashboardRealtime();
 }
 const API_CONFIG = {
-  BASE_URL: getApiUrl(),
+  BASE_URL: getApiUrl$1(),
   TIMEOUT: 3e4,
   // 30 seconds
   RETRY_ATTEMPTS: 3,
@@ -57439,8 +57451,8 @@ function Layout({ children }) {
   ] });
 }
 if (isDevelopment()) {
-  __vitePreload(() => import("./test-env-DmTduKuK.js"), true ? [] : void 0);
-  __vitePreload(() => import("./test-uploads-BLbvLspc.js"), true ? [] : void 0);
+  __vitePreload(() => import("./test-env-BvWlJMt_.js"), true ? [] : void 0);
+  __vitePreload(() => import("./test-uploads-DAPCYvbh.js"), true ? [] : void 0);
 }
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -57499,7 +57511,7 @@ ReactDOM$1.createRoot(document.getElementById("root")).render(
 );
 export {
   API_CONFIG as A,
-  getApiUrl as a,
+  getApiUrl$1 as a,
   getEnvVar as b,
   getEnvMode as g,
   isDevelopment as i

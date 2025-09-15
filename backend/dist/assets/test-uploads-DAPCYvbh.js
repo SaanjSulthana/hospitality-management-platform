@@ -1,4 +1,4 @@
-import { A as API_CONFIG } from "./index-CluqVwGa.js";
+import { A as API_CONFIG } from "./index-CVGAEqb3.js";
 async function testFileUpload() {
   try {
     console.log("🧪 Testing file upload endpoint...");

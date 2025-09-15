@@ -1,10 +1,9 @@
-
 import { api } from "encore.dev/api";
 import { Service } from "encore.dev/service";
 import { readFileSync } from "fs";
 import { extname } from "path";
 
-export default new Service("frontend");
+export default new Service("static");
 
 // Serve static assets (CSS, JS, images, etc.)
 export const serveAssets = api.raw(

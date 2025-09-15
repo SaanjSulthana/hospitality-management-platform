@@ -1,5 +1,5 @@
 // Simple script to call the migration endpoint
-const fetch = require('node-fetch');
+import fetch from 'node-fetch';
 
 async function runMigration() {
   try {

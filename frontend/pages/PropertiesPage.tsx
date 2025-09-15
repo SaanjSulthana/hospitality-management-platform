@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../contexts/AuthContext';
 import { usePageTitle } from '../contexts/PageTitleContext';
+import { useWelcomePopup } from '../hooks/use-welcome-popup';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -27,11 +28,19 @@ export default function PropertiesPage() {
   const { setPageTitle } = usePageTitle();
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const { markEssentialStepCompleted } = useWelcomePopup();
 
   // Set page title and description
   useEffect(() => {
     setPageTitle('Properties Management', 'Manage your hospitality properties and their details');
   }, [setPageTitle]);
+
+  // Mark property viewing step as completed when user visits properties page
+  useEffect(() => {
+    if (user?.role === 'MANAGER') {
+      markEssentialStepCompleted('view-assigned-properties');
+    }
+  }, [user?.role, markEssentialStepCompleted]);
   const [searchTerm, setSearchTerm] = useState('');
   const [typeFilter, setTypeFilter] = useState<string>('all');
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
@@ -70,12 +79,16 @@ export default function PropertiesPage() {
     API_ENDPOINTS.PROPERTIES,
     'POST',
     {
-      invalidateQueries: [QUERY_KEYS.PROPERTIES],
+      invalidateQueries: [QUERY_KEYS.PROPERTIES, QUERY_KEYS.DASHBOARD, QUERY_KEYS.ANALYTICS],
+      refetchQueries: [QUERY_KEYS.PROPERTIES],
       successMessage: "The property has been created successfully.",
       errorMessage: "Failed to create property. Please try again.",
       onSuccess: () => {
         setIsCreateDialogOpen(false);
         resetForm();
+        // Force immediate refresh
+        queryClient.invalidateQueries({ queryKey: [QUERY_KEYS.PROPERTIES] });
+        queryClient.refetchQueries({ queryKey: [QUERY_KEYS.PROPERTIES] });
       },
     }
   );
@@ -84,12 +97,39 @@ export default function PropertiesPage() {
     '/properties/:id',
     'PATCH',
     {
-      invalidateQueries: [QUERY_KEYS.PROPERTIES],
+      invalidateQueries: [QUERY_KEYS.PROPERTIES, QUERY_KEYS.DASHBOARD, QUERY_KEYS.ANALYTICS],
+      refetchQueries: [QUERY_KEYS.PROPERTIES],
       successMessage: "The property has been updated successfully.",
       errorMessage: "Failed to update property. Please try again.",
+      onMutate: async (variables) => {
+        await queryClient.cancelQueries({ queryKey: [QUERY_KEYS.PROPERTIES] });
+        const previousProperties = queryClient.getQueryData([QUERY_KEYS.PROPERTIES]);
+        
+        queryClient.setQueryData([QUERY_KEYS.PROPERTIES], (old: any) => {
+          if (!old?.properties) return old;
+          
+          return {
+            ...old,
+            properties: old.properties.map((property: any) => 
+              property.id === variables.id 
+                ? { ...property, ...variables }
+                : property
+            )
+          };
+        });
+        
+        return { previousProperties };
+      },
+      onError: (err, variables, context) => {
+        if (context?.previousProperties) {
+          queryClient.setQueryData([QUERY_KEYS.PROPERTIES], context.previousProperties);
+        }
+      },
       onSuccess: () => {
         setIsEditDialogOpen(false);
         setEditingProperty(null);
+        queryClient.invalidateQueries({ queryKey: [QUERY_KEYS.PROPERTIES] });
+        queryClient.refetchQueries({ queryKey: [QUERY_KEYS.PROPERTIES] });
       },
     }
   );
@@ -98,12 +138,35 @@ export default function PropertiesPage() {
     '/properties/:id',
     'DELETE',
     {
-      invalidateQueries: [QUERY_KEYS.PROPERTIES],
+      invalidateQueries: [QUERY_KEYS.PROPERTIES, QUERY_KEYS.DASHBOARD, QUERY_KEYS.ANALYTICS],
+      refetchQueries: [QUERY_KEYS.PROPERTIES],
       successMessage: "The property has been deleted successfully.",
       errorMessage: "Failed to delete property. Please try again.",
+      onMutate: async (variables) => {
+        await queryClient.cancelQueries({ queryKey: [QUERY_KEYS.PROPERTIES] });
+        const previousProperties = queryClient.getQueryData([QUERY_KEYS.PROPERTIES]);
+        
+        queryClient.setQueryData([QUERY_KEYS.PROPERTIES], (old: any) => {
+          if (!old?.properties) return old;
+          
+          return {
+            ...old,
+            properties: old.properties.filter((property: any) => property.id !== variables.id)
+          };
+        });
+        
+        return { previousProperties };
+      },
+      onError: (err, variables, context) => {
+        if (context?.previousProperties) {
+          queryClient.setQueryData([QUERY_KEYS.PROPERTIES], context.previousProperties);
+        }
+      },
       onSuccess: () => {
         setIsDeleteDialogOpen(false);
         setDeletingProperty(null);
+        queryClient.invalidateQueries({ queryKey: [QUERY_KEYS.PROPERTIES] });
+        queryClient.refetchQueries({ queryKey: [QUERY_KEYS.PROPERTIES] });
       },
     }
   );
@@ -150,7 +213,34 @@ export default function PropertiesPage() {
       });
       return;
     }
-    createPropertyMutation.mutate(propertyForm);
+    
+    // Convert capacity values from strings to numbers and handle empty/zero values
+    const capacity = {
+      ...(propertyForm.capacity.totalRooms && propertyForm.capacity.totalRooms !== '0' ? { totalRooms: parseInt(propertyForm.capacity.totalRooms) } : {}),
+      ...(propertyForm.capacity.totalBeds && propertyForm.capacity.totalBeds !== '0' ? { totalBeds: parseInt(propertyForm.capacity.totalBeds) } : {}),
+      ...(propertyForm.capacity.maxGuests && propertyForm.capacity.maxGuests !== '0' ? { maxGuests: parseInt(propertyForm.capacity.maxGuests) } : {}),
+    };
+    
+    // Clean up empty address fields
+    const address = Object.fromEntries(
+      Object.entries(propertyForm.address).filter(([_, value]) => value && value.trim() !== '')
+    );
+    
+    const formattedData = {
+      name: propertyForm.name.trim(),
+      type: propertyForm.type,
+      ...(Object.keys(address).length > 0 ? { address } : {}),
+      ...(propertyForm.amenities.length > 0 ? { amenities: propertyForm.amenities } : {}),
+      ...(Object.keys(capacity).length > 0 ? { capacity } : {}),
+    };
+    
+    console.log('=== PROPERTY CREATION DEBUG ===');
+    console.log('Original form data:', propertyForm);
+    console.log('Formatted data being sent:', formattedData);
+    console.log('Address after filtering:', address);
+    console.log('Capacity after filtering:', capacity);
+    
+    createPropertyMutation.mutate(formattedData);
   };
 
   const handleAmenityToggle = (amenity: string) => {

@@ -63,8 +63,8 @@ try {
     $dockerVersion = docker --version
     Write-Host "✅ Docker is installed: $dockerVersion" -ForegroundColor Green
 } catch {
-    Write-Host "⚠️  Docker is not installed. Please install Docker Desktop for Windows." -ForegroundColor Yellow
-    Write-Host "   Download from: https://www.docker.com/products/docker-desktop/" -ForegroundColor Yellow
+    Write-Host "⚠️  Docker is not installed. Please install Docker Desktop from: https://www.docker.com/products/docker-desktop/" -ForegroundColor Yellow
+    Write-Host "   Docker is required for database services." -ForegroundColor Yellow
 }
 
 Write-Host ""
@@ -99,49 +99,16 @@ if (-not (Test-Path ".env")) {
 }
 
 Write-Host ""
-Write-Host "🗄️  Setting up database..." -ForegroundColor Yellow
-
-# Start database services with Docker
-Write-Host "Starting database services..." -ForegroundColor Cyan
-try {
-    docker-compose up -d postgres redis
-    Write-Host "✅ Database services started successfully" -ForegroundColor Green
-} catch {
-    Write-Host "⚠️  Failed to start database services. Please check Docker." -ForegroundColor Yellow
-}
-
-Write-Host ""
-Write-Host "🔗 Database connection info:" -ForegroundColor Cyan
-Write-Host "PostgreSQL: localhost:5432" -ForegroundColor White
-Write-Host "Redis: localhost:6379" -ForegroundColor White
-Write-Host "pgAdmin: http://localhost:5050 (admin@hospitality.com / admin123)" -ForegroundColor White
-
-Write-Host ""
-Write-Host "📝 Next steps:" -ForegroundColor Yellow
-Write-Host "1. Edit .env file with your database credentials:" -ForegroundColor White
-Write-Host "   DATABASE_URL=postgresql://hospitality_user:hospitality_password@localhost:5432/hospitality_platform" -ForegroundColor Gray
-Write-Host "   JWT_SECRET=your-super-secret-jwt-key-here" -ForegroundColor Gray
-Write-Host "   JWT_REFRESH_SECRET=your-super-secret-refresh-key-here" -ForegroundColor Gray
-
-Write-Host ""
-Write-Host "2. Start the backend development server:" -ForegroundColor White
-Write-Host "   cd backend" -ForegroundColor Gray
-Write-Host "   encore run" -ForegroundColor Gray
-
-Write-Host ""
-Write-Host "3. Start the frontend development server:" -ForegroundColor White
-Write-Host "   cd frontend" -ForegroundColor Gray
-Write-Host "   bun run dev" -ForegroundColor Gray
-
-Write-Host ""
-Write-Host "4. Or start both simultaneously from root directory:" -ForegroundColor White
-Write-Host "   bun run dev" -ForegroundColor Gray
-
-Write-Host ""
-Write-Host "🌐 Your application will be available at:" -ForegroundColor Cyan
-Write-Host "Frontend: http://localhost:5173" -ForegroundColor White
-Write-Host "Backend: http://localhost:4000" -ForegroundColor White
-
-Write-Host ""
 Write-Host "🎉 Installation completed successfully!" -ForegroundColor Green
+Write-Host ""
+Write-Host "Next steps:" -ForegroundColor Cyan
+Write-Host "1. Install Docker Desktop if not already installed" -ForegroundColor White
+Write-Host "2. Start Docker services: docker-compose up -d postgres redis" -ForegroundColor White
+Write-Host "3. Start the backend: bun run dev:backend" -ForegroundColor White
+Write-Host "4. Start the frontend: bun run dev:frontend" -ForegroundColor White
+Write-Host "5. Or run both: bun run dev" -ForegroundColor White
+Write-Host ""
+Write-Host "Backend will be available at: http://localhost:4000" -ForegroundColor White
+Write-Host "Frontend will be available at: http://localhost:5173" -ForegroundColor White
+Write-Host ""
 Write-Host "Happy coding! 🚀" -ForegroundColor Green

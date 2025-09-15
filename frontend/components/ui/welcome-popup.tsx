@@ -16,6 +16,9 @@ interface WelcomePopupProps {
     role: string;
     hasProperties: boolean;
     propertyCount: number;
+    isNewUser: boolean;
+    accountAge: number;
+    completedOnboardingSteps: string[];
   };
   dashboardData?: {
     pendingApprovals: number;
@@ -25,6 +28,19 @@ interface WelcomePopupProps {
     activeProperties: number;
     activeTasks: number;
   };
+  onboardingSteps?: Array<{
+    id: string;
+    title: string;
+    description: string;
+    completed: boolean;
+    required: boolean;
+    action: {
+      label: string;
+      route: string;
+    };
+    icon: string;
+  }>;
+  markStepCompleted?: (stepId: string) => void;
 }
 
 interface ImportantItem {
@@ -40,7 +56,7 @@ interface ImportantItem {
   };
 }
 
-export function WelcomePopup({ isOpen, onClose, userData, dashboardData }: WelcomePopupProps) {
+export function WelcomePopup({ isOpen, onClose, userData, dashboardData, onboardingSteps, markStepCompleted }: WelcomePopupProps) {
   const { user } = useAuth();
   const { theme } = useTheme();
   const navigate = useNavigate();
@@ -237,7 +253,7 @@ export function WelcomePopup({ isOpen, onClose, userData, dashboardData }: Welco
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
-          className="fixed inset-0 bg-black bg-opacity-60 backdrop-blur-sm flex items-center justify-center z-50 p-4"
+          className="fixed inset-0 bg-black bg-opacity-60 backdrop-blur-sm flex items-center justify-center z-50 p-2 sm:p-4"
           onClick={(e) => {
             if (e.target === e.currentTarget) {
               onClose();
@@ -249,11 +265,11 @@ export function WelcomePopup({ isOpen, onClose, userData, dashboardData }: Welco
             animate={{ scale: 1, opacity: 1, y: 0 }}
             exit={{ scale: 0.95, opacity: 0, y: 10 }}
             transition={{ type: "spring", duration: 0.3, bounce: 0.1 }}
-            className="bg-white rounded-3xl shadow-2xl max-w-lg w-full mx-4 ring-1 ring-black ring-opacity-5"
+            className="bg-white rounded-2xl sm:rounded-3xl shadow-2xl max-w-lg w-full max-h-[95vh] sm:max-h-[90vh] overflow-hidden ring-1 ring-black ring-opacity-5"
             onClick={(e) => e.stopPropagation()}
           >
             {/* Header */}
-            <div className="relative p-6 pb-4">
+            <div className="relative p-4 sm:p-6 pb-3 sm:pb-4">
               <div className="flex items-start justify-between">
                 <div className="flex-1">
                   <div className="flex items-center gap-3 mb-3">
@@ -286,9 +302,111 @@ export function WelcomePopup({ isOpen, onClose, userData, dashboardData }: Welco
             </div>
 
             {/* Content */}
-            <div className="px-6 pb-4">
-              {/* Important Items for Today */}
-              {importantItems.length > 0 && (
+            <div className="px-4 sm:px-6 pb-4 overflow-y-auto max-h-[calc(95vh-180px)] sm:max-h-[calc(90vh-200px)]">
+              {/* Welcome Message for New Users */}
+              {userData?.isNewUser && (
+                <div className="mb-4 sm:mb-6 p-3 sm:p-4 bg-gradient-to-r from-blue-50 to-purple-50 rounded-xl border border-blue-200">
+                  <div className="flex items-start gap-3">
+                    <div className="text-2xl">🎉</div>
+                    <div className="flex-1">
+                      <h3 className="text-lg font-bold text-gray-900 mb-1">
+                        Welcome to Your Hospitality Management Platform!
+                      </h3>
+                      <p className="text-sm text-gray-600 mb-3">
+                        Let's get you set up in just a few steps. This will help you manage your properties, staff, and operations efficiently.
+                      </p>
+                      <div className="flex items-center gap-2 text-xs text-blue-600">
+                        <Clock className="h-3 w-3" />
+                        <span>Account created {userData.accountAge === 0 ? 'today' : `${userData.accountAge} day${userData.accountAge === 1 ? '' : 's'} ago`}</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Onboarding Steps for New Users */}
+              {userData?.isNewUser && onboardingSteps && onboardingSteps.length > 0 && (
+                <div className="mb-4 sm:mb-6">
+                  <h3 className="text-sm font-semibold text-gray-700 mb-2 sm:mb-3 flex items-center gap-2">
+                    <CheckSquare className="h-4 w-4" style={{ color: theme.primaryColor }} />
+                    Getting Started Checklist
+                  </h3>
+                  <div className="space-y-2">
+                    {onboardingSteps.map((step, index) => (
+                      <div 
+                        key={step.id} 
+                        className={`flex items-center gap-2 sm:gap-3 p-2 sm:p-3 rounded-xl border transition-all duration-200 cursor-pointer hover:shadow-md ${
+                          step.completed 
+                            ? 'border-green-200 bg-green-50 hover:bg-green-100' 
+                            : step.required
+                            ? 'border-blue-200 bg-blue-50 hover:bg-blue-100'
+                            : 'border-gray-200 bg-gray-50 hover:bg-gray-100'
+                        }`}
+                        onClick={() => {
+                          navigate(step.action.route);
+                          if (markStepCompleted && !step.completed) {
+                            markStepCompleted(step.id);
+                          }
+                          onClose();
+                        }}
+                      >
+                        <div className="flex-shrink-0">
+                          {step.completed ? (
+                            <div className="w-6 h-6 bg-green-500 rounded-full flex items-center justify-center">
+                              <CheckCircle className="h-4 w-4 text-white" />
+                            </div>
+                          ) : (
+                            <div className={`w-6 h-6 rounded-full flex items-center justify-center text-sm ${
+                              step.required ? 'bg-blue-500 text-white' : 'bg-gray-300 text-gray-600'
+                            }`}>
+                              {index + 1}
+                            </div>
+                          )}
+                        </div>
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2">
+                            <span className="text-lg">{step.icon}</span>
+                            <h4 className={`font-medium text-sm ${step.completed ? 'text-green-900' : 'text-gray-900'}`}>
+                              {step.title}
+                            </h4>
+                            {step.required && !step.completed && (
+                              <Badge variant="outline" className="text-xs bg-orange-100 text-orange-700 border-orange-200">
+                                Required
+                              </Badge>
+                            )}
+                          </div>
+                          <p className={`text-xs ${step.completed ? 'text-green-700' : 'text-gray-600'}`}>
+                            {step.description}
+                          </p>
+                        </div>
+                        <div className="flex items-center gap-1 text-xs font-medium" style={{ color: theme.primaryColor }}>
+                          {step.action.label}
+                          <ArrowRight className="h-3 w-3" />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  
+                  {/* Progress Bar */}
+                  <div className="mt-3 sm:mt-4">
+                    <div className="flex items-center justify-between text-xs text-gray-600 mb-2">
+                      <span>Setup Progress</span>
+                      <span>{onboardingSteps.filter(s => s.completed).length} of {onboardingSteps.length} completed</span>
+                    </div>
+                    <div className="w-full bg-gray-200 rounded-full h-2">
+                      <div 
+                        className="bg-gradient-to-r from-blue-500 to-purple-500 h-2 rounded-full transition-all duration-300"
+                        style={{ 
+                          width: `${(onboardingSteps.filter(s => s.completed).length / onboardingSteps.length) * 100}%` 
+                        }}
+                      ></div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Important Items for Existing Users */}
+              {!userData?.isNewUser && importantItems.length > 0 && (
                 <div className="mb-6">
                   <h3 className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2">
                     <TrendingUp className="h-4 w-4" style={{ color: theme.primaryColor }} />
@@ -331,135 +449,84 @@ export function WelcomePopup({ isOpen, onClose, userData, dashboardData }: Welco
                 </div>
               )}
 
-              {/* Onboarding Actions for New Users */}
-              {onboardingActions && (
-                <div className="mb-6">
-                  <h3 className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2">
-                    <Building2 className="h-4 w-4" style={{ color: theme.primaryColor }} />
-                    Quick Start
-                  </h3>
-                  <div className="grid grid-cols-1 gap-2">
-                    {onboardingActions.slice(0, 2).map((action) => (
-                      <div key={action.id} className="flex items-center gap-3 p-3 rounded-xl border border-gray-200 hover:border-gray-300 hover:bg-gray-50 transition-colors cursor-pointer" onClick={action.action}>
-                        <div className="flex-shrink-0">
-                          {action.icon}
-                        </div>
-                        <div className="flex-1">
-                          <h4 className="font-medium text-sm text-gray-900">{action.title}</h4>
-                          <p className="text-xs text-gray-600">{action.description}</p>
-                        </div>
-                        <ArrowRight className="h-4 w-4 text-gray-400" />
-                      </div>
-                    ))}
+              {/* Quick Stats - Only show for users with data */}
+              {!userData?.isNewUser && (
+                <div className="grid grid-cols-3 gap-3">
+                  <div 
+                    className="text-center p-3 bg-gray-50 rounded-lg cursor-pointer hover:bg-gray-100 hover:shadow-md transition-all duration-200"
+                    onClick={() => {
+                      navigate('/tasks');
+                      onClose();
+                    }}
+                  >
+                    <div className="text-lg font-bold" style={{ color: theme.primaryColor }}>
+                      {dashboardData?.activeTasks || 0}
+                    </div>
+                    <div className="text-xs text-gray-600">Tasks</div>
+                  </div>
+                  <div 
+                    className="text-center p-3 bg-gray-50 rounded-lg cursor-pointer hover:bg-gray-100 hover:shadow-md transition-all duration-200"
+                    onClick={() => {
+                      navigate('/finance');
+                      onClose();
+                    }}
+                  >
+                    <div className="text-lg font-bold" style={{ color: theme.primaryColor }}>
+                      {dashboardData?.pendingApprovals || 0}
+                    </div>
+                    <div className="text-xs text-gray-600">Pending</div>
+                  </div>
+                  <div 
+                    className="text-center p-3 bg-gray-50 rounded-lg cursor-pointer hover:bg-gray-100 hover:shadow-md transition-all duration-200"
+                    onClick={() => {
+                      navigate('/tasks');
+                      onClose();
+                    }}
+                  >
+                    <div className="text-lg font-bold" style={{ color: theme.primaryColor }}>
+                      {dashboardData?.urgentTasks || 0}
+                    </div>
+                    <div className="text-xs text-gray-600">Urgent</div>
                   </div>
                 </div>
               )}
-
-              {/* Quick Actions for Existing Users */}
-              {!onboardingActions && (
-                <div className="mb-6">
-                  <h3 className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2">
-                    <CheckSquare className="h-4 w-4" style={{ color: theme.primaryColor }} />
-                    Quick Actions
-                  </h3>
-                  <div className="grid grid-cols-2 gap-2">
-                    <div 
-                      className="flex items-center gap-2 p-3 rounded-xl border border-gray-200 hover:border-gray-300 hover:bg-gray-50 transition-colors cursor-pointer"
-                      onClick={() => {
-                        navigate('/tasks');
-                        onClose();
-                      }}
-                    >
-                      <CheckSquare className="h-4 w-4 text-blue-500" />
-                      <span className="text-sm font-medium text-gray-900">Tasks</span>
-                    </div>
-                    <div 
-                      className="flex items-center gap-2 p-3 rounded-xl border border-gray-200 hover:border-gray-300 hover:bg-gray-50 transition-colors cursor-pointer"
-                      onClick={() => {
-                        navigate('/finance');
-                        onClose();
-                      }}
-                    >
-                      <TrendingUp className="h-4 w-4 text-green-500" />
-                      <span className="text-sm font-medium text-gray-900">Finance</span>
-                    </div>
-                    <div 
-                      className="flex items-center gap-2 p-3 rounded-xl border border-gray-200 hover:border-gray-300 hover:bg-gray-50 transition-colors cursor-pointer"
-                      onClick={() => {
-                        navigate('/reports');
-                        onClose();
-                      }}
-                    >
-                      <FileText className="h-4 w-4 text-orange-500" />
-                      <span className="text-sm font-medium text-gray-900">Reports</span>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {/* Quick Stats */}
-              <div className="grid grid-cols-3 gap-3">
-                <div 
-                  className="text-center p-3 bg-gray-50 rounded-lg cursor-pointer hover:bg-gray-100 hover:shadow-md transition-all duration-200"
-                  onClick={() => {
-                    navigate('/tasks');
-                    onClose();
-                  }}
-                >
-                  <div className="text-lg font-bold" style={{ color: theme.primaryColor }}>
-                    {dashboardData?.activeTasks || 0}
-                  </div>
-                  <div className="text-xs text-gray-600">Tasks</div>
-                </div>
-                <div 
-                  className="text-center p-3 bg-gray-50 rounded-lg cursor-pointer hover:bg-gray-100 hover:shadow-md transition-all duration-200"
-                  onClick={() => {
-                    navigate('/finance');
-                    onClose();
-                  }}
-                >
-                  <div className="text-lg font-bold" style={{ color: theme.primaryColor }}>
-                    {dashboardData?.pendingApprovals || 0}
-                  </div>
-                  <div className="text-xs text-gray-600">Pending</div>
-                </div>
-                <div 
-                  className="text-center p-3 bg-gray-50 rounded-lg cursor-pointer hover:bg-gray-100 hover:shadow-md transition-all duration-200"
-                  onClick={() => {
-                    navigate('/tasks');
-                    onClose();
-                  }}
-                >
-                  <div className="text-lg font-bold" style={{ color: theme.primaryColor }}>
-                    {dashboardData?.urgentTasks || 0}
-                  </div>
-                  <div className="text-xs text-gray-600">Urgent</div>
-                </div>
-              </div>
             </div>
 
             {/* Footer */}
-            <div className="px-6 py-4 border-t border-gray-100">
+            <div className="px-4 sm:px-6 py-3 sm:py-4 border-t border-gray-100">
               <div className="flex items-center justify-between">
                 <p className="text-sm text-gray-500">
-                  Ready to manage your operations?
+                  {userData?.isNewUser 
+                    ? "Ready to get started with your hospitality management?" 
+                    : "Ready to manage your operations?"
+                  }
                 </p>
                 <Button
                   onClick={() => {
-                    // Navigate to dashboard or first available section
-                    if (dashboardData?.pendingApprovals && dashboardData.pendingApprovals > 0) {
-                      navigate('/finance');
-                    } else if (dashboardData?.urgentTasks && dashboardData.urgentTasks > 0) {
-                      navigate('/tasks');
+                    if (userData?.isNewUser) {
+                      // For new users, navigate to the first incomplete required step
+                      const firstIncompleteStep = onboardingSteps?.find(step => step.required && !step.completed);
+                      if (firstIncompleteStep) {
+                        navigate(firstIncompleteStep.action.route);
+                      } else {
+                        navigate('/dashboard');
+                      }
                     } else {
-                      navigate('/dashboard');
+                      // For existing users, navigate to dashboard or first available section
+                      if (dashboardData?.pendingApprovals && dashboardData.pendingApprovals > 0) {
+                        navigate('/finance');
+                      } else if (dashboardData?.urgentTasks && dashboardData.urgentTasks > 0) {
+                        navigate('/tasks');
+                      } else {
+                        navigate('/dashboard');
+                      }
                     }
                     onClose();
                   }}
                   className="h-8 px-4 text-sm font-medium"
                   style={{ backgroundColor: theme.primaryColor }}
                 >
-                  Let's Go!
+                  {userData?.isNewUser ? "Start Setup" : "Let's Go!"}
                 </Button>
               </div>
             </div>

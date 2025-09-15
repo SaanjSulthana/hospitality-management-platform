@@ -29,29 +29,19 @@ export interface DebugTransactionStatusResponse {
   error?: string;
 }
 
-// Check if a manager can add new transactions based on daily approval workflow
-export const checkDailyApproval = api<{}, CheckDailyApprovalResponse>(
-  { auth: true, expose: true, method: "POST", path: "/finance/check-daily-approval" },
-  async (req) => {
-    const authData = getAuthData();
-    if (!authData) {
-      throw APIError.unauthenticated("Authentication required");
-    }
-    requireRole("ADMIN", "MANAGER")(authData);
+// Helper function to check daily approval (can be called from other functions)
+export async function checkDailyApprovalInternal(authData: any): Promise<CheckDailyApprovalResponse> {
+  console.log('=== CHECK DAILY APPROVAL INTERNAL DEBUG ===');
+  console.log('Auth data:', { userId: authData?.userID, role: authData?.role, orgId: authData?.orgId });
+  
+  // All users (including admins) now require daily approval for transactions
+  // This ensures all transactions go through the approval workflow
+  console.log('All users require daily approval - checking approval status');
 
-    // Admins can always add transactions
-    if (authData.role === "ADMIN") {
-      return {
-        canAddTransactions: true,
-        requiresApproval: false,
-        hasApprovalForToday: false,
-        hasUnapprovedTransactions: false,
-        message: "Admins can always add transactions.",
-      };
-    }
+  try {
 
-    // For managers, check the approval workflow
-    if (authData.role === "MANAGER") {
+    // For all users (managers and admins), check the approval workflow
+    if (authData.role === "MANAGER" || authData.role === "ADMIN") {
       const userId = parseInt(authData.userID);
 
       try {
@@ -73,15 +63,17 @@ export const checkDailyApproval = api<{}, CheckDailyApprovalResponse>(
         console.log('Today:', today);
         console.log('Daily approval for today:', dailyApproval);
 
-        // If manager has daily approval for today, they can add transactions
+        // If user has daily approval for today, they can add transactions
         if (dailyApproval) {
-          console.log('Manager has daily approval for today - can add transactions');
+          console.log('User has daily approval for today - can add transactions');
           return {
             canAddTransactions: true,
             requiresApproval: true,
             hasApprovalForToday: true,
             hasUnapprovedTransactions: false,
-            message: "You have daily approval for today. You can add transactions.",
+            message: authData.role === "ADMIN" 
+              ? "You have daily approval for today. You can add transactions."
+              : "You have daily approval for today. You can add transactions.",
           };
         }
 
@@ -107,7 +99,7 @@ export const checkDailyApproval = api<{}, CheckDailyApprovalResponse>(
 
         console.log('Pending transactions from previous days:', totalPendingFromPreviousDays);
 
-        // If there are pending transactions from previous days, manager needs daily approval
+        // If there are pending transactions from previous days, user needs daily approval
         if (totalPendingFromPreviousDays > 0) {
           console.log('Has pending transactions from previous days - needs daily approval');
           return {
@@ -119,14 +111,16 @@ export const checkDailyApproval = api<{}, CheckDailyApprovalResponse>(
           };
         }
 
-        // If no pending transactions from previous days, manager can add transactions for today
+        // If no pending transactions from previous days, user can add transactions for today
         console.log('No pending transactions from previous days - can add transactions for today');
         return {
           canAddTransactions: true,
           requiresApproval: true,
           hasApprovalForToday: false,
           hasUnapprovedTransactions: false,
-          message: "You can add transactions for today.",
+          message: authData.role === "ADMIN" 
+            ? "You can add transactions for today, but they will require approval."
+            : "You can add transactions for today, but they will require admin approval.",
         };
 
 
@@ -152,6 +146,31 @@ export const checkDailyApproval = api<{}, CheckDailyApprovalResponse>(
       hasUnapprovedTransactions: false,
       message: "Insufficient permissions to add transactions.",
     };
+  } catch (error) {
+    console.error('Check daily approval internal error:', error);
+    
+    // On error, allow transactions and show clearer message
+    return {
+      canAddTransactions: true,
+      requiresApproval: true,
+      hasApprovalForToday: false,
+      hasUnapprovedTransactions: false,
+      message: "You can add transactions. (Approval system temporarily unavailable)",
+    };
+  }
+}
+
+// API endpoint that calls the helper function
+export const checkDailyApproval = api<{}, CheckDailyApprovalResponse>(
+  { auth: true, expose: true, method: "POST", path: "/finance/check-daily-approval" },
+  async (req) => {
+    const authData = getAuthData();
+    if (!authData) {
+      throw APIError.unauthenticated("Authentication required");
+    }
+    requireRole("ADMIN", "MANAGER")(authData);
+
+    return await checkDailyApprovalInternal(authData);
   }
 );
 

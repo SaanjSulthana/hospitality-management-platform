@@ -451,10 +451,10 @@ export const API_ENDPOINTS = {
   TASK_IMAGES: (id: number) => `/tasks/${id}/images`,
   
   // Finance
-  EXPENSES: '/expenses',
-  EXPENSE_BY_ID: (id: number) => `/expenses/${id}`,
-  REVENUES: '/revenues',
-  REVENUE_BY_ID: (id: number) => `/revenues/${id}`,
+  EXPENSES: '/finance/expenses',
+  EXPENSE_BY_ID: (id: number) => `/finance/expenses/${id}`,
+  REVENUES: '/finance/revenues',
+  REVENUE_BY_ID: (id: number) => `/finance/revenues/${id}`,
   PENDING_APPROVALS: '/finance/pending-approvals',
   GRANT_APPROVAL: '/finance/grant-daily-approval',
   

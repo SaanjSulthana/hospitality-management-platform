@@ -3,13 +3,18 @@
  */
 
 /**
- * Convert date input (YYYY-MM-DD) to API format with start of day
+ * Convert date input (YYYY-MM-DD) to API format with start of day in local timezone
  * @param dateString - Date string in YYYY-MM-DD format
- * @returns ISO string with start of day (00:00:00.000Z)
+ * @returns ISO string with start of day in local timezone
  */
 export const formatDateForAPI = (dateString: string): string => {
   if (!dateString) return new Date().toISOString();
-  return new Date(`${dateString}T00:00:00.000Z`).toISOString();
+  
+  // Create date in local timezone to avoid timezone shift issues
+  const [year, month, day] = dateString.split('-').map(Number);
+  const localDate = new Date(year, month - 1, day, 0, 0, 0, 0); // month is 0-indexed
+  
+  return localDate.toISOString();
 };
 
 /**

@@ -1,10 +1,10 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogPortal } from './dialog';
 import { Button } from './button';
 import { Badge } from './badge';
 import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '../../contexts/AuthContext';
-import { Download, FileText, Image, X, Calendar, Building2, User, Receipt } from 'lucide-react';
+import { Download, FileText, Image, X, Calendar, Building2, User, Receipt, Check } from 'lucide-react';
 import { formatCurrency } from '../../lib/currency';
 import { formatTransactionDateTime } from '../../lib/datetime';
 import { useTheme } from '../../contexts/ThemeContext';
@@ -24,8 +24,13 @@ interface ReceiptViewerProps {
     receiptUrl?: string;
     receiptFileId?: number;
     date: Date;
+    createdAt?: Date;
     createdByName: string;
     status?: string;
+    paymentMode?: string;
+    bankReference?: string;
+    approvedByName?: string;
+    approvedAt?: Date;
   } | null;
 }
 
@@ -33,8 +38,37 @@ export function ReceiptViewer({ isOpen, onClose, transaction }: ReceiptViewerPro
   const { getAuthenticatedBackend } = useAuth();
   const { theme } = useTheme();
   const [imageError, setImageError] = useState(false);
+  const [zoomLevel, setZoomLevel] = useState(100);
 
+  // Debug logging
+  useEffect(() => {
+    if (transaction) {
+      console.log('ReceiptViewer transaction data:', {
+        id: transaction.id,
+        type: transaction.type,
+        status: transaction.status,
+        date: transaction.date,
+        createdAt: transaction.createdAt,
+        approvedByName: transaction.approvedByName,
+        approvedAt: transaction.approvedAt,
+        createdByName: transaction.createdByName,
+        amountCents: transaction.amountCents
+      });
+    }
+  }, [transaction]);
 
+  // Zoom control functions
+  const handleZoomIn = () => {
+    setZoomLevel(prev => Math.min(prev + 25, 300));
+  };
+
+  const handleZoomOut = () => {
+    setZoomLevel(prev => Math.max(prev - 25, 50));
+  };
+
+  const handleZoomReset = () => {
+    setZoomLevel(100);
+  };
 
   // Fetch file info if we have a receipt file ID
   const { data: fileInfo, isLoading: fileInfoLoading } = useQuery({
@@ -43,7 +77,7 @@ export function ReceiptViewer({ isOpen, onClose, transaction }: ReceiptViewerPro
       if (!transaction?.receiptFileId) return null;
       
       // Direct API call since uploads service isn't in generated client yet
-      const response = await fetch(`${API_CONFIG.BASE_URL}/uploads/file/${transaction.receiptFileId}/info`, {
+      const response = await fetch(`${API_CONFIG.BASE_URL}/uploads/${transaction.receiptFileId}/info`, {
         headers: {
           'Authorization': `Bearer ${localStorage.getItem('accessToken')}`,
         },
@@ -65,7 +99,7 @@ export function ReceiptViewer({ isOpen, onClose, transaction }: ReceiptViewerPro
       if (!transaction?.receiptFileId) return null;
       
       // Direct API call since uploads service isn't in generated client yet
-      const response = await fetch(`${API_CONFIG.BASE_URL}/uploads/file/${transaction.receiptFileId}`, {
+      const response = await fetch(`${API_CONFIG.BASE_URL}/uploads/${transaction.receiptFileId}/download`, {
         headers: {
           'Authorization': `Bearer ${localStorage.getItem('accessToken')}`,
         },
@@ -147,57 +181,50 @@ export function ReceiptViewer({ isOpen, onClose, transaction }: ReceiptViewerPro
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogPortal>
         <DialogContent 
-          className="max-w-5xl max-h-[95vh] overflow-auto border-2 border-blue-200 shadow-2xl bg-gradient-to-br from-white to-blue-50"
+          className="max-w-6xl max-h-[98vh] w-[95vw] border-0 shadow-2xl bg-gradient-to-br from-slate-50 via-white to-blue-50 flex flex-col rounded-3xl overflow-hidden"
           showCloseButton={false}
         >
-        {/* Fixed Close Button - positioned with sticky to stay in place during scroll */}
-        <div className="sticky top-0 right-0 z-[60] flex justify-end p-2">
-          <Button 
-            variant="ghost" 
-            size="sm" 
-            onClick={onClose}
-            className="h-10 w-10 rounded-full bg-red-500 hover:bg-red-600 text-white shadow-lg hover:shadow-xl transition-all duration-200 hover:scale-110"
-          >
-            <X className="h-5 w-5" />
-          </Button>
+        {/* Enhanced Sticky Header */}
+        <div className="sticky top-0 z-[60] bg-gradient-to-r from-white via-blue-50 to-indigo-50 border-b border-blue-200/50 shadow-xl backdrop-blur-sm">
+          <div className="flex items-center justify-between p-4 sm:p-6">
+            <div className="flex items-center gap-3 sm:gap-4 flex-1 min-w-0">
+              <div className={`p-3 rounded-2xl shadow-lg ${transaction.type === 'expense' ? 'bg-gradient-to-br from-red-100 to-red-200' : 'bg-gradient-to-br from-green-100 to-green-200'}`}>
+                <div className="text-2xl">
+                  {transaction.type === 'expense' ? '💰' : '📈'}
+                </div>
+              </div>
+              <div className="flex-1 min-w-0">
+                <DialogTitle className="text-xl sm:text-2xl lg:text-3xl font-bold bg-gradient-to-r from-blue-600 via-purple-600 to-indigo-600 bg-clip-text text-transparent truncate">
+                  {transaction.type === 'expense' ? 'Expense' : 'Revenue'} Receipt
+                </DialogTitle>
+                <div className="flex items-center gap-2 mt-1">
+                  {transaction.status && (
+                    <Badge className={`${getStatusColor(transaction.status)} text-xs sm:text-sm font-bold px-3 py-1 shadow-md rounded-full`}>
+                      {transaction.status.charAt(0).toUpperCase() + transaction.status.slice(1)}
+                    </Badge>
+                  )}
+                  <div className="text-xs sm:text-sm text-gray-600 bg-white/50 px-2 py-1 rounded-full">
+                    {formatCurrency(transaction.amountCents)}
+                  </div>
+                </div>
+              </div>
+            </div>
+            <Button 
+              variant="ghost" 
+              size="sm" 
+              onClick={onClose}
+              className="h-10 w-10 sm:h-12 sm:w-12 rounded-full bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 text-white shadow-xl hover:shadow-2xl transition-all duration-300 hover:scale-110 flex-shrink-0"
+            >
+              <X className="h-5 w-5 sm:h-6 sm:w-6" />
+            </Button>
+          </div>
         </div>
         
-        <div className="px-6 pb-6">
-        <DialogHeader className="pb-6 border-b border-blue-100">
-          
-          <div className="flex items-center justify-between">
-            <DialogTitle className="flex items-center gap-3 text-2xl font-bold">
-              <div className={`p-2 rounded-full ${transaction.type === 'expense' ? 'bg-red-100' : 'bg-green-100'}`}>
-                {transaction.type === 'expense' ? '💰' : '📈'}
-              </div>
-              <span className="bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
-                {transaction.type === 'expense' ? 'Expense' : 'Revenue'} Receipt
-              </span>
-              {transaction.status && (
-                <Badge className={`${getStatusColor(transaction.status)} text-sm font-semibold px-3 py-1 shadow-sm`}>
-                  {transaction.status.charAt(0).toUpperCase() + transaction.status.slice(1)}
-                </Badge>
-              )}
-            </DialogTitle>
-          </div>
-        </DialogHeader>
-
-        <div className="space-y-6 p-2">
+        <div className="flex-1 overflow-auto px-6 pb-6">
+          <div className="space-y-6 p-2">
           {/* Transaction Details */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 p-6 border-2 border-blue-100 rounded-xl bg-gradient-to-r from-blue-50 to-indigo-50 shadow-lg">
             <div className="space-y-4">
-              <div className="flex items-center gap-3 p-3 bg-white rounded-lg shadow-sm border border-gray-100 hover:shadow-md transition-shadow">
-                <div className={`p-2 rounded-full ${transaction.type === 'expense' ? 'bg-red-100' : 'bg-green-100'}`}>
-                  <Receipt className={`h-4 w-4 ${transaction.type === 'expense' ? 'text-red-600' : 'text-green-600'}`} />
-                </div>
-                <div className="flex-1">
-                  <span className="text-sm text-gray-600 block">Amount</span>
-                  <span className={`font-bold text-lg ${transaction.type === 'expense' ? 'text-red-600' : 'text-green-600'}`}>
-                    {formatCurrency(transaction.amountCents, theme.currency)}
-                  </span>
-                </div>
-              </div>
-              
               <div className="flex items-center gap-3 p-3 bg-white rounded-lg shadow-sm border border-gray-100 hover:shadow-md transition-shadow">
                 <div className="p-2 rounded-full bg-blue-100">
                   <Building2 className="h-4 w-4 text-blue-600" />
@@ -213,7 +240,9 @@ export function ReceiptViewer({ isOpen, onClose, transaction }: ReceiptViewerPro
                   <Calendar className="h-4 w-4 text-purple-600" />
                 </div>
                 <div className="flex-1">
-                  <span className="text-sm text-gray-600 block">Date & Time</span>
+                  <span className="text-sm text-gray-600 block">
+                    {transaction.type === 'expense' ? 'Expense Date' : 'Revenue Date'}
+                  </span>
                   <span className="font-semibold text-gray-800">{formatTransactionDateTime(transaction.date)}</span>
                 </div>
               </div>
@@ -227,6 +256,18 @@ export function ReceiptViewer({ isOpen, onClose, transaction }: ReceiptViewerPro
                   <span className="font-semibold text-gray-800">{transaction.createdByName}</span>
                 </div>
               </div>
+
+              {transaction.createdAt && (
+                <div className="flex items-center gap-3 p-3 bg-white rounded-lg shadow-sm border border-gray-100 hover:shadow-md transition-shadow">
+                  <div className="p-2 rounded-full bg-indigo-100">
+                    <Calendar className="h-4 w-4 text-indigo-600" />
+                  </div>
+                  <div className="flex-1">
+                    <span className="text-sm text-gray-600 block">Created At</span>
+                    <span className="font-semibold text-gray-800">{formatTransactionDateTime(transaction.createdAt)}</span>
+                  </div>
+                </div>
+              )}
             </div>
 
             <div className="space-y-4">
@@ -248,10 +289,74 @@ export function ReceiptViewer({ isOpen, onClose, transaction }: ReceiptViewerPro
                 </div>
               )}
 
+              {transaction.paymentMode && (
+                <div className="p-3 bg-white rounded-lg shadow-sm border border-gray-100">
+                  <span className="text-sm text-gray-600 block mb-1">Payment Mode</span>
+                  <Badge className={`${transaction.paymentMode === 'cash' ? 'bg-green-100 text-green-800' : 'bg-blue-100 text-blue-800'} font-semibold px-3 py-1 shadow-sm`}>
+                    {transaction.paymentMode === 'cash' ? 'Cash' : 'Bank/UPI/Online'}
+                  </Badge>
+                </div>
+              )}
+
+              {transaction.bankReference && (
+                <div className="p-3 bg-white rounded-lg shadow-sm border border-gray-100">
+                  <span className="text-sm text-gray-600 block mb-1">Bank Reference</span>
+                  <p className="font-semibold text-gray-800 text-sm">{transaction.bankReference}</p>
+                </div>
+              )}
+
               {transaction.description && (
                 <div className="p-3 bg-white rounded-lg shadow-sm border border-gray-100">
                   <span className="text-sm text-gray-600 block mb-2">Description</span>
                   <p className="text-gray-800 font-medium">{transaction.description}</p>
+                </div>
+              )}
+
+              {(transaction.status === 'approved' || transaction.status === 'rejected') && (
+                <div className="p-3 bg-white rounded-lg shadow-sm border border-gray-100">
+                  <span className="text-sm text-gray-600 block mb-1">
+                    {transaction.status === 'approved' ? 'Approved By' : 'Rejected By'}
+                  </span>
+                  <div className="flex items-center gap-2">
+                    <div className={`p-1 rounded-full ${
+                      transaction.status === 'approved' 
+                        ? 'bg-green-100' 
+                        : 'bg-red-100'
+                    }`}>
+                      <Check className={`h-3 w-3 ${
+                        transaction.status === 'approved' 
+                          ? 'text-green-600' 
+                          : 'text-red-600'
+                      }`} />
+                    </div>
+                    <div>
+                      <p className="font-semibold text-gray-800 text-sm">
+                        {transaction.approvedByName || 'System Action'}
+                      </p>
+                      {transaction.approvedAt ? (
+                        <p className="text-xs text-gray-500">
+                          {new Date(transaction.approvedAt).toLocaleDateString()} at {new Date(transaction.approvedAt).toLocaleTimeString()}
+                        </p>
+                      ) : (
+                        <p className="text-xs text-gray-500">Auto-{transaction.status}</p>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {transaction.status === 'pending' && (
+                <div className="p-3 bg-white rounded-lg shadow-sm border border-gray-100">
+                  <span className="text-sm text-gray-600 block mb-1">Status</span>
+                  <div className="flex items-center gap-2">
+                    <div className="p-1 rounded-full bg-yellow-100">
+                      <div className="h-3 w-3 rounded-full bg-yellow-500 animate-pulse"></div>
+                    </div>
+                    <div>
+                      <p className="font-semibold text-gray-800 text-sm">Pending Approval</p>
+                      <p className="text-xs text-gray-500">Awaiting admin review</p>
+                    </div>
+                  </div>
                 </div>
               )}
             </div>
@@ -263,18 +368,64 @@ export function ReceiptViewer({ isOpen, onClose, transaction }: ReceiptViewerPro
               <h3 className="text-xl font-bold text-indigo-800 flex items-center gap-2">
                 📄 Receipt Document
               </h3>
-              {(fileData || transaction.receiptUrl) && (
-                <Button 
-                  onClick={downloadReceipt} 
-                  className="bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700 text-white font-semibold px-6 py-2 shadow-lg hover:shadow-xl transition-all duration-200 transform hover:scale-105"
-                >
-                  <Download className="h-4 w-4 mr-2" />
-                  Download Receipt
-                </Button>
-              )}
+              <div className="flex items-center gap-2">
+                {(fileData || transaction.receiptUrl) && (
+                  <>
+                    <div className="flex items-center gap-1 bg-white rounded-lg px-3 py-1 border border-indigo-200">
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={handleZoomOut}
+                        disabled={zoomLevel <= 50}
+                        className="h-8 w-8 p-0 hover:bg-indigo-100"
+                      >
+                        −
+                      </Button>
+                      <span className="text-sm font-medium text-indigo-700 min-w-[3rem] text-center">
+                        {zoomLevel}%
+                      </span>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={handleZoomIn}
+                        disabled={zoomLevel >= 300}
+                        className="h-8 w-8 p-0 hover:bg-indigo-100"
+                      >
+                        +
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={handleZoomReset}
+                        className="h-8 px-2 text-xs hover:bg-indigo-100"
+                      >
+                        Reset
+                      </Button>
+                    </div>
+                    <Button 
+                      onClick={downloadReceipt} 
+                      size="sm"
+                      className="bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700 text-white font-semibold px-3 py-2 shadow-lg hover:shadow-xl transition-all duration-200 transform hover:scale-105"
+                      title="Download Receipt"
+                    >
+                      <Download className="h-4 w-4" />
+                    </Button>
+                  </>
+                )}
+              </div>
             </div>
 
-            {fileInfoLoading || fileDataLoading ? (
+            {!transaction.receiptFileId && !transaction.receiptUrl ? (
+              <div className="flex items-center justify-center h-64 border-2 border-dashed border-gray-400 rounded-xl bg-gradient-to-br from-gray-100 to-gray-200">
+                <div className="text-center">
+                  <div className="p-4 bg-gray-200 rounded-full inline-block mb-4">
+                    <FileText className="h-12 w-12 text-gray-500" />
+                  </div>
+                  <p className="text-gray-700 font-semibold text-lg">📝 No Receipt Available</p>
+                  <p className="text-gray-600 text-sm">No receipt was uploaded for this transaction</p>
+                </div>
+              </div>
+            ) : fileInfoLoading || fileDataLoading ? (
               <div className="flex items-center justify-center h-64 border-2 border-dashed border-blue-300 rounded-xl bg-gradient-to-br from-blue-50 to-indigo-50">
                 <div className="text-center">
                   <div className="animate-spin rounded-full h-12 w-12 border-b-4 border-blue-600 mx-auto"></div>
@@ -283,56 +434,74 @@ export function ReceiptViewer({ isOpen, onClose, transaction }: ReceiptViewerPro
                 </div>
               </div>
             ) : fileData && fileInfo ? (
-              <div className="border-2 border-gray-200 rounded-xl p-6 bg-white shadow-lg">
-                <div className="mb-6 grid grid-cols-2 gap-4">
-                  <div className="bg-gray-50 p-3 rounded-lg">
-                    <span className="text-xs text-gray-500 block mb-1">Filename</span>
-                    <p className="font-semibold text-gray-800">{fileInfo.originalName}</p>
-                  </div>
-                  <div className="bg-gray-50 p-3 rounded-lg">
-                    <span className="text-xs text-gray-500 block mb-1">Size</span>
-                    <p className="font-semibold text-gray-800">{(fileInfo.fileSize / 1024).toFixed(2)} KB</p>
-                  </div>
-                  <div className="bg-gray-50 p-3 rounded-lg">
-                    <span className="text-xs text-gray-500 block mb-1">Type</span>
-                    <p className="font-semibold text-gray-800">{fileInfo.mimeType}</p>
-                  </div>
-                  <div className="bg-gray-50 p-3 rounded-lg">
-                    <span className="text-xs text-gray-500 block mb-1">Uploaded</span>
-                    <p className="font-semibold text-gray-800">{new Date(fileInfo.uploadedAt).toLocaleDateString()}</p>
+              <div className="space-y-4">
+                {/* Receipt Preview Section - Preview First */}
+                <div className="border-2 border-gray-200 rounded-xl p-6 bg-white shadow-lg">
+                  {/* Preview First */}
+                  {isImage(fileInfo.mimeType) && !imageError ? (
+                    <div className="flex justify-center p-4 bg-gray-50 rounded-lg border-2 border-gray-200 overflow-auto mb-6">
+                      <img
+                        src={`data:${fileInfo.mimeType};base64,${fileData.fileData}`}
+                        alt="Receipt"
+                        className="rounded-lg shadow-lg border border-gray-300 hover:shadow-xl transition-shadow duration-300"
+                        style={{ 
+                          width: `${zoomLevel}%`, 
+                          height: 'auto',
+                          maxWidth: '100%',
+                          objectFit: 'contain'
+                        }}
+                        onError={() => setImageError(true)}
+                      />
+                    </div>
+                  ) : isPdf(fileInfo.mimeType) ? (
+                    <div className="flex items-center justify-center h-64 border-2 border-dashed border-blue-300 rounded-xl bg-gradient-to-br from-blue-50 to-indigo-50 mb-6">
+                      <div className="text-center">
+                        <div className="p-4 bg-blue-100 rounded-full inline-block mb-4">
+                          <FileText className="h-12 w-12 text-blue-600" />
+                        </div>
+                        <p className="text-blue-800 font-bold text-lg mb-2">📄 PDF Document</p>
+                        <p className="text-blue-600 text-sm mb-4">This is a PDF file. Click the download button to view.</p>
+                        <div className="bg-white/50 rounded-lg px-4 py-2 inline-block">
+                          <span className="text-blue-700 font-medium">{fileInfo?.originalName}</span>
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="flex items-center justify-center h-64 border-2 border-dashed border-amber-300 rounded-xl bg-gradient-to-br from-amber-50 to-orange-50 mb-6">
+                      <div className="text-center">
+                        <div className="p-4 bg-amber-100 rounded-full inline-block mb-4">
+                          <FileText className="h-12 w-12 text-amber-600" />
+                        </div>
+                        <p className="text-amber-800 font-bold text-lg mb-2">📋 Document File</p>
+                        <p className="text-amber-600 text-sm mb-4">This file type is not previewable. Click download to view.</p>
+                        <div className="bg-white/50 rounded-lg px-4 py-2 inline-block">
+                          <span className="text-amber-700 font-medium">{fileInfo?.originalName}</span>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* File Info Below Preview */}
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="bg-gray-50 p-3 rounded-lg">
+                      <span className="text-xs text-gray-500 block mb-1">Filename</span>
+                      <p className="font-semibold text-gray-800">{fileInfo.originalName}</p>
+                    </div>
+                    <div className="bg-gray-50 p-3 rounded-lg">
+                      <span className="text-xs text-gray-500 block mb-1">Size</span>
+                      <p className="font-semibold text-gray-800">{(fileInfo.fileSize / 1024).toFixed(2)} KB</p>
+                    </div>
+                    <div className="bg-gray-50 p-3 rounded-lg">
+                      <span className="text-xs text-gray-500 block mb-1">Type</span>
+                      <p className="font-semibold text-gray-800">{fileInfo.mimeType}</p>
+                    </div>
+                    <div className="bg-gray-50 p-3 rounded-lg">
+                      <span className="text-xs text-gray-500 block mb-1">Uploaded</span>
+                      <p className="font-semibold text-gray-800">{new Date(fileInfo.uploadedAt).toLocaleDateString()}</p>
+                    </div>
                   </div>
                 </div>
 
-                {isImage(fileInfo.mimeType) && !imageError ? (
-                  <div className="flex justify-center p-4 bg-gray-50 rounded-lg border-2 border-gray-200">
-                    <img
-                      src={`data:${fileInfo.mimeType};base64,${fileData.fileData}`}
-                      alt="Receipt"
-                      className="max-w-full max-h-96 object-contain rounded-lg shadow-lg border border-gray-300 hover:shadow-xl transition-shadow duration-300"
-                      onError={() => setImageError(true)}
-                    />
-                  </div>
-                ) : isPdf(fileInfo.mimeType) ? (
-                  <div className="flex items-center justify-center h-64 border-2 border-dashed border-red-300 rounded-xl bg-gradient-to-br from-red-50 to-pink-50">
-                    <div className="text-center">
-                      <div className="p-4 bg-red-100 rounded-full inline-block mb-4">
-                        <FileText className="h-12 w-12 text-red-600" />
-                      </div>
-                      <p className="text-red-700 font-semibold text-lg">📄 PDF Receipt</p>
-                      <p className="text-red-600 text-sm mt-1">Click the download button above to view this PDF</p>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="flex items-center justify-center h-64 border-2 border-dashed border-yellow-300 rounded-xl bg-gradient-to-br from-yellow-50 to-orange-50">
-                    <div className="text-center">
-                      <div className="p-4 bg-yellow-100 rounded-full inline-block mb-4">
-                        <FileText className="h-12 w-12 text-yellow-600" />
-                      </div>
-                      <p className="text-yellow-700 font-semibold text-lg">📋 Receipt File</p>
-                      <p className="text-yellow-600 text-sm mt-1">Click the download button above to view this file</p>
-                    </div>
-                  </div>
-                )}
               </div>
             ) : transaction.receiptUrl ? (
               <div className="flex items-center justify-center h-64 border-2 border-dashed border-blue-300 rounded-xl bg-gradient-to-br from-blue-50 to-cyan-50">
@@ -366,19 +535,9 @@ export function ReceiptViewer({ isOpen, onClose, transaction }: ReceiptViewerPro
                   )}
                 </div>
               </div>
-            ) : (
-              <div className="flex items-center justify-center h-64 border-2 border-dashed border-gray-400 rounded-xl bg-gradient-to-br from-gray-100 to-gray-200">
-                <div className="text-center">
-                  <div className="p-4 bg-gray-200 rounded-full inline-block mb-4">
-                    <FileText className="h-12 w-12 text-gray-500" />
-                  </div>
-                  <p className="text-gray-700 font-semibold text-lg">📝 No Receipt Available</p>
-                  <p className="text-gray-600 text-sm">No receipt was uploaded for this transaction</p>
-                </div>
-              </div>
-            )}
+            ) : null}
           </div>
-        </div>
+          </div> {/* Close scrollable content */}
         </div> {/* Close content wrapper */}
         </DialogContent>
       </DialogPortal>

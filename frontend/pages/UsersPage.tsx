@@ -12,7 +12,7 @@ import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { useToast } from '@/components/ui/use-toast';
 import { formatUserActivityDateTime } from '../lib/datetime';
-import { Users, Plus, Search, Mail, Calendar, UserPlus, Pencil, RefreshCw, Shield, User, AlertCircle } from 'lucide-react';
+import { Users, Plus, Search, Mail, Calendar, UserPlus, Pencil, RefreshCw, Shield, User, AlertCircle, Trash2 } from 'lucide-react';
 
 type ListUsersResponse = {
   users: {
@@ -42,7 +42,7 @@ type ListUsersResponse = {
 };
 
 export default function UsersPage() {
-  const { user, getAuthenticatedBackend } = useAuth();
+  const { user, getAuthenticatedBackend, refreshUser } = useAuth();
   const { setPageTitle } = usePageTitle();
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -59,6 +59,8 @@ export default function UsersPage() {
   const [userToPromote, setUserToPromote] = useState<any | null>(null);
   const [isDemoteDialogOpen, setIsDemoteDialogOpen] = useState(false);
   const [userToDemote, setUserToDemote] = useState<any | null>(null);
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+  const [userToDelete, setUserToDelete] = useState<any | null>(null);
   const [newUser, setNewUser] = useState({
     email: '',
     password: '',
@@ -259,8 +261,21 @@ export default function UsersPage() {
         description: errorMessage,
       });
     },
-    onSuccess: () => {
-      console.log('User updated successfully');
+    onSuccess: (data, variables) => {
+      console.log('✅ User updated successfully');
+      console.log('🔍 Checking if current user updated their own profile...');
+      console.log('Current user ID:', user?.userID, 'Updated user ID:', variables.id);
+      
+      // If the current user updated their own profile, refresh AuthContext
+      if (user && parseInt(user.userID) === variables.id) {
+        console.log('🎯 Current user updated their own profile, refreshing AuthContext...');
+        refreshUser().catch(error => {
+          console.warn('❌ Failed to refresh current user data:', error);
+        });
+      } else {
+        console.log('ℹ️ Different user updated, no need to refresh AuthContext');
+      }
+      
       toast({
         title: "User updated",
         description: "Manager details have been updated.",
@@ -361,6 +376,64 @@ export default function UsersPage() {
     },
     onSettled: () => {
       console.log('Role demotion mutation settled, invalidating queries...');
+      refetchUsers();
+    },
+  });
+
+  const deleteUserMutation = useMutation({
+    mutationFn: async (userId: number) => {
+      console.log('Deleting user:', userId);
+      
+      // Additional validation
+      if (typeof userId !== 'number' || isNaN(userId)) {
+        throw new Error(`Invalid user ID: ${userId} (type: ${typeof userId})`);
+      }
+      
+      // Use direct fetch call as workaround until client is regenerated
+      const token = localStorage.getItem('accessToken');
+      if (!token) {
+        throw new Error('No access token found');
+      }
+      
+      const response = await fetch(`http://localhost:4000/users/${userId}`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.message || `Failed to delete user: ${response.statusText}`);
+      }
+      
+      return await response.json();
+    },
+    onError: (error: any) => {
+      console.error('User deletion failed:', error);
+      let errorMessage = "Please try again.";
+      if (error.message && error.message.includes('Cannot delete your own account')) {
+        errorMessage = "You cannot delete your own account.";
+      } else if (error.message) {
+        errorMessage = error.message;
+      }
+      
+      toast({
+        variant: "destructive",
+        title: "Failed to delete user",
+        description: errorMessage,
+      });
+    },
+    onSuccess: (result) => {
+      console.log('User deleted successfully:', result);
+      toast({
+        title: "User deleted",
+        description: result.message || "User has been successfully deleted.",
+      });
+    },
+    onSettled: () => {
+      console.log('User deletion mutation settled, invalidating queries...');
       refetchUsers();
     },
   });
@@ -537,6 +610,48 @@ export default function UsersPage() {
     }
   };
 
+  const handleDeleteUser = (user: any) => {
+    console.log('Handling deletion for user:', user);
+    console.log('User ID type:', typeof user.id, 'Value:', user.id);
+    
+    // Validate user object before setting state
+    if (!user || typeof user.id !== 'number' || isNaN(user.id)) {
+      console.error('Invalid user object for deletion:', user);
+      toast({
+        variant: "destructive",
+        title: "Invalid User Data",
+        description: "Cannot delete user with invalid data. Please refresh and try again.",
+      });
+      return;
+    }
+    
+    setUserToDelete(user);
+    setIsDeleteDialogOpen(true);
+  };
+
+  const confirmDeleteUser = () => {
+    if (userToDelete) {
+      console.log('Confirming deletion for user:', userToDelete);
+      console.log('User ID type:', typeof userToDelete.id, 'Value:', userToDelete.id);
+      
+      // Validate user ID before making the API call
+      if (typeof userToDelete.id !== 'number' || isNaN(userToDelete.id)) {
+        console.error('Invalid user ID for deletion:', userToDelete.id);
+        toast({
+          variant: "destructive",
+          title: "Invalid User ID",
+          description: "Cannot delete user with invalid ID. Please refresh and try again.",
+        });
+        return;
+      }
+      
+      deleteUserMutation.mutate(userToDelete.id);
+      
+      setIsDeleteDialogOpen(false);
+      setUserToDelete(null);
+    }
+  };
+
   // Only show to ADMIN
   if (user?.role !== 'ADMIN') {
     return (
@@ -594,6 +709,22 @@ export default function UsersPage() {
                 <CardDescription className="text-sm text-gray-600">
                   Manage team members and their roles
                 </CardDescription>
+          </div>
+          <div className="ml-auto">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                console.log('🔄 Manual refresh triggered...');
+                refreshUser().catch(error => {
+                  console.warn('❌ Manual refresh failed:', error);
+                });
+              }}
+              className="transition-all duration-200 hover:scale-105 hover:shadow-md"
+            >
+              <RefreshCw className="h-4 w-4 mr-2" />
+              Refresh User Data
+            </Button>
           </div>
         </div>
           </CardHeader>
@@ -958,6 +1089,25 @@ export default function UsersPage() {
                         <span className="hidden sm:inline">Edit</span>
                         <span className="sm:hidden">Edit</span>
                     </Button>
+                    {/* Only show delete button for other users, not current user */}
+                    {u.id !== parseInt(user?.userID || '0') && (
+                      <Button 
+                        variant="outline" 
+                        size="sm" 
+                        onClick={() => handleDeleteUser(u)}
+                        disabled={deleteUserMutation.isPending}
+                        className="bg-red-50 text-red-700 border-red-200 hover:bg-red-100 transition-all duration-200 hover:scale-105 hover:shadow-md flex-shrink-0"
+                      >
+                        <Trash2 className="mr-2 h-4 w-4" />
+                        <span className="hidden sm:inline">Delete</span>
+                        <span className="sm:hidden">Delete</span>
+                      </Button>
+                    )}
+                    {u.id === parseInt(user?.userID || '0') && (
+                      <div className="text-xs text-gray-500 italic px-2 py-1 bg-gray-100 rounded">
+                        Current user (cannot delete)
+                      </div>
+                    )}
                 </div>
               </CardContent>
             </Card>
@@ -1283,6 +1433,83 @@ export default function UsersPage() {
                     <>
                       <User className="mr-2 h-4 w-4" />
                       Demote User
+                    </>
+                  )}
+             </Button>
+              </div>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+        {/* Enhanced Delete Confirmation Dialog */}
+       <Dialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
+          <DialogContent className="max-w-2xl max-h-[95vh] overflow-hidden flex flex-col">
+            <DialogHeader className="pb-4">
+              <DialogTitle className="text-xl font-bold text-gray-900 flex items-center gap-2">
+                <div className="p-2 bg-red-100 rounded-lg shadow-sm">
+                  <Trash2 className="h-5 w-5 text-red-600" />
+                </div>
+                Delete User
+              </DialogTitle>
+              <DialogDescription className="text-sm text-gray-600">
+               Are you sure you want to delete <strong>{userToDelete?.displayName}</strong>? This action cannot be undone.
+             </DialogDescription>
+           </DialogHeader>
+            <div className="flex-1 overflow-y-auto px-1">
+          <div className="space-y-4">
+            {userToDelete && parseInt(user?.userID || '0') === userToDelete.id && (
+              <div className="p-4 bg-red-50 border border-red-200 rounded-lg">
+                <div className="flex items-start gap-3">
+                      <AlertCircle className="h-5 w-5 text-red-600 mt-0.5" />
+                  <div className="text-sm text-red-800">
+                    <p className="font-medium">⚠️ Warning: This is your own account</p>
+                    <p>You cannot delete your own account. Ask another admin to do this for you.</p>
+                  </div>
+                </div>
+              </div>
+            )}
+                         <div className="p-4 bg-red-50 border border-red-200 rounded-lg">
+               <div className="flex items-start gap-3">
+                 <Trash2 className="h-5 w-5 text-red-600 mt-0.5" />
+                 <div className="text-sm text-red-800">
+                   <p className="font-medium mb-1">⚠️ This will permanently delete:</p>
+                   <ul className="list-disc list-inside space-y-1">
+                     <li>User account and all login sessions</li>
+                     <li>All tasks created by this user</li>
+                     <li>All expenses and revenues created by this user</li>
+                     <li>All staff records associated with this user</li>
+                     <li>All property assignments for this user</li>
+                     <li>All related data and history</li>
+                   </ul>
+                   <p className="font-medium mt-2 text-red-900">This action cannot be undone!</p>
+                 </div>
+               </div>
+             </div>
+          </div>
+            </div>
+            <DialogFooter className="border-t pt-4 mt-6 bg-gray-50 -mx-6 -mb-6 px-6 py-4">
+              <div className="flex items-center justify-between w-full">
+                <Button 
+                  variant="outline" 
+                  onClick={() => setIsDeleteDialogOpen(false)}
+                  className="transition-all duration-200 hover:scale-105 hover:shadow-md"
+                >
+              Cancel
+            </Button>
+                         <Button 
+               onClick={confirmDeleteUser}
+               disabled={deleteUserMutation.isPending}
+                  className="bg-red-600 hover:bg-red-700 transition-all duration-200 hover:scale-105 hover:shadow-md"
+                >
+                  {deleteUserMutation.isPending ? (
+                    <>
+                      <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
+                      Deleting...
+                    </>
+                  ) : (
+                    <>
+                      <Trash2 className="mr-2 h-4 w-4" />
+                      Delete User
                     </>
                   )}
              </Button>

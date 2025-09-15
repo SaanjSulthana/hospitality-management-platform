@@ -10,6 +10,27 @@ export default new Service("frontend");
 export const serveStatic = api.raw(
   { expose: true, path: "/!path", method: "GET" },
   async (req, res) => {
+    // Skip API routes - let them be handled by the API services
+    if (req.url?.startsWith('/api/') || 
+        req.url?.startsWith('/auth/') || 
+        req.url?.startsWith('/finance/') || 
+        req.url?.startsWith('/properties/') || 
+        req.url?.startsWith('/staff/') || 
+        req.url?.startsWith('/tasks/') || 
+        req.url?.startsWith('/reports/') || 
+        req.url?.startsWith('/analytics/') || 
+        req.url?.startsWith('/users/') || 
+        req.url?.startsWith('/branding/') || 
+        req.url?.startsWith('/uploads/') || 
+        req.url?.startsWith('/orgs/') || 
+        req.url?.startsWith('/health') ||
+        req.url?.startsWith('/config/')) {
+      res.statusCode = 404;
+      res.setHeader("Content-Type", "text/plain");
+      res.end("API route not found");
+      return;
+    }
+
     try {
       const filePath = `./dist${req.url}`;
       const fileContent = readFileSync(filePath);

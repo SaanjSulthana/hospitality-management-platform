@@ -102,13 +102,42 @@ export const deleteExpense = api<DeleteExpenseRequest, DeleteExpenseResponse>(
           deleted: false, // Not actually deleted, just requested
         };
       } else {
-        // Admins can delete directly
+        // Get receipt file ID before deleting
+        const receiptFileId = expenseRow.receipt_file_id;
+
+        // Delete expense record
         await tx.exec`
           DELETE FROM expenses 
           WHERE id = ${id} AND org_id = ${authData.orgId}
         `;
 
         await tx.commit();
+
+        // Clean up receipt file if it exists and is not referenced by other transactions
+        if (receiptFileId) {
+          try {
+            // Check if file is referenced by other transactions
+            const revenueRefs = await tx.queryRow`
+              SELECT COUNT(*) as count FROM revenues WHERE receipt_file_id = ${receiptFileId} AND org_id = ${authData.orgId}
+            `;
+            
+            const otherExpenseRefs = await tx.queryRow`
+              SELECT COUNT(*) as count FROM expenses WHERE receipt_file_id = ${receiptFileId} AND org_id = ${authData.orgId}
+            `;
+
+            const totalRefs = (revenueRefs?.count || 0) + (otherExpenseRefs?.count || 0);
+
+            // If file is not referenced by any other transactions, delete it
+            if (totalRefs === 0) {
+              // Note: We don't delete the file here as it requires uploads service
+              // The cleanup can be done via the cleanup endpoint or background job
+              console.log(`Receipt file ${receiptFileId} is orphaned and can be cleaned up`);
+            }
+          } catch (error) {
+            console.error('Error checking receipt file references:', error);
+            // Don't fail the expense deletion if file cleanup fails
+          }
+        }
 
         return {
           id,

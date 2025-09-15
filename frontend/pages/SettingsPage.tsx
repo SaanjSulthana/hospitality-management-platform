@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { usePageTitle } from '../contexts/PageTitleContext';
+import { useWelcomePopup } from '../hooks/use-welcome-popup';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -20,11 +21,19 @@ export default function SettingsPage() {
   const { toast } = useToast();
   const navigate = useNavigate();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const { markEssentialStepCompleted } = useWelcomePopup();
 
   // Set page title and description
   useEffect(() => {
     setPageTitle('Settings', 'Configure your application preferences and branding');
   }, [setPageTitle]);
+
+  // Mark organization setup step as completed when user visits settings page
+  useEffect(() => {
+    if (user?.role === 'ADMIN') {
+      markEssentialStepCompleted('setup-organization');
+    }
+  }, [user?.role, markEssentialStepCompleted]);
   
   const [themeForm, setThemeForm] = useState({
     brandName: theme.brandName,
@@ -326,28 +335,33 @@ export default function SettingsPage() {
 
         <Tabs defaultValue="branding" className="space-y-6">
           {/* Enhanced Sticky Tabs */}
-          <div className="sticky top-20 z-30 bg-white border-b border-gray-200 -mx-6 px-4 sm:px-6 py-3 shadow-sm mb-6">
+          <div className="sticky top-20 z-30 bg-gradient-to-br from-orange-500 via-orange-600 to-orange-700 border-b-2 border-orange-400 -mx-6 px-4 py-3 shadow-2xl rounded-b-xl mb-6">
             <div className="overflow-x-auto">
-              <TabsList className="grid w-full grid-cols-3 min-w-max bg-gray-100">
-                <TabsTrigger 
-                  value="branding" 
-                  className="text-xs sm:text-sm px-3 sm:px-6 py-2 data-[state=active]:bg-white data-[state=active]:shadow-sm transition-all duration-200"
-                >
-                  Branding
-                </TabsTrigger>
-                <TabsTrigger 
-                  value="organization" 
-                  className="text-xs sm:text-sm px-3 sm:px-6 py-2 data-[state=active]:bg-white data-[state=active]:shadow-sm transition-all duration-200"
-                >
-                  Organization
-                </TabsTrigger>
-                <TabsTrigger 
-                  value="integrations" 
-                  className="text-xs sm:text-sm px-3 sm:px-6 py-2 data-[state=active]:bg-white data-[state=active]:shadow-sm transition-all duration-200"
-                >
-                  Integrations
-                </TabsTrigger>
-              </TabsList>
+              <div className="bg-white/10 backdrop-blur-sm rounded-lg p-1 border border-white/20 shadow-inner">
+                <TabsList className="grid w-full grid-cols-3 min-w-max bg-transparent h-auto p-0 gap-2">
+                  <TabsTrigger 
+                    value="branding" 
+                    className="text-xs sm:text-sm px-4 sm:px-8 py-4 data-[state=active]:bg-white data-[state=active]:text-orange-600 data-[state=active]:shadow-xl data-[state=active]:border-2 data-[state=active]:border-orange-300 data-[state=inactive]:text-white data-[state=inactive]:bg-gradient-to-r data-[state=inactive]:from-orange-500/30 data-[state=inactive]:to-orange-600/30 data-[state=inactive]:hover:from-orange-500/50 data-[state=inactive]:hover:to-orange-600/50 data-[state=inactive]:hover:shadow-lg data-[state=inactive]:border data-[state=inactive]:border-white/30 transition-all duration-500 flex items-center gap-2 rounded-xl font-semibold relative overflow-hidden group"
+                  >
+                    <div className="absolute inset-0 bg-gradient-to-r from-white/0 via-white/10 to-white/0 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700"></div>
+                    <span className="relative z-10">Branding</span>
+                  </TabsTrigger>
+                  <TabsTrigger 
+                    value="organization" 
+                    className="text-xs sm:text-sm px-4 sm:px-8 py-4 data-[state=active]:bg-white data-[state=active]:text-orange-600 data-[state=active]:shadow-xl data-[state=active]:border-2 data-[state=active]:border-orange-300 data-[state=inactive]:text-white data-[state=inactive]:bg-gradient-to-r data-[state=inactive]:from-orange-500/30 data-[state=inactive]:to-orange-600/30 data-[state=inactive]:hover:from-orange-500/50 data-[state=inactive]:hover:to-orange-600/50 data-[state=inactive]:hover:shadow-lg data-[state=inactive]:border data-[state=inactive]:border-white/30 transition-all duration-500 flex items-center gap-2 rounded-xl font-semibold relative overflow-hidden group"
+                  >
+                    <div className="absolute inset-0 bg-gradient-to-r from-white/0 via-white/10 to-white/0 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700"></div>
+                    <span className="relative z-10">Organization</span>
+                  </TabsTrigger>
+                  <TabsTrigger 
+                    value="integrations" 
+                    className="text-xs sm:text-sm px-4 sm:px-8 py-4 data-[state=active]:bg-white data-[state=active]:text-orange-600 data-[state=active]:shadow-xl data-[state=active]:border-2 data-[state=active]:border-orange-300 data-[state=inactive]:text-white data-[state=inactive]:bg-gradient-to-r data-[state=inactive]:from-orange-500/30 data-[state=inactive]:to-orange-600/30 data-[state=inactive]:hover:from-orange-500/50 data-[state=inactive]:hover:to-orange-600/50 data-[state=inactive]:hover:shadow-lg data-[state=inactive]:border data-[state=inactive]:border-white/30 transition-all duration-500 flex items-center gap-2 rounded-xl font-semibold relative overflow-hidden group"
+                  >
+                    <div className="absolute inset-0 bg-gradient-to-r from-white/0 via-white/10 to-white/0 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700"></div>
+                    <span className="relative z-10">Integrations</span>
+                  </TabsTrigger>
+                </TabsList>
+              </div>
             </div>
           </div>
 

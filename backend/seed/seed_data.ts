@@ -9,24 +9,44 @@ export interface SeedDataResponse {
 }
 
 // Seeds the database with demo data
-export const seedData = api<SeedDataResponse, void>(
+export const seedData = api(
   { expose: true, method: "POST", path: "/seed/data" },
   async () => {
     const tx = await seedDB.begin();
     try {
       log.info("Starting database seeding...");
 
-      // Get the default organization (should already exist from migration)
-      const orgRow = await tx.queryRow`
+      // Get or create the default organization
+      let orgRow = await tx.queryRow`
         SELECT id FROM organizations WHERE subdomain_prefix = 'example'
       `;
 
+      let orgId: number;
       if (!orgRow) {
-        throw new Error("Default organization not found. Please run migrations first.");
+        log.info("Creating default organization...");
+        const themeJson = JSON.stringify({
+          primaryColor: "#3b82f6",
+          brandName: "Example Company",
+          secondaryColor: "#64748b",
+          accentColor: "#10b981",
+          backgroundColor: "#ffffff",
+          textColor: "#1f2937",
+          currency: "USD",
+          dateFormat: "MM/DD/YYYY",
+          timeFormat: "12h"
+        });
+        
+        orgRow = await tx.queryRow`
+          INSERT INTO organizations (name, subdomain_prefix, theme_json)
+          VALUES ('Example Company', 'example', ${themeJson})
+          RETURNING id
+        `;
+        orgId = orgRow.id;
+        log.info(`Created organization with ID: ${orgId}`);
+      } else {
+        orgId = orgRow.id;
+        log.info(`Using existing organization with ID: ${orgId}`);
       }
-
-      const orgId = orgRow.id;
-      log.info(`Using organization with ID: ${orgId}`);
 
       // Check if admin user already exists
       const existingAdmin = await tx.queryRow`

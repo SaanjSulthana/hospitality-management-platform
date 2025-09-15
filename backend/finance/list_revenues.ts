@@ -19,10 +19,7 @@ export interface RevenueInfo {
   currency: string;
   description?: string;
   receiptUrl?: string;
-  receiptFileId?: number;
   occurredAt: Date;
-  paymentMode: string;
-  bankReference?: string;
   status: string;
   createdByUserId: number;
   createdByName: string;
@@ -52,16 +49,20 @@ export const listRevenues = api<ListRevenuesRequest, ListRevenuesResponse>(
     try {
       console.log('List revenues request:', { propertyId, source, startDate, endDate, orgId: authData.orgId });
       let query = `
-        SELECT 
+        SELECT
           r.id, r.property_id, p.name as property_name, r.source, r.amount_cents, r.currency,
-          r.description, r.receipt_url, r.receipt_file_id, r.occurred_at, r.payment_mode, r.bank_reference,
-          r.status, r.created_by_user_id, r.approved_by_user_id, r.approved_at, r.created_at,
+          r.description, r.receipt_url, r.receipt_file_id, r.occurred_at,
+          r.payment_mode,
+          r.bank_reference,
+          COALESCE(r.status, 'pending') as status, r.created_by_user_id, r.created_at,
           u.display_name as created_by_name,
-          au.display_name as approved_by_name
+          r.approved_by_user_id,
+          approver.display_name as approved_by_name,
+          r.approved_at
         FROM revenues r
         JOIN properties p ON r.property_id = p.id AND p.org_id = $1
         JOIN users u ON r.created_by_user_id = u.id AND u.org_id = $1
-        LEFT JOIN users au ON r.approved_by_user_id = au.id AND au.org_id = $1
+        LEFT JOIN users approver ON r.approved_by_user_id = approver.id AND approver.org_id = $1
         WHERE r.org_id = $1
       `;
       const params: any[] = [authData.orgId];
@@ -90,16 +91,20 @@ export const listRevenues = api<ListRevenuesRequest, ListRevenuesResponse>(
       }
 
       if (startDate) {
-        // Start of day: 00:00:00
+        // Start of day: 00:00:00 in local timezone
+        const [year, month, day] = startDate.split('-').map(Number);
+        const startOfDay = new Date(year, month - 1, day, 0, 0, 0, 0);
         query += ` AND r.occurred_at >= $${paramIndex}`;
-        params.push(new Date(`${startDate}T00:00:00.000Z`));
+        params.push(startOfDay);
         paramIndex++;
       }
 
       if (endDate) {
-        // End of day: 23:59:59.999
+        // End of day: 23:59:59.999 in local timezone
+        const [year, month, day] = endDate.split('-').map(Number);
+        const endOfDay = new Date(year, month - 1, day, 23, 59, 59, 999);
         query += ` AND r.occurred_at <= $${paramIndex}`;
-        params.push(new Date(`${endDate}T23:59:59.999Z`));
+        params.push(endOfDay);
         paramIndex++;
       }
 

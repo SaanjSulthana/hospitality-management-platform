@@ -5,6 +5,8 @@ export default new Service("tasks");
 // Export all task endpoints
 export { create } from "./create";
 export { list } from "./list";
+export { update } from "./update";
+export { deleteTask } from "./delete";
 export { assign } from "./assign";
 export { updateStatus } from "./update_status";
 export { updateHours } from "./update_hours";

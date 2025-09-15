@@ -76,8 +76,13 @@ export default function FinancePage() {
     receiptUrl?: string;
     receiptFileId?: number;
     date: Date;
+    createdAt?: Date;
     createdByName: string;
     status?: string;
+    paymentMode?: string;
+    bankReference?: string;
+    approvedByName?: string;
+    approvedAt?: Date;
   } | null>(null);
   const [selectedPropertyId, setSelectedPropertyId] = useState<string>('all');
   const [dateRange, setDateRange] = useState({
@@ -184,11 +189,24 @@ export default function FinancePage() {
         endDate: dateRange.endDate
       });
       const backend = getAuthenticatedBackend();
-      return backend.finance.listExpenses({
+      const result = await backend.finance.listExpenses({
         propertyId: selectedPropertyId && selectedPropertyId !== 'all' ? parseInt(selectedPropertyId) : undefined,
         startDate: dateRange.startDate || undefined,
         endDate: dateRange.endDate || undefined,
       });
+      
+      // Debug logging for approval information
+      if (result?.expenses) {
+        console.log('Expenses with approval info:', result.expenses.map(expense => ({
+          id: expense.id,
+          status: expense.status,
+          approvedByName: expense.approvedByName,
+          approvedAt: expense.approvedAt,
+          createdByName: expense.createdByName
+        })));
+      }
+      
+      return result;
     },
     refetchInterval: 3000, // Refresh every 3 seconds for real-time updates (increased frequency)
     staleTime: 0, // Consider data immediately stale
@@ -212,11 +230,24 @@ export default function FinancePage() {
       });
       
       const backend = getAuthenticatedBackend();
-      return backend.finance.listRevenues({
+      const result = await backend.finance.listRevenues({
         propertyId: selectedPropertyId && selectedPropertyId !== 'all' ? parseInt(selectedPropertyId) : undefined,
         startDate: dateRange.startDate || undefined,
         endDate: dateRange.endDate || undefined,
       });
+      
+      // Debug logging for approval information
+      if (result?.revenues) {
+        console.log('Revenues with approval info:', result.revenues.map(revenue => ({
+          id: revenue.id,
+          status: revenue.status,
+          approvedByName: revenue.approvedByName,
+          approvedAt: revenue.approvedAt,
+          createdByName: revenue.createdByName
+        })));
+      }
+      
+      return result;
     },
     refetchInterval: 3000, // Refresh every 3 seconds for real-time updates (increased frequency)
     staleTime: 0, // Consider data immediately stale
@@ -287,10 +318,41 @@ export default function FinancePage() {
         amountCents: parseInt(data.amountCents),
         receiptFileId: data.receiptFile?.fileId || undefined,
         expenseDate: formatDateForAPI(data.expenseDate),
+        paymentMode: data.paymentMode || 'cash',
+        bankReference: data.bankReference || undefined,
       });
       
       console.log('Add expense result:', result);
       return result;
+    },
+    onMutate: async (newExpense) => {
+      // Cancel any outgoing refetches
+      await queryClient.cancelQueries({ queryKey: ['expenses'] });
+      
+      // Snapshot the previous value
+      const previousExpenses = queryClient.getQueryData(['expenses']);
+      
+      // Optimistically update the cache
+      queryClient.setQueryData(['expenses'], (old: any) => {
+        if (!old?.expenses) return old;
+        
+        const optimisticExpense = {
+          id: Date.now(), // Temporary ID
+          ...newExpense,
+          amountCents: parseInt(newExpense.amountCents),
+          propertyId: parseInt(newExpense.propertyId),
+          status: 'pending',
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        };
+        
+        return {
+          ...old,
+          expenses: [optimisticExpense, ...old.expenses]
+        };
+      });
+      
+      return { previousExpenses };
     },
     onSuccess: () => {
       console.log('Expense added successfully');
@@ -328,7 +390,12 @@ export default function FinancePage() {
         description: "The expense has been recorded successfully.",
       });
     },
-    onError: (error: any) => {
+    onError: (error: any, newExpense, context) => {
+      // Rollback on error
+      if (context?.previousExpenses) {
+        queryClient.setQueryData(['expenses'], context.previousExpenses);
+      }
+      
       console.error('Add expense error:', error);
       
       // Check if this is an authentication error
@@ -368,10 +435,41 @@ export default function FinancePage() {
         amountCents: parseInt(data.amountCents),
         receiptFileId: data.receiptFile?.fileId || undefined,
         occurredAt: formatDateForAPI(data.occurredAt),
+        paymentMode: data.paymentMode || 'cash',
+        bankReference: data.bankReference || undefined,
       });
       
       console.log('Add revenue result:', result);
       return result;
+    },
+    onMutate: async (newRevenue) => {
+      // Cancel any outgoing refetches
+      await queryClient.cancelQueries({ queryKey: ['revenues'] });
+      
+      // Snapshot the previous value
+      const previousRevenues = queryClient.getQueryData(['revenues']);
+      
+      // Optimistically update the cache
+      queryClient.setQueryData(['revenues'], (old: any) => {
+        if (!old?.revenues) return old;
+        
+        const optimisticRevenue = {
+          id: Date.now(), // Temporary ID
+          ...newRevenue,
+          amountCents: parseInt(newRevenue.amountCents),
+          propertyId: parseInt(newRevenue.propertyId),
+          status: 'approved',
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        };
+        
+        return {
+          ...old,
+          revenues: [optimisticRevenue, ...old.revenues]
+        };
+      });
+      
+      return { previousRevenues };
     },
     onSuccess: () => {
       console.log('Revenue added successfully');
@@ -409,7 +507,12 @@ export default function FinancePage() {
         description: "The revenue has been recorded successfully.",
       });
     },
-    onError: (error: any) => {
+    onError: (error: any, newRevenue, context) => {
+      // Rollback on error
+      if (context?.previousRevenues) {
+        queryClient.setQueryData(['revenues'], context.previousRevenues);
+      }
+      
       console.error('Add revenue error:', error);
       toast({
         variant: "destructive",
@@ -438,6 +541,29 @@ export default function FinancePage() {
       
       return response.json();
     },
+    onMutate: async ({ id, approved }) => {
+      // Cancel any outgoing refetches
+      await queryClient.cancelQueries({ queryKey: ['expenses'] });
+      
+      // Snapshot the previous value
+      const previousExpenses = queryClient.getQueryData(['expenses']);
+      
+      // Optimistically update the cache
+      queryClient.setQueryData(['expenses'], (old: any) => {
+        if (!old?.expenses) return old;
+        
+        return {
+          ...old,
+          expenses: old.expenses.map((expense: any) => 
+            expense.id === id 
+              ? { ...expense, status: approved ? 'approved' : 'rejected' }
+              : expense
+          )
+        };
+      });
+      
+      return { previousExpenses };
+    },
     onSuccess: () => {
       console.log('Expense approval successful');
       
@@ -461,7 +587,12 @@ export default function FinancePage() {
         description: "The expense status has been updated.",
       });
     },
-    onError: (error: any) => {
+    onError: (error: any, { id, approved }, context) => {
+      // Rollback on error
+      if (context?.previousExpenses) {
+        queryClient.setQueryData(['expenses'], context.previousExpenses);
+      }
+      
       console.error('Approve expense error:', error);
       toast({
         variant: "destructive",
@@ -490,6 +621,29 @@ export default function FinancePage() {
       
       return response.json();
     },
+    onMutate: async ({ id, approved }) => {
+      // Cancel any outgoing refetches
+      await queryClient.cancelQueries({ queryKey: ['revenues'] });
+      
+      // Snapshot the previous value
+      const previousRevenues = queryClient.getQueryData(['revenues']);
+      
+      // Optimistically update the cache
+      queryClient.setQueryData(['revenues'], (old: any) => {
+        if (!old?.revenues) return old;
+        
+        return {
+          ...old,
+          revenues: old.revenues.map((revenue: any) => 
+            revenue.id === id 
+              ? { ...revenue, status: approved ? 'approved' : 'rejected' }
+              : revenue
+          )
+        };
+      });
+      
+      return { previousRevenues };
+    },
     onSuccess: () => {
       console.log('Revenue approval successful');
       
@@ -513,7 +667,12 @@ export default function FinancePage() {
         description: "The revenue status has been updated.",
       });
     },
-    onError: (error: any) => {
+    onError: (error: any, { id, approved }, context) => {
+      // Rollback on error
+      if (context?.previousRevenues) {
+        queryClient.setQueryData(['revenues'], context.previousRevenues);
+      }
+      
       console.error('Approve revenue error:', error);
       toast({
         variant: "destructive",
@@ -537,6 +696,8 @@ export default function FinancePage() {
           amountCents: parseInt(data.amountCents),
           receiptFileId: data.receiptFile?.fileId || undefined,
           expenseDate: formatDateForAPI(data.expenseDate),
+          paymentMode: data.paymentMode || 'cash',
+          bankReference: data.bankReference || undefined,
         }),
       });
       
@@ -585,6 +746,8 @@ export default function FinancePage() {
           amountCents: parseInt(data.amountCents),
           receiptFileId: data.receiptFile?.fileId || undefined,
           occurredAt: formatDateForAPI(data.occurredAt),
+          paymentMode: data.paymentMode || 'cash',
+          bankReference: data.bankReference || undefined,
         }),
       });
       
@@ -621,19 +784,18 @@ export default function FinancePage() {
 
   const deleteExpenseMutation = useMutation({
     mutationFn: async (id: number) => {
-      const response = await fetch(`${API_CONFIG.BASE_URL}/finance/expenses/${id}`, {
-        method: 'DELETE',
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('accessToken')}`,
-        },
-      });
-      
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.message || `Failed to delete expense: ${response.statusText}`);
+      const backend = getAuthenticatedBackend();
+      if (!backend) {
+        throw new Error('Not authenticated');
       }
       
-      return response.json();
+      try {
+        const response = await backend.finance.deleteExpense(id);
+        return response;
+      } catch (error: any) {
+        console.error('Delete expense error:', error);
+        throw new Error(error.message || 'Failed to delete expense');
+      }
     },
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['expenses'] });
@@ -659,19 +821,18 @@ export default function FinancePage() {
 
   const deleteRevenueMutation = useMutation({
     mutationFn: async (id: number) => {
-      const response = await fetch(`${API_CONFIG.BASE_URL}/finance/revenues/${id}`, {
-        method: 'DELETE',
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('accessToken')}`,
-        },
-      });
-      
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.message || `Failed to delete revenue: ${response.statusText}`);
+      const backend = getAuthenticatedBackend();
+      if (!backend) {
+        throw new Error('Not authenticated');
       }
       
-      return response.json();
+      try {
+        const response = await backend.finance.deleteRevenue(id);
+        return response;
+      } catch (error: any) {
+        console.error('Delete revenue error:', error);
+        throw new Error(error.message || 'Failed to delete revenue');
+      }
     },
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['revenues'] });
@@ -1730,7 +1891,12 @@ export default function FinancePage() {
 
       {/* Daily Approval Manager (Admin Only) */}
       {user?.role === 'ADMIN' && (
-        <DailyApprovalManager />
+        <DailyApprovalManager 
+          className="mt-6" 
+          propertyId={selectedPropertyId}
+          startDate={dateRange.startDate}
+          endDate={dateRange.endDate}
+        />
       )}
 
         {/* Enhanced Financial Overview */}
@@ -1919,22 +2085,26 @@ export default function FinancePage() {
 
         {/* Enhanced Transactions Tabs */}
         <Tabs defaultValue="expenses" className="space-y-0">
-          <div className="sticky top-20 z-30 bg-white border-b border-gray-200 -mx-6 px-4 sm:px-6 py-3 shadow-sm">
+          <div className="sticky top-20 z-30 bg-gradient-to-br from-orange-500 via-orange-600 to-orange-700 border-b-2 border-orange-400 -mx-6 px-4 py-3 shadow-2xl rounded-b-xl">
             <div className="overflow-x-auto">
-              <TabsList className="grid w-full grid-cols-2 min-w-max bg-gray-100">
-                <TabsTrigger 
-                  value="expenses" 
-                  className="text-xs sm:text-sm px-3 sm:px-6 py-2 data-[state=active]:bg-white data-[state=active]:shadow-sm transition-all duration-200"
-                >
-                  Expenses
-                </TabsTrigger>
-                <TabsTrigger 
-                  value="revenues" 
-                  className="text-xs sm:text-sm px-3 sm:px-6 py-2 data-[state=active]:bg-white data-[state=active]:shadow-sm transition-all duration-200"
-                >
-                  Revenues
-                </TabsTrigger>
-              </TabsList>
+              <div className="bg-white/10 backdrop-blur-sm rounded-lg p-1 border border-white/20 shadow-inner">
+                <TabsList className="grid w-full grid-cols-2 min-w-max bg-transparent h-auto p-0 gap-2">
+                  <TabsTrigger 
+                    value="expenses" 
+                    className="text-xs sm:text-sm px-4 sm:px-8 py-4 data-[state=active]:bg-white data-[state=active]:text-orange-600 data-[state=active]:shadow-xl data-[state=active]:border-2 data-[state=active]:border-orange-300 data-[state=inactive]:text-white data-[state=inactive]:bg-gradient-to-r data-[state=inactive]:from-orange-500/30 data-[state=inactive]:to-orange-600/30 data-[state=inactive]:hover:from-orange-500/50 data-[state=inactive]:hover:to-orange-600/50 data-[state=inactive]:hover:shadow-lg data-[state=inactive]:border data-[state=inactive]:border-white/30 transition-all duration-500 flex items-center gap-2 rounded-xl font-semibold relative overflow-hidden group"
+                  >
+                    <div className="absolute inset-0 bg-gradient-to-r from-white/0 via-white/10 to-white/0 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700"></div>
+                    <span className="relative z-10">Expenses</span>
+                  </TabsTrigger>
+                  <TabsTrigger 
+                    value="revenues" 
+                    className="text-xs sm:text-sm px-4 sm:px-8 py-4 data-[state=active]:bg-white data-[state=active]:text-orange-600 data-[state=active]:shadow-xl data-[state=active]:border-2 data-[state=active]:border-orange-300 data-[state=inactive]:text-white data-[state=inactive]:bg-gradient-to-r data-[state=inactive]:from-orange-500/30 data-[state=inactive]:to-orange-600/30 data-[state=inactive]:hover:from-orange-500/50 data-[state=inactive]:hover:to-orange-600/50 data-[state=inactive]:hover:shadow-lg data-[state=inactive]:border data-[state=inactive]:border-white/30 transition-all duration-500 flex items-center gap-2 rounded-xl font-semibold relative overflow-hidden group"
+                  >
+                    <div className="absolute inset-0 bg-gradient-to-r from-white/0 via-white/10 to-white/0 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700"></div>
+                    <span className="relative z-10">Revenues</span>
+                  </TabsTrigger>
+                </TabsList>
+              </div>
             </div>
           </div>
 
@@ -2032,8 +2202,13 @@ export default function FinancePage() {
                                         receiptUrl: expense.receiptUrl,
                                         receiptFileId: expense.receiptFileId,
                                         date: expense.expenseDate,
+                                        createdAt: expense.createdAt,
                                         createdByName: expense.createdByName,
                                         status: expense.status,
+                                        paymentMode: expense.paymentMode,
+                                        bankReference: expense.bankReference,
+                                        approvedByName: expense.approvedByName,
+                                        approvedAt: expense.approvedAt,
                                       })}
                                     >
                                       <Eye className="h-3 w-3 mr-1" />
@@ -2198,7 +2373,13 @@ export default function FinancePage() {
                                 receiptUrl: revenue.receiptUrl,
                                 receiptFileId: revenue.receiptFileId,
                                 date: revenue.occurredAt,
+                                createdAt: revenue.createdAt,
                                 createdByName: revenue.createdByName,
+                                status: revenue.status,
+                                paymentMode: revenue.paymentMode,
+                                bankReference: revenue.bankReference,
+                                approvedByName: revenue.approvedByName,
+                                approvedAt: revenue.approvedAt,
                               })}
                             >
                               <Eye className="h-3 w-3 mr-1" />

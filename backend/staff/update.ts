@@ -5,47 +5,30 @@ import { staffDB } from "./db";
 
 export interface UpdateStaffRequest {
   id: number;
-  propertyId?: number;
-  department?: 'frontdesk' | 'housekeeping' | 'maintenance' | 'fnb' | 'admin';
-  hourlyRateCents?: number;
-  performanceRating?: number;
-  hireDate?: Date;
+  propertyId?: string;
+  department?: string;
+  hourlyRateCents?: string;
+  performanceRating?: string;
+  hireDate?: string;
   notes?: string;
-  status?: 'active' | 'inactive';
-  // Enhanced fields
-  salaryType?: 'hourly' | 'monthly' | 'daily';
-  baseSalaryCents?: number;
-  overtimeRateCents?: number;
+  status?: string;
+  salaryType?: string;
+  baseSalaryCents?: string;
+  overtimeRateCents?: string;
   attendanceTrackingEnabled?: boolean;
-  maxOvertimeHours?: number;
-  leaveBalance?: number;
+  maxOvertimeHours?: string;
+  leaveBalance?: string;
 }
 
 export interface UpdateStaffResponse {
   id: number;
-  userId: number;
-  userName: string;
-  userEmail: string;
-  propertyId?: number;
-  propertyName?: string;
-  department: string;
-  hourlyRateCents: number;
-  performanceRating: number;
-  hireDate?: Date;
-  notes?: string;
-  status: string;
-  // Enhanced fields
-  salaryType: string;
-  baseSalaryCents: number;
-  overtimeRateCents: number;
-  attendanceTrackingEnabled: boolean;
-  maxOvertimeHours: number;
-  leaveBalance: number;
+  success: boolean;
+  message: string;
 }
 
 // Updates an existing staff record with enhanced fields
 export const update = api<UpdateStaffRequest, UpdateStaffResponse>(
-  { auth: true, expose: true, method: "PUT", path: "/staff/:id" },
+  { auth: true, expose: true, method: "PUT", path: "/staff/update" },
   async (req) => {
     const authData = getAuthData();
     if (!authData) {
@@ -58,62 +41,39 @@ export const update = api<UpdateStaffRequest, UpdateStaffResponse>(
       propertyId, 
       department, 
       hourlyRateCents, 
-      performanceRating,
+      performanceRating, 
       hireDate, 
       notes, 
-      status,
-      salaryType,
-      baseSalaryCents,
-      overtimeRateCents,
-      attendanceTrackingEnabled,
-      maxOvertimeHours,
-      leaveBalance
+      status, 
+      salaryType, 
+      baseSalaryCents, 
+      overtimeRateCents, 
+      attendanceTrackingEnabled, 
+      maxOvertimeHours, 
+      leaveBalance 
     } = req;
 
-    const tx = await staffDB.begin();
     try {
-      // Verify staff record exists and belongs to organization
-      const existingStaff = await tx.queryRow`
-        SELECT s.id, s.user_id, s.property_id, s.department, s.hourly_rate_cents,
-               s.performance_rating, s.hire_date, s.notes, s.status,
-               s.salary_type, s.base_salary_cents, s.overtime_rate_cents,
-               s.attendance_tracking_enabled, s.max_overtime_hours, s.leave_balance,
-               u.display_name, u.email
-        FROM staff s
-        JOIN users u ON s.user_id = u.id
-        WHERE s.id = ${id} AND s.org_id = ${authData.orgId}
+      console.log(`Update staff: ID=${id}, Department=${department}, OrgId=${authData.orgId}`);
+      
+      // Check if staff exists
+      const existingStaff = await staffDB.queryRow`
+        SELECT id FROM staff WHERE id = ${id} AND org_id = ${authData.orgId}
       `;
 
       if (!existingStaff) {
         throw APIError.notFound("Staff record not found");
       }
 
-      // Validate property if provided
-      let propertyName: string | undefined;
-      if (propertyId !== undefined) {
-        if (propertyId === null) {
-          propertyName = undefined;
-        } else {
-          const propertyRow = await tx.queryRow`
-            SELECT id, name FROM properties 
-            WHERE id = ${propertyId} AND org_id = ${authData.orgId}
-          `;
-
-          if (!propertyRow) {
-            throw APIError.notFound("Property not found");
-          }
-          propertyName = propertyRow.name;
-        }
-      }
-
       // Build dynamic update query
-      const updateFields: string[] = [];
-      const updateValues: any[] = [];
+      const updateFields = [];
+      const updateValues = [];
       let paramIndex = 1;
 
       if (propertyId !== undefined) {
+        const propId = propertyId === 'none' ? null : parseInt(propertyId);
         updateFields.push(`property_id = $${paramIndex}`);
-        updateValues.push(propertyId);
+        updateValues.push(propId);
         paramIndex++;
       }
 
@@ -125,19 +85,19 @@ export const update = api<UpdateStaffRequest, UpdateStaffResponse>(
 
       if (hourlyRateCents !== undefined) {
         updateFields.push(`hourly_rate_cents = $${paramIndex}`);
-        updateValues.push(hourlyRateCents);
+        updateValues.push(parseInt(hourlyRateCents) || 0);
         paramIndex++;
       }
 
       if (performanceRating !== undefined) {
         updateFields.push(`performance_rating = $${paramIndex}`);
-        updateValues.push(performanceRating);
+        updateValues.push(parseFloat(performanceRating) || 0);
         paramIndex++;
       }
 
       if (hireDate !== undefined) {
         updateFields.push(`hire_date = $${paramIndex}`);
-        updateValues.push(hireDate);
+        updateValues.push(hireDate ? new Date(hireDate) : null);
         paramIndex++;
       }
 
@@ -153,7 +113,6 @@ export const update = api<UpdateStaffRequest, UpdateStaffResponse>(
         paramIndex++;
       }
 
-      // Enhanced fields
       if (salaryType !== undefined) {
         updateFields.push(`salary_type = $${paramIndex}`);
         updateValues.push(salaryType);
@@ -162,13 +121,13 @@ export const update = api<UpdateStaffRequest, UpdateStaffResponse>(
 
       if (baseSalaryCents !== undefined) {
         updateFields.push(`base_salary_cents = $${paramIndex}`);
-        updateValues.push(baseSalaryCents);
+        updateValues.push(parseInt(baseSalaryCents) || 0);
         paramIndex++;
       }
 
       if (overtimeRateCents !== undefined) {
         updateFields.push(`overtime_rate_cents = $${paramIndex}`);
-        updateValues.push(overtimeRateCents);
+        updateValues.push(parseInt(overtimeRateCents) || 0);
         paramIndex++;
       }
 
@@ -180,71 +139,48 @@ export const update = api<UpdateStaffRequest, UpdateStaffResponse>(
 
       if (maxOvertimeHours !== undefined) {
         updateFields.push(`max_overtime_hours = $${paramIndex}`);
-        updateValues.push(maxOvertimeHours);
+        updateValues.push(parseFloat(maxOvertimeHours) || 0);
         paramIndex++;
       }
 
       if (leaveBalance !== undefined) {
         updateFields.push(`leave_balance = $${paramIndex}`);
-        updateValues.push(leaveBalance);
+        updateValues.push(parseInt(leaveBalance) || 0);
         paramIndex++;
-      }
-
-      if (updateFields.length === 0) {
-        throw APIError.invalidArgument("No fields to update");
       }
 
       // Add updated_at timestamp
       updateFields.push(`updated_at = NOW()`);
-      updateValues.push(id);
+
+      if (updateFields.length === 1) { // Only updated_at
+        throw APIError.invalidArgument("No fields to update");
+      }
 
       // Execute update
       const updateQuery = `
         UPDATE staff 
-        SET ${updateFields.join(', ')}
-        WHERE id = $${paramIndex} AND org_id = ${authData.orgId}
-        RETURNING id, user_id, property_id, department, hourly_rate_cents,
-                  performance_rating, hire_date, notes, status,
-                  salary_type, base_salary_cents, overtime_rate_cents,
-                  attendance_tracking_enabled, max_overtime_hours, leave_balance
+        SET ${updateFields.join(', ')} 
+        WHERE id = $${paramIndex + 1} AND org_id = $${paramIndex + 2}
       `;
+      
+      updateValues.push(id, authData.orgId);
+      
+      await staffDB.exec(updateQuery as any, updateValues);
 
-      const updatedStaff = await tx.rawQueryRow(updateQuery, ...updateValues);
-
-      if (!updatedStaff) {
-        throw APIError.notFound("Staff record not found or could not be updated");
-      }
-
-      await tx.commit();
+      console.log(`Successfully updated staff record ${id}`);
 
       return {
-        id: updatedStaff.id,
-        userId: updatedStaff.user_id,
-        userName: existingStaff.display_name,
-        userEmail: existingStaff.email,
-        propertyId: updatedStaff.property_id,
-        propertyName,
-        department: updatedStaff.department,
-        hourlyRateCents: parseInt(updatedStaff.hourly_rate_cents) || 0,
-        performanceRating: parseFloat(updatedStaff.performance_rating) || 0,
-        hireDate: updatedStaff.hire_date,
-        notes: updatedStaff.notes,
-        status: updatedStaff.status,
-        // Enhanced fields
-        salaryType: updatedStaff.salary_type || 'hourly',
-        baseSalaryCents: parseInt(updatedStaff.base_salary_cents) || 0,
-        overtimeRateCents: parseInt(updatedStaff.overtime_rate_cents) || 0,
-        attendanceTrackingEnabled: updatedStaff.attendance_tracking_enabled || false,
-        maxOvertimeHours: parseFloat(updatedStaff.max_overtime_hours) || 0,
-        leaveBalance: parseInt(updatedStaff.leave_balance) || 0,
+        id: id,
+        success: true,
+        message: "Staff member updated successfully"
       };
     } catch (error) {
-      await tx.rollback();
       console.error('Update staff error:', error);
       if (error instanceof APIError) {
         throw error;
       }
-      throw APIError.internal("Failed to update staff record");
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      throw APIError.internal(`Failed to update staff: ${errorMessage}`);
     }
   }
 );

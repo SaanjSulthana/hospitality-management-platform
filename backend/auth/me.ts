@@ -17,10 +17,38 @@ export const me = api<{}, MeResponse>(
       throw APIError.unauthenticated("Authentication required");
     }
     
-    const permissions = getPermissionsForRole(authData.role);
+    // Fetch fresh user data from database instead of using JWT token data
+    const userRow = await authDB.queryRow`
+      SELECT id, org_id, email, role, display_name, created_by_user_id
+      FROM users
+      WHERE id = ${parseInt(authData.userID)} AND org_id = ${authData.orgId}
+    `;
+    
+    if (!userRow) {
+      throw APIError.unauthenticated("User not found");
+    }
+    
+    console.log('Fresh user data from database:', {
+      id: userRow.id,
+      email: userRow.email,
+      displayName: userRow.display_name,
+      role: userRow.role
+    });
+    
+    // Create fresh AuthData from database
+    const freshUserData: AuthData = {
+      userID: userRow.id.toString(),
+      orgId: userRow.org_id,
+      email: userRow.email,
+      role: userRow.role as any,
+      displayName: userRow.display_name,
+      createdByUserId: userRow.created_by_user_id ?? undefined,
+    };
+    
+    const permissions = getPermissionsForRole(freshUserData.role);
     
     return {
-      user: authData,
+      user: freshUserData,
       permissions,
     };
   }

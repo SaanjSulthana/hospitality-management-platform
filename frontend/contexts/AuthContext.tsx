@@ -12,6 +12,7 @@ interface AuthContextType {
   isLoading: boolean;
   getAuthenticatedBackend: () => any;
   trackActivity: () => Promise<void>;
+  refreshUser: () => Promise<void>;
   showLogoutProgress: boolean;
   setShowLogoutProgress: (show: boolean) => void;
   setIsTestingLogoutDialog: (testing: boolean) => void;
@@ -710,6 +711,27 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
+  // Refresh current user data from backend
+  const refreshUser = async () => {
+    try {
+      console.log('🔄 Refreshing user data...');
+      const authenticatedBackend = getAuthenticatedBackend();
+      if (!authenticatedBackend) {
+        console.error('No authenticated backend available for user refresh');
+        return;
+      }
+      
+      console.log('📡 Calling /auth/me endpoint...');
+      const meResponse = await authenticatedBackend.auth.me();
+      console.log('📥 Received fresh user data:', meResponse.user);
+      setUser(meResponse.user);
+      console.log('✅ User data refreshed successfully in AuthContext');
+    } catch (error) {
+      console.error('❌ Failed to refresh user data:', error);
+      // Don't throw error as this is not critical for the main functionality
+    }
+  };
+
   return (
     <AuthContext.Provider value={{
       user,
@@ -719,6 +741,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       isLoading,
       getAuthenticatedBackend,
       trackActivity,
+      refreshUser,
       showLogoutProgress,
       setShowLogoutProgress,
     setIsTestingLogoutDialog,

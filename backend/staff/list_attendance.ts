@@ -88,7 +88,9 @@ export const listAttendance = api<ListAttendanceRequest, ListAttendanceResponse>
       let baseQuery = `
         SELECT 
           sa.id, sa.staff_id, sa.attendance_date, sa.check_in_time, 
-          sa.check_out_time, sa.total_hours, sa.overtime_hours, 
+          sa.check_out_time, 
+          COALESCE(CAST(sa.total_hours AS FLOAT), 0) as total_hours, 
+          COALESCE(CAST(sa.overtime_hours AS FLOAT), 0) as overtime_hours, 
           sa.status, sa.notes, sa.created_at, sa.updated_at,
           u.display_name as staff_name, u.email as staff_email,
           s.property_id, p.name as property_name
@@ -181,14 +183,14 @@ export const listAttendance = api<ListAttendanceRequest, ListAttendanceResponse>
       let summaryQuery = `
         SELECT 
           COUNT(*) as total_records,
-          COUNT(CASE WHEN status = 'present' THEN 1 END) as present_count,
-          COUNT(CASE WHEN status = 'absent' THEN 1 END) as absent_count,
-          COUNT(CASE WHEN status = 'late' THEN 1 END) as late_count,
-          COUNT(CASE WHEN status = 'half_day' THEN 1 END) as half_day_count,
-          COUNT(CASE WHEN status = 'leave' THEN 1 END) as leave_count,
-          COALESCE(SUM(total_hours), 0) as total_hours,
-          COALESCE(SUM(overtime_hours), 0) as total_overtime,
-          COALESCE(AVG(total_hours), 0) as average_hours
+          COUNT(CASE WHEN sa.status = 'present' THEN 1 END) as present_count,
+          COUNT(CASE WHEN sa.status = 'absent' THEN 1 END) as absent_count,
+          COUNT(CASE WHEN sa.status = 'late' THEN 1 END) as late_count,
+          COUNT(CASE WHEN sa.status = 'half_day' THEN 1 END) as half_day_count,
+          COUNT(CASE WHEN sa.status = 'leave' THEN 1 END) as leave_count,
+          COALESCE(SUM(COALESCE(CAST(sa.total_hours AS FLOAT), 0)), 0) as total_hours,
+          COALESCE(SUM(COALESCE(CAST(sa.overtime_hours AS FLOAT), 0)), 0) as total_overtime,
+          COALESCE(AVG(COALESCE(CAST(sa.total_hours AS FLOAT), 0)), 0) as average_hours
         FROM staff_attendance sa
         JOIN staff s ON sa.staff_id = s.id AND s.org_id = $1
         WHERE sa.org_id = $1

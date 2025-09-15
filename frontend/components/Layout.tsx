@@ -53,7 +53,7 @@ export default function Layout({ children }: LayoutProps) {
   const { toast } = useToast();
   const location = useLocation();
   const navigate = useNavigate();
-  const { showWelcomePopup, closeWelcomePopup, resetWelcomePopup, dashboardData, userData, isLoading: welcomeLoading } = useWelcomePopup();
+  const { showWelcomePopup, closeWelcomePopup, resetWelcomePopup, dashboardData, userData, onboardingSteps, markStepCompleted, isLoading: welcomeLoading } = useWelcomePopup();
 
   // Enhanced prop validation and logging (development only)
   useEffect(() => {
@@ -666,6 +666,8 @@ export default function Layout({ children }: LayoutProps) {
         onClose={closeWelcomePopup}
         userData={userData}
         dashboardData={dashboardData}
+        onboardingSteps={onboardingSteps}
+        markStepCompleted={markStepCompleted}
       />
     </div>
   );

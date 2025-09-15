@@ -17,7 +17,7 @@ import { NoDataCard } from '@/components/ui/no-data';
 import { useApiError } from '@/hooks/use-api-error';
 import { useTasksRealtime } from '@/hooks/use-realtime';
 import { useFormValidation, commonValidationRules } from '@/hooks/use-form-validation';
-import { CheckSquare, Clock, AlertCircle, Plus, Search, User, Calendar, Loader2, RefreshCw, Image, X, Eye } from 'lucide-react';
+import { CheckSquare, Clock, AlertCircle, Plus, Search, User, Calendar, Loader2, RefreshCw, Image, X, Eye, Edit, Trash2 } from 'lucide-react';
 import { TaskImageUpload } from '@/components/ui/task-image-upload';
 import { formatDueDateTimeTime } from '../lib/datetime';
 import { formatDateTimeForAPI, getCurrentDateTimeString } from '../lib/date-utils';
@@ -27,7 +27,7 @@ import { ERROR_MESSAGES } from '../src/config/api';
 import { useStandardQuery, useStandardMutation, QUERY_KEYS, STANDARD_QUERY_CONFIGS } from '../src/utils/api-standardizer';
 
 export default function TasksPage() {
-  const { getAuthenticatedBackend } = useAuth();
+  const { getAuthenticatedBackend, user } = useAuth();
   const { setPageTitle } = usePageTitle();
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -43,7 +43,20 @@ export default function TasksPage() {
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [priorityFilter, setPriorityFilter] = useState<string>('all');
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
+  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+  const [selectedTask, setSelectedTask] = useState<any>(null);
   const [taskForm, setTaskForm] = useState({
+    propertyId: '',
+    type: 'maintenance' as 'maintenance' | 'housekeeping' | 'service',
+    title: '',
+    description: '',
+    priority: 'med' as 'low' | 'med' | 'high',
+    dueAt: '',
+    estimatedHours: '',
+    assigneeStaffId: 'none' as string | 'none',
+  });
+  const [editForm, setEditForm] = useState({
     propertyId: '',
     type: 'maintenance' as 'maintenance' | 'housekeeping' | 'service',
     title: '',
@@ -105,6 +118,30 @@ export default function TasksPage() {
       invalidateQueries: [QUERY_KEYS.TASKS],
       successMessage: "Task status updated successfully",
       errorMessage: "Failed to update task status. Please try again.",
+      onMutate: async (variables) => {
+        await queryClient.cancelQueries({ queryKey: [QUERY_KEYS.TASKS] });
+        const previousTasks = queryClient.getQueryData([QUERY_KEYS.TASKS]);
+        
+        queryClient.setQueryData([QUERY_KEYS.TASKS], (old: any) => {
+          if (!old?.tasks) return old;
+          
+          return {
+            ...old,
+            tasks: old.tasks.map((task: any) => 
+              task.id === variables.id 
+                ? { ...task, status: variables.status }
+                : task
+            )
+          };
+        });
+        
+        return { previousTasks };
+      },
+      onError: (err, variables, context) => {
+        if (context?.previousTasks) {
+          queryClient.setQueryData([QUERY_KEYS.TASKS], context.previousTasks);
+        }
+      }
     }
   );
 
@@ -116,6 +153,87 @@ export default function TasksPage() {
       invalidateQueries: [QUERY_KEYS.TASKS],
       successMessage: "Task assignment updated successfully",
       errorMessage: "Failed to update task assignment. Please try again.",
+      onMutate: async (variables) => {
+        await queryClient.cancelQueries({ queryKey: [QUERY_KEYS.TASKS] });
+        const previousTasks = queryClient.getQueryData([QUERY_KEYS.TASKS]);
+        
+        queryClient.setQueryData([QUERY_KEYS.TASKS], (old: any) => {
+          if (!old?.tasks) return old;
+          
+          return {
+            ...old,
+            tasks: old.tasks.map((task: any) => 
+              task.id === variables.id 
+                ? { ...task, assigneeStaffId: variables.assigneeStaffId }
+                : task
+            )
+          };
+        });
+        
+        return { previousTasks };
+      },
+      onError: (err, variables, context) => {
+        if (context?.previousTasks) {
+          queryClient.setQueryData([QUERY_KEYS.TASKS], context.previousTasks);
+        }
+      }
+    }
+  );
+
+  // Update task mutation
+  const updateTaskMutation = useStandardMutation(
+    '/tasks/:id',
+    'PATCH',
+    {
+      invalidateQueries: [QUERY_KEYS.TASKS, QUERY_KEYS.DASHBOARD, QUERY_KEYS.ANALYTICS],
+      refetchQueries: [QUERY_KEYS.TASKS],
+      successMessage: "Task updated successfully",
+      errorMessage: "Failed to update task. Please try again.",
+      onMutate: async (variables) => {
+        // Cancel any outgoing refetches
+        await queryClient.cancelQueries({ queryKey: [QUERY_KEYS.TASKS] });
+        
+        // Snapshot the previous value
+        const previousTasks = queryClient.getQueryData([QUERY_KEYS.TASKS]);
+        
+        // Optimistically update the cache
+        queryClient.setQueryData([QUERY_KEYS.TASKS], (old: any) => {
+          if (!old?.tasks) return old;
+          
+          return {
+            ...old,
+            tasks: old.tasks.map((task: any) => 
+              task.id === variables.id 
+                ? { ...task, ...variables }
+                : task
+            )
+          };
+        });
+        
+        return { previousTasks };
+      },
+      onError: (err, variables, context) => {
+        // Rollback on error
+        if (context?.previousTasks) {
+          queryClient.setQueryData([QUERY_KEYS.TASKS], context.previousTasks);
+        }
+      },
+      onSuccess: () => {
+        // Force immediate refresh of tasks data
+        queryClient.invalidateQueries({ queryKey: [QUERY_KEYS.TASKS] });
+        queryClient.refetchQueries({ queryKey: [QUERY_KEYS.TASKS] });
+      }
+    }
+  );
+
+  // Delete task mutation
+  const deleteTaskMutation = useStandardMutation(
+    '/tasks/:id',
+    'DELETE',
+    {
+      invalidateQueries: [QUERY_KEYS.TASKS],
+      successMessage: "Task deleted successfully",
+      errorMessage: "Failed to delete task. Please try again.",
     }
   );
 
@@ -229,6 +347,62 @@ export default function TasksPage() {
     });
   };
 
+  const handleEditTask = (task: any) => {
+    setSelectedTask(task);
+    setEditForm({
+      propertyId: task.propertyId.toString(),
+      type: task.type,
+      title: task.title,
+      description: task.description || '',
+      priority: task.priority,
+      dueAt: task.dueAt ? new Date(task.dueAt).toISOString().slice(0, 16) : '',
+      estimatedHours: task.estimatedHours?.toString() || '',
+      assigneeStaffId: task.assigneeStaffId?.toString() || 'none',
+    });
+    setIsEditDialogOpen(true);
+  };
+
+  const handleUpdateTask = async () => {
+    if (!selectedTask) return;
+
+    try {
+      const updateData = {
+        id: selectedTask.id,
+        propertyId: parseInt(editForm.propertyId),
+        type: editForm.type,
+        title: editForm.title,
+        description: editForm.description || undefined,
+        priority: editForm.priority,
+        assigneeStaffId: editForm.assigneeStaffId === 'none' ? undefined : parseInt(editForm.assigneeStaffId),
+        dueAt: editForm.dueAt || undefined,
+        estimatedHours: editForm.estimatedHours ? parseInt(editForm.estimatedHours) : undefined,
+      };
+
+      await updateTaskMutation.mutateAsync(updateData);
+      setIsEditDialogOpen(false);
+      setSelectedTask(null);
+    } catch (error) {
+      handleError(error);
+    }
+  };
+
+  const handleDeleteTask = (task: any) => {
+    setSelectedTask(task);
+    setIsDeleteDialogOpen(true);
+  };
+
+  const confirmDeleteTask = async () => {
+    if (!selectedTask) return;
+
+    try {
+      await deleteTaskMutation.mutateAsync({ id: selectedTask.id });
+      setIsDeleteDialogOpen(false);
+      setSelectedTask(null);
+    } catch (error) {
+      handleError(error);
+    }
+  };
+
   // Cache staff lists per property to avoid many queries
   const staffQueries: Record<number, { staff: any[]; isLoading: boolean }> = {};
   const StaffSelect = ({ propertyId, value, onChange, disabled }: { propertyId: number; value?: number | null; onChange: (v: number | null) => void; disabled?: boolean }) => {
@@ -328,9 +502,34 @@ export default function TasksPage() {
                   <CardTitle className="text-lg font-bold text-gray-900 leading-tight flex-1 min-w-0 break-words">
                     {task.title}
                   </CardTitle>
-                  <Badge className={`${getPriorityColor(task.priority)} flex-shrink-0 self-start text-xs px-2 py-1`}>
-                    {task.priority}
-                  </Badge>
+                  <div className="flex items-center gap-2 flex-shrink-0">
+                    <Badge className={`${getPriorityColor(task.priority)} text-xs px-2 py-1`}>
+                      {task.priority}
+                    </Badge>
+                    {/* Admin Action Buttons */}
+                    {user?.role === 'ADMIN' && (
+                      <div className="flex items-center gap-1">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handleEditTask(task)}
+                          className="h-8 w-8 p-0 hover:bg-blue-100 hover:text-blue-600 transition-all duration-200"
+                          title="Edit task"
+                        >
+                          <Edit className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handleDeleteTask(task)}
+                          className="h-8 w-8 p-0 hover:bg-red-100 hover:text-red-600 transition-all duration-200"
+                          title="Delete task"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    )}
+                  </div>
                 </div>
                 <CardDescription className="text-sm text-gray-600 break-words">
                   {task.propertyName}
@@ -809,46 +1008,255 @@ export default function TasksPage() {
                   </DialogFooter>
                 </DialogContent>
               </Dialog>
+
+              {/* Edit Task Dialog */}
+              <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
+                <DialogContent className="max-w-2xl max-h-[95vh] overflow-hidden flex flex-col">
+                  <DialogHeader className="pb-4">
+                    <DialogTitle className="text-xl font-bold text-gray-900 flex items-center gap-2">
+                      <div className="p-2 bg-blue-100 rounded-lg shadow-sm">
+                        <Edit className="h-5 w-5 text-blue-600" />
+                      </div>
+                      Edit Task
+                    </DialogTitle>
+                    <DialogDescription className="text-sm text-gray-600">
+                      Update task details and assignment
+                    </DialogDescription>
+                  </DialogHeader>
+                  <div className="flex-1 overflow-y-auto px-1">
+                    <div className="space-y-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="edit-property" className="text-sm font-medium text-gray-700">Property *</Label>
+                        <Select value={editForm.propertyId} onValueChange={(value) => setEditForm(prev => ({ ...prev, propertyId: value, assigneeStaffId: 'none' }))}>
+                          <SelectTrigger className="h-11 border-gray-300 focus:border-blue-500 focus:ring-blue-500">
+                            <SelectValue placeholder="Select property" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {properties?.properties.map((property: any) => (
+                              <SelectItem key={property.id} value={property.id.toString()}>
+                                {property.name}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label htmlFor="edit-title" className="text-sm font-medium text-gray-700">Task Title *</Label>
+                        <Input
+                          id="edit-title"
+                          value={editForm.title}
+                          onChange={(e) => setEditForm(prev => ({ ...prev, title: e.target.value }))}
+                          placeholder="Enter task title"
+                          className="h-11 border-gray-300 focus:border-blue-500 focus:ring-blue-500"
+                        />
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label htmlFor="edit-description" className="text-sm font-medium text-gray-700">Description</Label>
+                        <Textarea
+                          id="edit-description"
+                          value={editForm.description}
+                          onChange={(e) => setEditForm(prev => ({ ...prev, description: e.target.value }))}
+                          placeholder="Enter task description (optional)"
+                          className="border-gray-300 focus:border-blue-500 focus:ring-blue-500"
+                          rows={3}
+                        />
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="space-y-2">
+                          <Label htmlFor="edit-type" className="text-sm font-medium text-gray-700">Type *</Label>
+                          <Select value={editForm.type} onValueChange={(value: 'maintenance' | 'housekeeping' | 'service') => setEditForm(prev => ({ ...prev, type: value }))}>
+                            <SelectTrigger className="h-11 border-gray-300 focus:border-blue-500 focus:ring-blue-500">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="maintenance">Maintenance</SelectItem>
+                              <SelectItem value="housekeeping">Housekeeping</SelectItem>
+                              <SelectItem value="service">Service</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="edit-priority" className="text-sm font-medium text-gray-700">Priority *</Label>
+                          <Select value={editForm.priority} onValueChange={(value: 'low' | 'med' | 'high') => setEditForm(prev => ({ ...prev, priority: value }))}>
+                            <SelectTrigger className="h-11 border-gray-300 focus:border-blue-500 focus:ring-blue-500">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="low">Low</SelectItem>
+                              <SelectItem value="med">Medium</SelectItem>
+                              <SelectItem value="high">High</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label htmlFor="edit-due" className="text-sm font-medium text-gray-700">Due Date & Time</Label>
+                        <Input
+                          id="edit-due"
+                          type="datetime-local"
+                          value={editForm.dueAt}
+                          onChange={(e) => setEditForm(prev => ({ ...prev, dueAt: e.target.value }))}
+                          className="h-11 border-gray-300 focus:border-blue-500 focus:ring-blue-500"
+                        />
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label htmlFor="edit-hours" className="text-sm font-medium text-gray-700">Estimated Hours</Label>
+                        <Input
+                          id="edit-hours"
+                          type="number"
+                          value={editForm.estimatedHours}
+                          onChange={(e) => setEditForm(prev => ({ ...prev, estimatedHours: e.target.value }))}
+                          placeholder="Enter estimated hours (optional)"
+                          className="h-11 border-gray-300 focus:border-blue-500 focus:ring-blue-500"
+                        />
+                      </div>
+
+                      {/* Assignee */}
+                      <div className="space-y-2">
+                        <Label className="text-sm font-medium text-gray-700">Assignee</Label>
+                        <Select
+                          value={editForm.assigneeStaffId}
+                          onValueChange={(value) => setEditForm(prev => ({ ...prev, assigneeStaffId: value }))}
+                          disabled={!editForm.propertyId}
+                        >
+                          <SelectTrigger className="h-11 border-gray-300 focus:border-blue-500 focus:ring-blue-500">
+                            <SelectValue placeholder="Select assignee (optional)" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="none">Unassigned</SelectItem>
+                            {properties?.properties
+                              .find((p: any) => p.id.toString() === editForm.propertyId)
+                              ?.staff?.map((staff: any) => (
+                                <SelectItem key={staff.id} value={staff.id.toString()}>
+                                  {staff.userName}
+                                </SelectItem>
+                              ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+                  </div>
+                  <DialogFooter className="border-t pt-4 mt-6 bg-gray-50 -mx-6 -mb-6 px-6 py-4">
+                    <div className="flex items-center justify-between w-full">
+                      <Button variant="outline" onClick={() => setIsEditDialogOpen(false)}>
+                        Cancel
+                      </Button>
+                      <Button 
+                        onClick={handleUpdateTask}
+                        disabled={updateTaskMutation.isPending || !editForm.propertyId || !editForm.title}
+                        className="bg-blue-600 hover:bg-blue-700"
+                      >
+                        {updateTaskMutation.isPending ? (
+                          <>
+                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                            Updating...
+                          </>
+                        ) : (
+                          'Update Task'
+                        )}
+                      </Button>
+                    </div>
+                  </DialogFooter>
+                </DialogContent>
+              </Dialog>
+
+              {/* Delete Confirmation Dialog */}
+              <Dialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
+                <DialogContent className="max-w-md">
+                  <DialogHeader className="pb-4">
+                    <DialogTitle className="text-xl font-bold text-red-900 flex items-center gap-2">
+                      <div className="p-2 bg-red-100 rounded-lg shadow-sm">
+                        <Trash2 className="h-5 w-5 text-red-600" />
+                      </div>
+                      Delete Task
+                    </DialogTitle>
+                    <DialogDescription className="text-sm text-gray-600">
+                      Are you sure you want to delete this task? This action cannot be undone.
+                    </DialogDescription>
+                  </DialogHeader>
+                  {selectedTask && (
+                    <div className="py-4">
+                      <div className="p-4 bg-gray-50 rounded-lg border">
+                        <h4 className="font-medium text-gray-900">{selectedTask.title}</h4>
+                        <p className="text-sm text-gray-600 mt-1">{selectedTask.propertyName}</p>
+                        <p className="text-xs text-gray-500 mt-2">Priority: {selectedTask.priority}</p>
+                      </div>
+                    </div>
+                  )}
+                  <DialogFooter className="flex gap-2">
+                    <Button variant="outline" onClick={() => setIsDeleteDialogOpen(false)}>
+                      Cancel
+                    </Button>
+                    <Button 
+                      variant="destructive"
+                      onClick={confirmDeleteTask}
+                      disabled={deleteTaskMutation.isPending}
+                      className="bg-red-600 hover:bg-red-700"
+                    >
+                      {deleteTaskMutation.isPending ? (
+                        <>
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          Deleting...
+                        </>
+                      ) : (
+                        'Delete Task'
+                      )}
+                    </Button>
+                  </DialogFooter>
+                </DialogContent>
+              </Dialog>
             </div>
           </CardContent>
         </Card>
 
         {/* Enhanced Sticky Tabs */}
         <Tabs defaultValue="all" className="space-y-0">
-          <div className="sticky top-20 z-30 bg-white border-b border-gray-200 -mx-6 px-4 sm:px-6 py-3 shadow-sm">
+          <div className="sticky top-20 z-30 bg-gradient-to-br from-orange-500 via-orange-600 to-orange-700 border-b-2 border-orange-400 -mx-6 px-4 py-3 shadow-2xl rounded-b-xl">
             <div className="overflow-x-auto">
-              <TabsList className="grid w-full grid-cols-5 min-w-max bg-gray-100">
-                <TabsTrigger 
-                  value="all" 
-                  className="text-xs sm:text-sm px-2 sm:px-4 py-2 data-[state=active]:bg-white data-[state=active]:shadow-sm transition-all duration-200"
-                >
-                  All ({filteredTasks.length})
-                </TabsTrigger>
-                <TabsTrigger 
-                  value="open" 
-                  className="text-xs sm:text-sm px-2 sm:px-4 py-2 data-[state=active]:bg-white data-[state=active]:shadow-sm transition-all duration-200"
-                >
-                  Open ({groupedTasks.open.length})
-                </TabsTrigger>
-                <TabsTrigger 
-                  value="in_progress" 
-                  className="text-xs sm:text-sm px-2 sm:px-4 py-2 data-[state=active]:bg-white data-[state=active]:shadow-sm transition-all duration-200"
-                >
-                  Progress ({groupedTasks.in_progress.length})
-                </TabsTrigger>
-                <TabsTrigger 
-                  value="blocked" 
-                  className="text-xs sm:text-sm px-2 sm:px-4 py-2 data-[state=active]:bg-white data-[state=active]:shadow-sm transition-all duration-200"
-                >
-                  Blocked ({groupedTasks.blocked.length})
-                </TabsTrigger>
-                <TabsTrigger 
-                  value="done" 
-                  className="text-xs sm:text-sm px-2 sm:px-4 py-2 data-[state=active]:bg-white data-[state=active]:shadow-sm transition-all duration-200"
-                >
-                  Done ({groupedTasks.done.length})
-                </TabsTrigger>
-              </TabsList>
+              <div className="bg-white/10 backdrop-blur-sm rounded-lg p-1 border border-white/20 shadow-inner">
+                <TabsList className="grid w-full grid-cols-5 min-w-max bg-transparent h-auto p-0 gap-2">
+                  <TabsTrigger 
+                    value="all" 
+                    className="text-xs sm:text-sm px-4 sm:px-8 py-4 data-[state=active]:bg-white data-[state=active]:text-orange-600 data-[state=active]:shadow-xl data-[state=active]:border-2 data-[state=active]:border-orange-300 data-[state=inactive]:text-white data-[state=inactive]:bg-gradient-to-r data-[state=inactive]:from-orange-500/30 data-[state=inactive]:to-orange-600/30 data-[state=inactive]:hover:from-orange-500/50 data-[state=inactive]:hover:to-orange-600/50 data-[state=inactive]:hover:shadow-lg data-[state=inactive]:border data-[state=inactive]:border-white/30 transition-all duration-500 flex items-center gap-2 rounded-xl font-semibold relative overflow-hidden group"
+                  >
+                    <div className="absolute inset-0 bg-gradient-to-r from-white/0 via-white/10 to-white/0 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700"></div>
+                    <span className="relative z-10">All ({filteredTasks.length})</span>
+                  </TabsTrigger>
+                  <TabsTrigger 
+                    value="open" 
+                    className="text-xs sm:text-sm px-4 sm:px-8 py-4 data-[state=active]:bg-white data-[state=active]:text-orange-600 data-[state=active]:shadow-xl data-[state=active]:border-2 data-[state=active]:border-orange-300 data-[state=inactive]:text-white data-[state=inactive]:bg-gradient-to-r data-[state=inactive]:from-orange-500/30 data-[state=inactive]:to-orange-600/30 data-[state=inactive]:hover:from-orange-500/50 data-[state=inactive]:hover:to-orange-600/50 data-[state=inactive]:hover:shadow-lg data-[state=inactive]:border data-[state=inactive]:border-white/30 transition-all duration-500 flex items-center gap-2 rounded-xl font-semibold relative overflow-hidden group"
+                  >
+                    <div className="absolute inset-0 bg-gradient-to-r from-white/0 via-white/10 to-white/0 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700"></div>
+                    <span className="relative z-10">Open ({groupedTasks.open.length})</span>
+                  </TabsTrigger>
+                  <TabsTrigger 
+                    value="in_progress" 
+                    className="text-xs sm:text-sm px-4 sm:px-8 py-4 data-[state=active]:bg-white data-[state=active]:text-orange-600 data-[state=active]:shadow-xl data-[state=active]:border-2 data-[state=active]:border-orange-300 data-[state=inactive]:text-white data-[state=inactive]:bg-gradient-to-r data-[state=inactive]:from-orange-500/30 data-[state=inactive]:to-orange-600/30 data-[state=inactive]:hover:from-orange-500/50 data-[state=inactive]:hover:to-orange-600/50 data-[state=inactive]:hover:shadow-lg data-[state=inactive]:border data-[state=inactive]:border-white/30 transition-all duration-500 flex items-center gap-2 rounded-xl font-semibold relative overflow-hidden group"
+                  >
+                    <div className="absolute inset-0 bg-gradient-to-r from-white/0 via-white/10 to-white/0 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700"></div>
+                    <span className="relative z-10">Progress ({groupedTasks.in_progress.length})</span>
+                  </TabsTrigger>
+                  <TabsTrigger 
+                    value="blocked" 
+                    className="text-xs sm:text-sm px-4 sm:px-8 py-4 data-[state=active]:bg-white data-[state=active]:text-orange-600 data-[state=active]:shadow-xl data-[state=active]:border-2 data-[state=active]:border-orange-300 data-[state=inactive]:text-white data-[state=inactive]:bg-gradient-to-r data-[state=inactive]:from-orange-500/30 data-[state=inactive]:to-orange-600/30 data-[state=inactive]:hover:from-orange-500/50 data-[state=inactive]:hover:to-orange-600/50 data-[state=inactive]:hover:shadow-lg data-[state=inactive]:border data-[state=inactive]:border-white/30 transition-all duration-500 flex items-center gap-2 rounded-xl font-semibold relative overflow-hidden group"
+                  >
+                    <div className="absolute inset-0 bg-gradient-to-r from-white/0 via-white/10 to-white/0 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700"></div>
+                    <span className="relative z-10">Blocked ({groupedTasks.blocked.length})</span>
+                  </TabsTrigger>
+                  <TabsTrigger 
+                    value="done" 
+                    className="text-xs sm:text-sm px-4 sm:px-8 py-4 data-[state=active]:bg-white data-[state=active]:text-orange-600 data-[state=active]:shadow-xl data-[state=active]:border-2 data-[state=active]:border-orange-300 data-[state=inactive]:text-white data-[state=inactive]:bg-gradient-to-r data-[state=inactive]:from-orange-500/30 data-[state=inactive]:to-orange-600/30 data-[state=inactive]:hover:from-orange-500/50 data-[state=inactive]:hover:to-orange-600/50 data-[state=inactive]:hover:shadow-lg data-[state=inactive]:border data-[state=inactive]:border-white/30 transition-all duration-500 flex items-center gap-2 rounded-xl font-semibold relative overflow-hidden group"
+                  >
+                    <div className="absolute inset-0 bg-gradient-to-r from-white/0 via-white/10 to-white/0 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700"></div>
+                    <span className="relative z-10">Done ({groupedTasks.done.length})</span>
+                  </TabsTrigger>
+                </TabsList>
+              </div>
             </div>
           </div>
 

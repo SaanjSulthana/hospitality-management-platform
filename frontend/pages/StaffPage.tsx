@@ -26,7 +26,7 @@ import {
   CheckCircle,
   XCircle,
   LogIn,
-  DollarSign,
+  CreditCard,
   BarChart3,
   Download,
   Filter,
@@ -37,7 +37,11 @@ import {
   FileText,
   Eye,
   Edit,
-  Trash2
+  Trash2,
+  UserCog,
+  CalendarCheck,
+  Clock4,
+  Banknote
 } from 'lucide-react';
 
 export default function StaffPage() {
@@ -57,6 +61,8 @@ export default function StaffPage() {
   const [isAttendanceDialogOpen, setIsAttendanceDialogOpen] = useState(false);
   const [isSalaryDialogOpen, setIsSalaryDialogOpen] = useState(false);
   const [isReportDialogOpen, setIsReportDialogOpen] = useState(false);
+  const [isEditStaffDialogOpen, setIsEditStaffDialogOpen] = useState(false);
+  const [editingStaff, setEditingStaff] = useState<any>(null);
   const [activeTab, setActiveTab] = useState('staff');
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStatus, setFilterStatus] = useState('all');
@@ -69,6 +75,22 @@ export default function StaffPage() {
     hourlyRateCents: '',
     hireDate: '',
     notes: '',
+  });
+  const [editStaffForm, setEditStaffForm] = useState({
+    id: '',
+    propertyId: 'none',
+    department: '',
+    hourlyRateCents: '',
+    performanceRating: '',
+    hireDate: '',
+    notes: '',
+    status: 'active',
+    salaryType: 'hourly',
+    baseSalaryCents: '',
+    overtimeRateCents: '',
+    attendanceTrackingEnabled: true,
+    maxOvertimeHours: '',
+    leaveBalance: '',
   });
   const [scheduleForm, setScheduleForm] = useState({
     staffId: '',
@@ -236,6 +258,36 @@ export default function StaffPage() {
         hireDate: data.hireDate ? new Date(data.hireDate) : undefined,
       });
     },
+    onMutate: async (newStaff) => {
+      // Cancel any outgoing refetches
+      await queryClient.cancelQueries({ queryKey: ['staff'] });
+      
+      // Snapshot the previous value
+      const previousStaff = queryClient.getQueryData(['staff']);
+      
+      // Optimistically update the cache
+      queryClient.setQueryData(['staff'], (old: any) => {
+        if (!old?.staff) return old;
+        
+        const optimisticStaff = {
+          id: Date.now(), // Temporary ID
+          ...newStaff,
+          userId: parseInt(newStaff.userId),
+          propertyId: newStaff.propertyId === 'none' ? undefined : parseInt(newStaff.propertyId),
+          hourlyRateCents: newStaff.hourlyRateCents ? parseInt(newStaff.hourlyRateCents) : 0,
+          status: 'active',
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        };
+        
+        return {
+          ...old,
+          staff: [optimisticStaff, ...old.staff]
+        };
+      });
+      
+      return { previousStaff };
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['staff'] });
       setIsStaffDialogOpen(false);
@@ -252,7 +304,12 @@ export default function StaffPage() {
         description: "The staff member has been created successfully.",
       });
     },
-    onError: (error: any) => {
+    onError: (error: any, newStaff, context) => {
+      // Rollback on error
+      if (context?.previousStaff) {
+        queryClient.setQueryData(['staff'], context.previousStaff);
+      }
+      
       toast({
         variant: "destructive",
         title: "Failed to add staff member",
@@ -501,6 +558,151 @@ export default function StaffPage() {
     },
   });
 
+  const updateStaffMutation = useMutation({
+    mutationFn: async (data: any) => {
+      const backend = getAuthenticatedBackend();
+      return backend.staff.update({
+        id: parseInt(data.id),
+        propertyId: data.propertyId,
+        department: data.department,
+        hourlyRateCents: data.hourlyRateCents,
+        performanceRating: data.performanceRating,
+        hireDate: data.hireDate,
+        notes: data.notes,
+        status: data.status,
+        salaryType: data.salaryType,
+        baseSalaryCents: data.baseSalaryCents,
+        overtimeRateCents: data.overtimeRateCents,
+        attendanceTrackingEnabled: data.attendanceTrackingEnabled,
+        maxOvertimeHours: data.maxOvertimeHours,
+        leaveBalance: data.leaveBalance,
+      });
+    },
+    onMutate: async (updatedStaff) => {
+      // Cancel any outgoing refetches
+      await queryClient.cancelQueries({ queryKey: ['staff'] });
+      
+      // Snapshot the previous value
+      const previousStaff = queryClient.getQueryData(['staff']);
+      
+      // Optimistically update the cache
+      queryClient.setQueryData(['staff'], (old: any) => {
+        if (!old?.staff) return old;
+        
+        return {
+          ...old,
+          staff: old.staff.map((member: any) => 
+            member.id === parseInt(updatedStaff.id) 
+              ? { ...member, ...updatedStaff }
+              : member
+          )
+        };
+      });
+      
+      return { previousStaff };
+    },
+    onSuccess: () => {
+      // Aggressive cache invalidation for real-time updates
+      queryClient.invalidateQueries({ queryKey: ['staff'] });
+      queryClient.invalidateQueries({ queryKey: ['staff-statistics'] });
+      queryClient.invalidateQueries({ queryKey: ['analytics'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+      
+      // Force immediate refetch for all users
+      queryClient.refetchQueries({ queryKey: ['staff'] });
+      queryClient.refetchQueries({ queryKey: ['staff-statistics'] });
+      
+      setIsEditStaffDialogOpen(false);
+      setEditingStaff(null);
+      setEditStaffForm({
+        id: '',
+        propertyId: 'none',
+        department: '',
+        hourlyRateCents: '',
+        performanceRating: '',
+        hireDate: '',
+        notes: '',
+        status: 'active',
+        salaryType: 'hourly',
+        baseSalaryCents: '',
+        overtimeRateCents: '',
+        attendanceTrackingEnabled: true,
+        maxOvertimeHours: '',
+        leaveBalance: '',
+      });
+      toast({
+        title: "Staff member updated",
+        description: "The staff member has been updated successfully.",
+      });
+    },
+    onError: (error: any, updatedStaff, context) => {
+      // Rollback on error
+      if (context?.previousStaff) {
+        queryClient.setQueryData(['staff'], context.previousStaff);
+      }
+      
+      toast({
+        variant: "destructive",
+        title: "Failed to update staff member",
+        description: error.message || "Please try again.",
+      });
+    },
+  });
+
+  const deleteStaffMutation = useMutation({
+    mutationFn: async (id: number) => {
+      const backend = getAuthenticatedBackend();
+      return backend.staff.deleteStaff(id);
+    },
+    onMutate: async (staffId) => {
+      // Cancel any outgoing refetches
+      await queryClient.cancelQueries({ queryKey: ['staff'] });
+      
+      // Snapshot the previous value
+      const previousStaff = queryClient.getQueryData(['staff']);
+      
+      // Optimistically update the cache
+      queryClient.setQueryData(['staff'], (old: any) => {
+        if (!old?.staff) return old;
+        
+        return {
+          ...old,
+          staff: old.staff.filter((member: any) => member.id !== staffId)
+        };
+      });
+      
+      return { previousStaff };
+    },
+    onSuccess: (result) => {
+      // Aggressive cache invalidation for real-time updates
+      queryClient.invalidateQueries({ queryKey: ['staff'] });
+      queryClient.invalidateQueries({ queryKey: ['staff-statistics'] });
+      queryClient.invalidateQueries({ queryKey: ['analytics'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+      
+      // Force immediate refetch for all users
+      queryClient.refetchQueries({ queryKey: ['staff'] });
+      queryClient.refetchQueries({ queryKey: ['staff-statistics'] });
+      
+      toast({
+        title: "Staff member deleted",
+        description: result.message || "The staff member has been deleted successfully.",
+      });
+    },
+    onError: (error: any, staffId, context) => {
+      // Rollback on error
+      if (context?.previousStaff) {
+        queryClient.setQueryData(['staff'], context.previousStaff);
+      }
+      
+      toast({
+        variant: "destructive",
+        title: "Failed to delete staff member",
+        description: error.message || "Please try again.",
+      });
+    },
+  });
+
   const getDepartmentColor = (department: string) => {
     switch (department) {
       case 'frontdesk': return 'bg-blue-100 text-blue-800';
@@ -542,6 +744,33 @@ export default function StaffPage() {
     }).format(amountCents / 100);
   };
 
+  const handleEditStaff = (member: any) => {
+    setEditingStaff(member);
+    setEditStaffForm({
+      id: member.id.toString(),
+      propertyId: member.propertyId ? member.propertyId.toString() : 'none',
+      department: member.department || '',
+      hourlyRateCents: member.hourlyRateCents ? member.hourlyRateCents.toString() : '',
+      performanceRating: member.performanceRating ? member.performanceRating.toString() : '',
+      hireDate: member.hireDate ? new Date(member.hireDate).toISOString().split('T')[0] : '',
+      notes: member.notes || '',
+      status: member.status || 'active',
+      salaryType: member.salaryType || 'hourly',
+      baseSalaryCents: member.baseSalaryCents ? member.baseSalaryCents.toString() : '',
+      overtimeRateCents: member.overtimeRateCents ? member.overtimeRateCents.toString() : '',
+      attendanceTrackingEnabled: member.attendanceTrackingEnabled !== false,
+      maxOvertimeHours: member.maxOvertimeHours ? member.maxOvertimeHours.toString() : '',
+      leaveBalance: member.leaveBalance ? member.leaveBalance.toString() : '',
+    });
+    setIsEditStaffDialogOpen(true);
+  };
+
+  const handleDeleteStaff = (member: any) => {
+    if (window.confirm(`Are you sure you want to delete ${member.userName}? This action cannot be undone and will remove all related data including attendance, schedules, and salary records.`)) {
+      deleteStaffMutation.mutate(member.id);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-gray-50">
     <div className="space-y-6">
@@ -574,45 +803,52 @@ export default function StaffPage() {
 
         {/* Enhanced Staff Management Tabs */}
         <Tabs defaultValue="staff" className="space-y-0" value={activeTab} onValueChange={setActiveTab}>
-          <div className="sticky top-20 z-30 bg-white border-b border-gray-200 -mx-6 px-4 sm:px-6 py-3 shadow-sm">
+          <div className="sticky top-20 z-30 bg-gradient-to-br from-orange-500 via-orange-600 to-orange-700 border-b-2 border-orange-400 -mx-6 px-4 py-3 shadow-2xl rounded-b-xl">
             <div className="overflow-x-auto">
-              <TabsList className="grid w-full grid-cols-5 min-w-max bg-gray-100">
-                <TabsTrigger 
-                  value="staff" 
-                  className="text-xs sm:text-sm px-2 sm:px-4 py-2 data-[state=active]:bg-white data-[state=active]:shadow-sm transition-all duration-200 flex items-center gap-2"
-                >
-            <Users className="h-4 w-4" />
-                  <span className="hidden sm:inline">Staff</span>
-          </TabsTrigger>
-                <TabsTrigger 
-                  value="schedules" 
-                  className="text-xs sm:text-sm px-2 sm:px-4 py-2 data-[state=active]:bg-white data-[state=active]:shadow-sm transition-all duration-200 flex items-center gap-2"
-                >
-            <Calendar className="h-4 w-4" />
-                  <span className="hidden sm:inline">Schedules</span>
-          </TabsTrigger>
-                <TabsTrigger 
-                  value="attendance" 
-                  className="text-xs sm:text-sm px-2 sm:px-4 py-2 data-[state=active]:bg-white data-[state=active]:shadow-sm transition-all duration-200 flex items-center gap-2"
-                >
-            <LogIn className="h-4 w-4" />
-                  <span className="hidden sm:inline">Attendance</span>
-          </TabsTrigger>
-                <TabsTrigger 
-                  value="salary" 
-                  className="text-xs sm:text-sm px-2 sm:px-4 py-2 data-[state=active]:bg-white data-[state=active]:shadow-sm transition-all duration-200 flex items-center gap-2"
-                >
-            <DollarSign className="h-4 w-4" />
-                  <span className="hidden sm:inline">Salary</span>
-          </TabsTrigger>
-                <TabsTrigger 
-                  value="reports" 
-                  className="text-xs sm:text-sm px-2 sm:px-4 py-2 data-[state=active]:bg-white data-[state=active]:shadow-sm transition-all duration-200 flex items-center gap-2"
-                >
-            <BarChart3 className="h-4 w-4" />
-                  <span className="hidden sm:inline">Reports</span>
-          </TabsTrigger>
-        </TabsList>
+              <div className="bg-white/10 backdrop-blur-sm rounded-lg p-1 border border-white/20 shadow-inner">
+                <TabsList className="grid w-full grid-cols-5 min-w-max bg-transparent h-auto p-0 gap-2">
+                  <TabsTrigger 
+                    value="staff" 
+                    className="text-xs sm:text-sm px-4 sm:px-8 py-4 data-[state=active]:bg-white data-[state=active]:text-orange-600 data-[state=active]:shadow-xl data-[state=active]:border-2 data-[state=active]:border-orange-300 data-[state=inactive]:text-white data-[state=inactive]:bg-gradient-to-r data-[state=inactive]:from-orange-500/30 data-[state=inactive]:to-orange-600/30 data-[state=inactive]:hover:from-orange-500/50 data-[state=inactive]:hover:to-orange-600/50 data-[state=inactive]:hover:shadow-lg data-[state=inactive]:border data-[state=inactive]:border-white/30 transition-all duration-500 flex items-center gap-2 rounded-xl font-semibold relative overflow-hidden group"
+                  >
+                    <div className="absolute inset-0 bg-gradient-to-r from-white/0 via-white/10 to-white/0 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700"></div>
+                    <Users className="h-4 w-4 relative z-10" />
+                    <span className="hidden sm:inline relative z-10">Staff</span>
+                  </TabsTrigger>
+                  <TabsTrigger 
+                    value="schedules" 
+                    className="text-xs sm:text-sm px-4 sm:px-8 py-4 data-[state=active]:bg-white data-[state=active]:text-orange-600 data-[state=active]:shadow-xl data-[state=active]:border-2 data-[state=active]:border-orange-300 data-[state=inactive]:text-white data-[state=inactive]:bg-gradient-to-r data-[state=inactive]:from-orange-500/30 data-[state=inactive]:to-orange-600/30 data-[state=inactive]:hover:from-orange-500/50 data-[state=inactive]:hover:to-orange-600/50 data-[state=inactive]:hover:shadow-lg data-[state=inactive]:border data-[state=inactive]:border-white/30 transition-all duration-500 flex items-center gap-2 rounded-xl font-semibold relative overflow-hidden group"
+                  >
+                    <div className="absolute inset-0 bg-gradient-to-r from-white/0 via-white/10 to-white/0 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700"></div>
+                    <CalendarCheck className="h-4 w-4 relative z-10" />
+                    <span className="hidden sm:inline relative z-10">Schedules</span>
+                  </TabsTrigger>
+                  <TabsTrigger 
+                    value="attendance" 
+                    className="text-xs sm:text-sm px-4 sm:px-8 py-4 data-[state=active]:bg-white data-[state=active]:text-orange-600 data-[state=active]:shadow-xl data-[state=active]:border-2 data-[state=active]:border-orange-300 data-[state=inactive]:text-white data-[state=inactive]:bg-gradient-to-r data-[state=inactive]:from-orange-500/30 data-[state=inactive]:to-orange-600/30 data-[state=inactive]:hover:from-orange-500/50 data-[state=inactive]:hover:to-orange-600/50 data-[state=inactive]:hover:shadow-lg data-[state=inactive]:border data-[state=inactive]:border-white/30 transition-all duration-500 flex items-center gap-2 rounded-xl font-semibold relative overflow-hidden group"
+                  >
+                    <div className="absolute inset-0 bg-gradient-to-r from-white/0 via-white/10 to-white/0 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700"></div>
+                    <Clock4 className="h-4 w-4 relative z-10" />
+                    <span className="hidden sm:inline relative z-10">Attendance</span>
+                  </TabsTrigger>
+                  <TabsTrigger 
+                    value="salary" 
+                    className="text-xs sm:text-sm px-4 sm:px-8 py-4 data-[state=active]:bg-white data-[state=active]:text-orange-600 data-[state=active]:shadow-xl data-[state=active]:border-2 data-[state=active]:border-orange-300 data-[state=inactive]:text-white data-[state=inactive]:bg-gradient-to-r data-[state=inactive]:from-orange-500/30 data-[state=inactive]:to-orange-600/30 data-[state=inactive]:hover:from-orange-500/50 data-[state=inactive]:hover:to-orange-600/50 data-[state=inactive]:hover:shadow-lg data-[state=inactive]:border data-[state=inactive]:border-white/30 transition-all duration-500 flex items-center gap-2 rounded-xl font-semibold relative overflow-hidden group"
+                  >
+                    <div className="absolute inset-0 bg-gradient-to-r from-white/0 via-white/10 to-white/0 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700"></div>
+                    <Banknote className="h-4 w-4 relative z-10" />
+                    <span className="hidden sm:inline relative z-10">Salary</span>
+                  </TabsTrigger>
+                  <TabsTrigger 
+                    value="reports" 
+                    className="text-xs sm:text-sm px-4 sm:px-8 py-4 data-[state=active]:bg-white data-[state=active]:text-orange-600 data-[state=active]:shadow-xl data-[state=active]:border-2 data-[state=active]:border-orange-300 data-[state=inactive]:text-white data-[state=inactive]:bg-gradient-to-r data-[state=inactive]:from-orange-500/30 data-[state=inactive]:to-orange-600/30 data-[state=inactive]:hover:from-orange-500/50 data-[state=inactive]:hover:to-orange-600/50 data-[state=inactive]:hover:shadow-lg data-[state=inactive]:border data-[state=inactive]:border-white/30 transition-all duration-500 flex items-center gap-2 rounded-xl font-semibold relative overflow-hidden group"
+                  >
+                    <div className="absolute inset-0 bg-gradient-to-r from-white/0 via-white/10 to-white/0 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700"></div>
+                    <BarChart3 className="h-4 w-4 relative z-10" />
+                    <span className="hidden sm:inline relative z-10">Reports</span>
+                  </TabsTrigger>
+                </TabsList>
+              </div>
             </div>
           </div>
 
@@ -704,7 +940,7 @@ export default function StaffPage() {
                           )}
                           {member.hourlyRateCents > 0 && (
                             <div className="flex items-center text-sm">
-                                <DollarSign className="h-4 w-4 mr-2 text-green-500 flex-shrink-0" />
+                                <Banknote className="h-4 w-4 mr-2 text-green-500 flex-shrink-0" />
                               <span className="font-medium">Rate: {formatCurrency(member.hourlyRateCents)}/hr</span>
                             </div>
                           )}
@@ -724,6 +960,31 @@ export default function StaffPage() {
                               <Badge variant={member.status === 'active' ? 'default' : 'secondary'} className="border-green-500 text-green-700">
                             {member.status}
                           </Badge>
+                          {user?.role === 'ADMIN' && (
+                            <div className="flex gap-2">
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => handleEditStaff(member)}
+                                className="transition-all duration-200 hover:scale-105 hover:shadow-md"
+                              >
+                                <Edit className="h-4 w-4" />
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => handleDeleteStaff(member)}
+                                disabled={deleteStaffMutation.isPending}
+                                className="transition-all duration-200 hover:scale-105 hover:shadow-md text-red-600 hover:text-red-700 hover:bg-red-50"
+                              >
+                                {deleteStaffMutation.isPending ? (
+                                  <RefreshCw className="h-4 w-4 animate-spin" />
+                                ) : (
+                                  <Trash2 className="h-4 w-4" />
+                                )}
+                              </Button>
+                            </div>
+                          )}
                         </div>
                       </CardContent>
                     </Card>
@@ -1064,7 +1325,7 @@ export default function StaffPage() {
               <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
                     <div className="flex items-center gap-3">
                       <div className="p-2 bg-green-100 rounded-lg shadow-sm">
-                        <DollarSign className="h-5 w-5 text-green-600" />
+                        <Banknote className="h-5 w-5 text-green-600" />
                       </div>
                 <div>
                         <CardTitle className="text-lg font-bold text-gray-900">Salary Management</CardTitle>
@@ -1077,7 +1338,7 @@ export default function StaffPage() {
                       onClick={() => setIsSalaryDialogOpen(true)}
                           className="bg-green-600 hover:bg-green-700 transition-all duration-200 hover:scale-105 hover:shadow-md"
                     >
-                      <DollarSign className="mr-2 h-4 w-4" />
+                      <Banknote className="mr-2 h-4 w-4" />
                           <span className="hidden sm:inline">Add Salary Component</span>
                           <span className="sm:hidden">Add Component</span>
                     </Button>
@@ -1105,7 +1366,7 @@ export default function StaffPage() {
                       <CardContent className="flex items-center justify-center p-12">
                         <div className="text-center">
                           <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                            <DollarSign className="h-5 w-5 text-blue-600 animate-pulse" />
+                            <Banknote className="h-5 w-5 text-blue-600 animate-pulse" />
                     </div>
                           <p className="text-lg font-medium text-gray-900">Loading salary data...</p>
                           <p className="text-sm text-gray-600 mt-2">Please wait while we fetch your salary information</p>
@@ -1116,7 +1377,7 @@ export default function StaffPage() {
                     <Card className="border-l-4 border-l-blue-500">
                       <CardContent className="flex flex-col items-center justify-center py-12">
                         <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                          <DollarSign className="h-8 w-8 text-blue-600" />
+                          <Banknote className="h-8 w-8 text-blue-600" />
                         </div>
                   <h3 className="text-lg font-medium text-gray-900 mb-2">No salary components</h3>
                         <p className="text-gray-500 text-center mb-4">No salary components have been configured yet</p>
@@ -1125,7 +1386,7 @@ export default function StaffPage() {
                             onClick={() => setIsSalaryDialogOpen(true)}
                             className="bg-green-600 hover:bg-green-700"
                           >
-                      <DollarSign className="mr-2 h-4 w-4" />
+                      <Banknote className="mr-2 h-4 w-4" />
                       Add First Salary Component
                     </Button>
                   )}
@@ -1256,7 +1517,7 @@ export default function StaffPage() {
                             <CardHeader className="pb-4">
                               <CardTitle className="text-sm font-medium flex items-center gap-2">
                                 <div className="p-2 bg-orange-100 rounded-lg shadow-sm">
-                                  <DollarSign className="h-4 w-4 text-orange-600" />
+                                  <Banknote className="h-4 w-4 text-orange-600" />
                                 </div>
                             Total Payroll
                           </CardTitle>
@@ -1754,7 +2015,7 @@ export default function StaffPage() {
           <DialogHeader className="pb-4">
             <DialogTitle className="text-xl font-bold text-gray-900 flex items-center gap-2">
               <div className="p-2 bg-green-100 rounded-lg shadow-sm">
-                <DollarSign className="h-5 w-5 text-green-600" />
+                <Banknote className="h-5 w-5 text-green-600" />
               </div>
               Add Salary Component
             </DialogTitle>
@@ -1845,7 +2106,7 @@ export default function StaffPage() {
                   </>
                 ) : (
                   <>
-                    <DollarSign className="mr-2 h-4 w-4" />
+                    <Banknote className="mr-2 h-4 w-4" />
                     Add Salary Component
                   </>
                 )}
@@ -1945,6 +2206,246 @@ export default function StaffPage() {
                   <>
                     <FileText className="mr-2 h-4 w-4" />
                     Generate Report
+                  </>
+                )}
+              </Button>
+            </div>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit Staff Dialog */}
+      <Dialog open={isEditStaffDialogOpen} onOpenChange={setIsEditStaffDialogOpen}>
+        <DialogContent className="max-w-4xl max-h-[95vh] overflow-hidden flex flex-col">
+          <DialogHeader className="pb-4">
+            <DialogTitle className="text-xl font-bold text-gray-900 flex items-center gap-2">
+              <div className="p-2 bg-blue-100 rounded-lg shadow-sm">
+                <Edit className="h-5 w-5 text-blue-600" />
+              </div>
+              Edit Staff Member
+            </DialogTitle>
+            <DialogDescription className="text-sm text-gray-600">
+              Update staff member information and settings
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex-1 overflow-y-auto px-1">
+            <div className="space-y-6">
+              {/* Basic Information */}
+              <div className="space-y-4">
+                <h3 className="text-lg font-semibold text-gray-900 border-b pb-2">Basic Information</h3>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="editPropertyId" className="text-sm font-medium text-gray-700">Property</Label>
+                    <Select value={editStaffForm.propertyId} onValueChange={(value) => setEditStaffForm(prev => ({ ...prev, propertyId: value }))}>
+                      <SelectTrigger className="h-11 border-gray-300 focus:border-blue-500 focus:ring-blue-500">
+                        <SelectValue placeholder="Select property" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="none">No property assigned</SelectItem>
+                        {properties?.properties.map((p: any) => (
+                          <SelectItem key={p.id} value={p.id.toString()}>
+                            {p.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="editDepartment" className="text-sm font-medium text-gray-700">Department</Label>
+                    <Select value={editStaffForm.department} onValueChange={(value) => setEditStaffForm(prev => ({ ...prev, department: value }))}>
+                      <SelectTrigger className="h-11 border-gray-300 focus:border-blue-500 focus:ring-blue-500">
+                        <SelectValue placeholder="Select department" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="frontdesk">Front Desk</SelectItem>
+                        <SelectItem value="housekeeping">Housekeeping</SelectItem>
+                        <SelectItem value="maintenance">Maintenance</SelectItem>
+                        <SelectItem value="fnb">Food & Beverage</SelectItem>
+                        <SelectItem value="admin">Administration</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="editHireDate" className="text-sm font-medium text-gray-700">Hire Date</Label>
+                    <Input
+                      id="editHireDate"
+                      type="date"
+                      value={editStaffForm.hireDate}
+                      onChange={(e) => setEditStaffForm(prev => ({ ...prev, hireDate: e.target.value }))}
+                      className="h-11 border-gray-300 focus:border-blue-500 focus:ring-blue-500"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="editStatus" className="text-sm font-medium text-gray-700">Status</Label>
+                    <Select value={editStaffForm.status} onValueChange={(value) => setEditStaffForm(prev => ({ ...prev, status: value }))}>
+                      <SelectTrigger className="h-11 border-gray-300 focus:border-blue-500 focus:ring-blue-500">
+                        <SelectValue placeholder="Select status" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="active">Active</SelectItem>
+                        <SelectItem value="inactive">Inactive</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+              </div>
+
+              {/* Salary Information */}
+              <div className="space-y-4">
+                <h3 className="text-lg font-semibold text-gray-900 border-b pb-2">Salary Information</h3>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="editSalaryType" className="text-sm font-medium text-gray-700">Salary Type</Label>
+                    <Select value={editStaffForm.salaryType} onValueChange={(value) => setEditStaffForm(prev => ({ ...prev, salaryType: value }))}>
+                      <SelectTrigger className="h-11 border-gray-300 focus:border-blue-500 focus:ring-blue-500">
+                        <SelectValue placeholder="Select salary type" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="hourly">Hourly</SelectItem>
+                        <SelectItem value="monthly">Monthly</SelectItem>
+                        <SelectItem value="daily">Daily</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="editHourlyRateCents" className="text-sm font-medium text-gray-700">Hourly Rate (cents)</Label>
+                    <Input
+                      id="editHourlyRateCents"
+                      type="number"
+                      value={editStaffForm.hourlyRateCents}
+                      onChange={(e) => setEditStaffForm(prev => ({ ...prev, hourlyRateCents: e.target.value }))}
+                      placeholder="1500 for $15.00"
+                      className="h-11 border-gray-300 focus:border-blue-500 focus:ring-blue-500"
+                    />
+                  </div>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="editBaseSalaryCents" className="text-sm font-medium text-gray-700">Base Salary (cents)</Label>
+                    <Input
+                      id="editBaseSalaryCents"
+                      type="number"
+                      value={editStaffForm.baseSalaryCents}
+                      onChange={(e) => setEditStaffForm(prev => ({ ...prev, baseSalaryCents: e.target.value }))}
+                      placeholder="500000 for $5000.00"
+                      className="h-11 border-gray-300 focus:border-blue-500 focus:ring-blue-500"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="editOvertimeRateCents" className="text-sm font-medium text-gray-700">Overtime Rate (cents)</Label>
+                    <Input
+                      id="editOvertimeRateCents"
+                      type="number"
+                      value={editStaffForm.overtimeRateCents}
+                      onChange={(e) => setEditStaffForm(prev => ({ ...prev, overtimeRateCents: e.target.value }))}
+                      placeholder="2250 for $22.50"
+                      className="h-11 border-gray-300 focus:border-blue-500 focus:ring-blue-500"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Performance & Settings */}
+              <div className="space-y-4">
+                <h3 className="text-lg font-semibold text-gray-900 border-b pb-2">Performance & Settings</h3>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="editPerformanceRating" className="text-sm font-medium text-gray-700">Performance Rating (0-5)</Label>
+                    <Input
+                      id="editPerformanceRating"
+                      type="number"
+                      min="0"
+                      max="5"
+                      step="0.1"
+                      value={editStaffForm.performanceRating}
+                      onChange={(e) => setEditStaffForm(prev => ({ ...prev, performanceRating: e.target.value }))}
+                      placeholder="4.5"
+                      className="h-11 border-gray-300 focus:border-blue-500 focus:ring-blue-500"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="editMaxOvertimeHours" className="text-sm font-medium text-gray-700">Max Overtime Hours</Label>
+                    <Input
+                      id="editMaxOvertimeHours"
+                      type="number"
+                      min="0"
+                      step="0.5"
+                      value={editStaffForm.maxOvertimeHours}
+                      onChange={(e) => setEditStaffForm(prev => ({ ...prev, maxOvertimeHours: e.target.value }))}
+                      placeholder="10"
+                      className="h-11 border-gray-300 focus:border-blue-500 focus:ring-blue-500"
+                    />
+                  </div>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="editLeaveBalance" className="text-sm font-medium text-gray-700">Leave Balance (days)</Label>
+                    <Input
+                      id="editLeaveBalance"
+                      type="number"
+                      min="0"
+                      value={editStaffForm.leaveBalance}
+                      onChange={(e) => setEditStaffForm(prev => ({ ...prev, leaveBalance: e.target.value }))}
+                      placeholder="20"
+                      className="h-11 border-gray-300 focus:border-blue-500 focus:ring-blue-500"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <div className="flex items-center space-x-2 pt-8">
+                      <input
+                        type="checkbox"
+                        id="editAttendanceTracking"
+                        checked={editStaffForm.attendanceTrackingEnabled}
+                        onChange={(e) => setEditStaffForm(prev => ({ ...prev, attendanceTrackingEnabled: e.target.checked }))}
+                        className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                      />
+                      <Label htmlFor="editAttendanceTracking" className="text-sm font-medium text-gray-700">
+                        Enable Attendance Tracking
+                      </Label>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Notes */}
+              <div className="space-y-2">
+                <Label htmlFor="editNotes" className="text-sm font-medium text-gray-700">Notes</Label>
+                <Textarea
+                  id="editNotes"
+                  value={editStaffForm.notes}
+                  onChange={(e) => setEditStaffForm(prev => ({ ...prev, notes: e.target.value }))}
+                  placeholder="Additional notes about this staff member"
+                  className="border-gray-300 focus:border-blue-500 focus:ring-blue-500"
+                  rows={3}
+                />
+              </div>
+            </div>
+          </div>
+          <DialogFooter className="border-t pt-4 mt-6 bg-gray-50 -mx-6 -mb-6 px-6 py-4">
+            <div className="flex items-center justify-between w-full">
+              <Button 
+                variant="outline" 
+                onClick={() => setIsEditStaffDialogOpen(false)}
+                className="transition-all duration-200 hover:scale-105 hover:shadow-md"
+              >
+                Cancel
+              </Button>
+              <Button 
+                onClick={() => updateStaffMutation.mutate(editStaffForm)}
+                disabled={updateStaffMutation.isPending || !editStaffForm.department}
+                className="bg-blue-600 hover:bg-blue-700 transition-all duration-200 hover:scale-105 hover:shadow-md"
+              >
+                {updateStaffMutation.isPending ? (
+                  <>
+                    <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
+                    Updating...
+                  </>
+                ) : (
+                  <>
+                    <Edit className="mr-2 h-4 w-4" />
+                    Update Staff Member
                   </>
                 )}
               </Button>

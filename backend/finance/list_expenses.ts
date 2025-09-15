@@ -20,10 +20,7 @@ export interface ExpenseInfo {
   currency: string;
   description?: string;
   receiptUrl?: string;
-  receiptFileId?: number;
   expenseDate: Date;
-  paymentMode: string;
-  bankReference?: string;
   status: string;
   createdByUserId: number;
   createdByName: string;
@@ -54,9 +51,11 @@ export const listExpenses = api<ListExpensesRequest, ListExpensesResponse>(
 
     try {
       let query = `
-        SELECT 
+        SELECT
           e.id, e.property_id, p.name as property_name, e.category, e.amount_cents, e.currency,
-          e.description, e.receipt_url, e.receipt_file_id, e.expense_date, e.payment_mode, e.bank_reference,
+          e.description, e.receipt_url, e.receipt_file_id, e.expense_date,
+          e.payment_mode,
+          e.bank_reference,
           e.status, e.created_by_user_id, e.approved_by_user_id, e.approved_at, e.created_at,
           u.display_name as created_by_name,
           au.display_name as approved_by_name
@@ -98,16 +97,20 @@ export const listExpenses = api<ListExpensesRequest, ListExpensesResponse>(
       }
 
       if (startDate) {
-        // Start of day: 00:00:00
+        // Start of day: 00:00:00 in local timezone
+        const [year, month, day] = startDate.split('-').map(Number);
+        const startOfDay = new Date(year, month - 1, day, 0, 0, 0, 0);
         query += ` AND e.expense_date >= $${paramIndex}`;
-        params.push(new Date(`${startDate}T00:00:00.000Z`));
+        params.push(startOfDay);
         paramIndex++;
       }
 
       if (endDate) {
-        // End of day: 23:59:59.999
+        // End of day: 23:59:59.999 in local timezone
+        const [year, month, day] = endDate.split('-').map(Number);
+        const endOfDay = new Date(year, month - 1, day, 23, 59, 59, 999);
         query += ` AND e.expense_date <= $${paramIndex}`;
-        params.push(new Date(`${endDate}T23:59:59.999Z`));
+        params.push(endOfDay);
         paramIndex++;
       }
 

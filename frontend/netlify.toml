@@ -1,0 +1,17 @@
+[build]
+  command = "bun run build"
+  publish = "dist"
+
+[build.environment]
+  VITE_API_URL = "https://api.curat.ai"
+
+[[redirects]]
+  from = "/assets/*"
+  to = "/assets/:splat"
+  status = 200
+  headers = { Cache-Control = "public, max-age=31536000, immutable" }
+
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200

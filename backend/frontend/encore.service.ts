@@ -8,10 +8,12 @@ export default new Service("frontend");
 
 // Serve static assets (CSS, JS, images, etc.)
 export const serveAssets = api.raw(
-  { expose: true, path: "/assets/*", method: "GET" },
+  { expose: true, path: "/assets/:path", method: "GET" },
   async (req, res) => {
     try {
-      const filePath = `./dist${req.url}`;
+      // Extract the path parameter from the URL
+      const assetPath = req.url?.replace('/assets/', '') || '';
+      const filePath = `./dist/assets/${assetPath}`;
       console.log(`Serving asset: ${filePath}`);
       const fileContent = readFileSync(filePath);
       const ext = extname(filePath).toLowerCase();

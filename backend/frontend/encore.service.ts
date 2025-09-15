@@ -6,42 +6,18 @@ import { extname } from "path";
 
 export default new Service("frontend");
 
-// Custom static file serving with raw response and proper MIME types
-export const serveStatic = api.raw(
-  { expose: true, path: "/!path", method: "GET" },
+// Serve static assets (CSS, JS, images, etc.)
+export const serveAssets = api.raw(
+  { expose: true, path: "/assets/*", method: "GET" },
   async (req, res) => {
-    // Skip API routes - let them be handled by the API services
-    if (req.url?.startsWith('/api/') || 
-        req.url?.startsWith('/auth/') || 
-        req.url?.startsWith('/finance/') || 
-        req.url?.startsWith('/properties/') || 
-        req.url?.startsWith('/staff/') || 
-        req.url?.startsWith('/tasks/') || 
-        req.url?.startsWith('/reports/') || 
-        req.url?.startsWith('/analytics/') || 
-        req.url?.startsWith('/users/') || 
-        req.url?.startsWith('/branding/') || 
-        req.url?.startsWith('/uploads/') || 
-        req.url?.startsWith('/orgs/') || 
-        req.url?.startsWith('/health') ||
-        req.url?.startsWith('/config/')) {
-      res.statusCode = 404;
-      res.setHeader("Content-Type", "text/plain");
-      res.end("API route not found");
-      return;
-    }
-
     try {
       const filePath = `./dist${req.url}`;
-      console.log(`Serving static file: ${filePath}`);
+      console.log(`Serving asset: ${filePath}`);
       const fileContent = readFileSync(filePath);
       const ext = extname(filePath).toLowerCase();
       let contentType = "application/octet-stream";
 
       switch (ext) {
-        case ".html":
-          contentType = "text/html";
-          break;
         case ".css":
           contentType = "text/css";
           break;
@@ -83,25 +59,84 @@ export const serveStatic = api.raw(
       res.setHeader("Content-Type", contentType);
       res.end(fileContent);
     } catch (error) {
-      // Check if this is a JavaScript module request
-      if (req.url?.endsWith('.js') || req.url?.includes('/assets/')) {
-        res.statusCode = 404;
-        res.setHeader("Content-Type", "application/javascript");
-        res.end("// Module not found");
+      res.statusCode = 404;
+      res.setHeader("Content-Type", "text/plain");
+      res.end("Asset not found");
+    }
+  }
+);
+
+// Serve favicon
+export const serveFavicon = api.raw(
+  { expose: true, path: "/favicon.svg", method: "GET" },
+  async (req, res) => {
+    try {
+      const filePath = "./dist/favicon.svg";
+      const fileContent = readFileSync(filePath);
+      res.setHeader("Content-Type", "image/svg+xml");
+      res.end(fileContent);
+    } catch (error) {
+      res.statusCode = 404;
+      res.setHeader("Content-Type", "text/plain");
+      res.end("Favicon not found");
+    }
+  }
+);
+
+// Serve SPA routes (catch-all for frontend routing)
+export const serveSPA = api.raw(
+  { expose: true, path: "/!path", method: "GET" },
+  async (req, res) => {
+    // Skip API routes - let them be handled by the API services
+    if (req.url?.startsWith('/api/') || 
+        req.url?.startsWith('/auth/') || 
+        req.url?.startsWith('/finance/') || 
+        req.url?.startsWith('/properties/') || 
+        req.url?.startsWith('/staff/') || 
+        req.url?.startsWith('/tasks/') || 
+        req.url?.startsWith('/reports/') || 
+        req.url?.startsWith('/analytics/') || 
+        req.url?.startsWith('/users/') || 
+        req.url?.startsWith('/branding/') || 
+        req.url?.startsWith('/uploads/') || 
+        req.url?.startsWith('/orgs/') || 
+        req.url?.startsWith('/health') ||
+        req.url?.startsWith('/config/') ||
+        req.url?.startsWith('/assets/') ||
+        req.url?.startsWith('/favicon.svg')) {
+      // Let API routes and assets be handled by their respective services
+      res.statusCode = 404;
+      res.setHeader("Content-Type", "text/plain");
+      res.end("Route not found");
+      return;
+    }
+
+    // For SPA routing, try to serve the specific file first
+    try {
+      const filePath = `./dist${req.url}`;
+      console.log(`Serving SPA file: ${filePath}`);
+      const fileContent = readFileSync(filePath);
+      
+      // Only handle HTML files in SPA service
+      if (req.url?.endsWith('.html')) {
+        res.setHeader("Content-Type", "text/html");
+        res.end(fileContent);
         return;
       }
-      
-      // If file not found, serve index.html for SPA routing
-      try {
-        const indexPath = "./dist/index.html";
-        const indexContent = readFileSync(indexPath);
-        res.setHeader("Content-Type", "text/html");
-        res.end(indexContent);
-      } catch (indexError) {
-        res.statusCode = 404;
-        res.setHeader("Content-Type", "text/html");
-        res.end("<html><body><h1>File not found</h1></body></html>");
-      }
+    } catch (error) {
+      // File not found, continue to SPA fallback
+    }
+    
+    // SPA fallback: serve index.html for all non-API routes
+    try {
+      const indexPath = "./dist/index.html";
+      const indexContent = readFileSync(indexPath);
+      res.setHeader("Content-Type", "text/html");
+      res.end(indexContent);
+    } catch (indexError) {
+      res.statusCode = 404;
+      res.setHeader("Content-Type", "text/html");
+      res.end("<html><body><h1>Frontend not available</h1></body></html>");
     }
   }
 );

@@ -1,15 +1,30 @@
-import Client, { Local } from '../client';
+import Client, { Local, Environment } from '../client';
 import { isDevelopment } from '../src/utils/env';
 
 // Test if the import is working
 console.log('=== BACKEND IMPORT TEST ===');
 console.log('Client class:', Client);
 console.log('Local constant:', Local);
+console.log('Environment function:', Environment);
 console.log('Client type:', typeof Client);
 console.log('Local type:', typeof Local);
 
-// Create a client instance
-const clientInstance = new Client(Local);
+// Determine the correct API URL based on environment
+function getApiUrl(): string {
+  if (isDevelopment()) {
+    return Local; // Use localhost for development
+  }
+  
+  // For production/staging, use the correct API URL from Encore Cloud
+  // The staging API is at https://api.curat.ai according to the dashboard
+  return 'https://api.curat.ai';
+}
+
+const apiUrl = getApiUrl();
+console.log('Using API URL:', apiUrl);
+
+// Create a client instance with the correct URL
+const clientInstance = new Client(apiUrl);
 
 console.log('Client instance created:', clientInstance);
 console.log('Client instance type:', typeof clientInstance);

@@ -197,7 +197,7 @@ export default function FinancePage() {
       
       // Debug logging for approval information
       if (result?.expenses) {
-        console.log('Expenses with approval info:', result.expenses.map(expense => ({
+        console.log('Expenses with approval info:', result.expenses.map((expense: any) => ({
           id: expense.id,
           status: expense.status,
           approvedByName: expense.approvedByName,
@@ -238,7 +238,7 @@ export default function FinancePage() {
       
       // Debug logging for approval information
       if (result?.revenues) {
-        console.log('Revenues with approval info:', result.revenues.map(revenue => ({
+        console.log('Revenues with approval info:', result.revenues.map((revenue: any) => ({
           id: revenue.id,
           status: revenue.status,
           approvedByName: revenue.approvedByName,

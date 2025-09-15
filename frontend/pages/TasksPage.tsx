@@ -118,30 +118,6 @@ export default function TasksPage() {
       invalidateQueries: [QUERY_KEYS.TASKS],
       successMessage: "Task status updated successfully",
       errorMessage: "Failed to update task status. Please try again.",
-      onMutate: async (variables) => {
-        await queryClient.cancelQueries({ queryKey: [QUERY_KEYS.TASKS] });
-        const previousTasks = queryClient.getQueryData([QUERY_KEYS.TASKS]);
-        
-        queryClient.setQueryData([QUERY_KEYS.TASKS], (old: any) => {
-          if (!old?.tasks) return old;
-          
-          return {
-            ...old,
-            tasks: old.tasks.map((task: any) => 
-              task.id === variables.id 
-                ? { ...task, status: variables.status }
-                : task
-            )
-          };
-        });
-        
-        return { previousTasks };
-      },
-      onError: (err, variables, context) => {
-        if (context?.previousTasks) {
-          queryClient.setQueryData([QUERY_KEYS.TASKS], context.previousTasks);
-        }
-      }
     }
   );
 
@@ -153,30 +129,6 @@ export default function TasksPage() {
       invalidateQueries: [QUERY_KEYS.TASKS],
       successMessage: "Task assignment updated successfully",
       errorMessage: "Failed to update task assignment. Please try again.",
-      onMutate: async (variables) => {
-        await queryClient.cancelQueries({ queryKey: [QUERY_KEYS.TASKS] });
-        const previousTasks = queryClient.getQueryData([QUERY_KEYS.TASKS]);
-        
-        queryClient.setQueryData([QUERY_KEYS.TASKS], (old: any) => {
-          if (!old?.tasks) return old;
-          
-          return {
-            ...old,
-            tasks: old.tasks.map((task: any) => 
-              task.id === variables.id 
-                ? { ...task, assigneeStaffId: variables.assigneeStaffId }
-                : task
-            )
-          };
-        });
-        
-        return { previousTasks };
-      },
-      onError: (err, variables, context) => {
-        if (context?.previousTasks) {
-          queryClient.setQueryData([QUERY_KEYS.TASKS], context.previousTasks);
-        }
-      }
     }
   );
 
@@ -189,35 +141,6 @@ export default function TasksPage() {
       refetchQueries: [QUERY_KEYS.TASKS],
       successMessage: "Task updated successfully",
       errorMessage: "Failed to update task. Please try again.",
-      onMutate: async (variables) => {
-        // Cancel any outgoing refetches
-        await queryClient.cancelQueries({ queryKey: [QUERY_KEYS.TASKS] });
-        
-        // Snapshot the previous value
-        const previousTasks = queryClient.getQueryData([QUERY_KEYS.TASKS]);
-        
-        // Optimistically update the cache
-        queryClient.setQueryData([QUERY_KEYS.TASKS], (old: any) => {
-          if (!old?.tasks) return old;
-          
-          return {
-            ...old,
-            tasks: old.tasks.map((task: any) => 
-              task.id === variables.id 
-                ? { ...task, ...variables }
-                : task
-            )
-          };
-        });
-        
-        return { previousTasks };
-      },
-      onError: (err, variables, context) => {
-        // Rollback on error
-        if (context?.previousTasks) {
-          queryClient.setQueryData([QUERY_KEYS.TASKS], context.previousTasks);
-        }
-      },
       onSuccess: () => {
         // Force immediate refresh of tasks data
         queryClient.invalidateQueries({ queryKey: [QUERY_KEYS.TASKS] });

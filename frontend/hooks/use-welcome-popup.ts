@@ -149,8 +149,8 @@ export function useWelcomePopup() {
   const completedSteps = getCompletedSteps();
 
   // Calculate account age and determine if user is new
-  const accountAge = user?.createdAt ? 
-    Math.floor((Date.now() - new Date(user.createdAt).getTime()) / (1000 * 60 * 60 * 24)) : 0;
+  // Note: AuthData doesn't include createdAt, so we'll use a default value
+  const accountAge = 0; // Default to 0 since we don't have createdAt in AuthData
   
   // User is considered "new" if they haven't completed essential onboarding steps
   // For ADMIN: must have set up organization AND added at least one property

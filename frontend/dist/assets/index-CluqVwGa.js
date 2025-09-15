@@ -93,21 +93,21 @@ function requireReactJsxRuntime_production() {
   if (hasRequiredReactJsxRuntime_production) return reactJsxRuntime_production;
   hasRequiredReactJsxRuntime_production = 1;
   var REACT_ELEMENT_TYPE = Symbol.for("react.transitional.element"), REACT_FRAGMENT_TYPE = Symbol.for("react.fragment");
-  function jsxProd(type, config, maybeKey) {
+  function jsxProd(type, config2, maybeKey) {
     var key = null;
     void 0 !== maybeKey && (key = "" + maybeKey);
-    void 0 !== config.key && (key = "" + config.key);
-    if ("key" in config) {
+    void 0 !== config2.key && (key = "" + config2.key);
+    if ("key" in config2) {
       maybeKey = {};
-      for (var propName in config)
-        "key" !== propName && (maybeKey[propName] = config[propName]);
-    } else maybeKey = config;
-    config = maybeKey.ref;
+      for (var propName in config2)
+        "key" !== propName && (maybeKey[propName] = config2[propName]);
+    } else maybeKey = config2;
+    config2 = maybeKey.ref;
     return {
       $$typeof: REACT_ELEMENT_TYPE,
       type,
       key,
-      ref: void 0 !== config ? config : null,
+      ref: void 0 !== config2 ? config2 : null,
       props: maybeKey
     };
   }
@@ -414,15 +414,15 @@ function requireReact_production() {
       return fn.apply(null, arguments);
     };
   };
-  react_production.cloneElement = function(element, config, children) {
+  react_production.cloneElement = function(element, config2, children) {
     if (null === element || void 0 === element)
       throw Error(
         "The argument must be a React element, but you passed " + element + "."
       );
     var props = assign({}, element.props), key = element.key, owner = void 0;
-    if (null != config)
-      for (propName in void 0 !== config.ref && (owner = void 0), void 0 !== config.key && (key = "" + config.key), config)
-        !hasOwnProperty.call(config, propName) || "key" === propName || "__self" === propName || "__source" === propName || "ref" === propName && void 0 === config.ref || (props[propName] = config[propName]);
+    if (null != config2)
+      for (propName in void 0 !== config2.ref && (owner = void 0), void 0 !== config2.key && (key = "" + config2.key), config2)
+        !hasOwnProperty.call(config2, propName) || "key" === propName || "__self" === propName || "__source" === propName || "ref" === propName && void 0 === config2.ref || (props[propName] = config2[propName]);
     var propName = arguments.length - 2;
     if (1 === propName) props.children = children;
     else if (1 < propName) {
@@ -448,11 +448,11 @@ function requireReact_production() {
     };
     return defaultValue;
   };
-  react_production.createElement = function(type, config, children) {
+  react_production.createElement = function(type, config2, children) {
     var propName, props = {}, key = null;
-    if (null != config)
-      for (propName in void 0 !== config.key && (key = "" + config.key), config)
-        hasOwnProperty.call(config, propName) && "key" !== propName && "__self" !== propName && "__source" !== propName && (props[propName] = config[propName]);
+    if (null != config2)
+      for (propName in void 0 !== config2.key && (key = "" + config2.key), config2)
+        hasOwnProperty.call(config2, propName) && "key" !== propName && "__self" !== propName && "__source" !== propName && (props[propName] = config2[propName]);
     var childrenLength = arguments.length - 2;
     if (1 === childrenLength) props.children = children;
     else if (1 < childrenLength) {
@@ -14748,7 +14748,7 @@ var CancelledError = class extends Error {
     this.silent = options == null ? void 0 : options.silent;
   }
 };
-function createRetryer(config) {
+function createRetryer(config2) {
   let isRetryCancelled = false;
   let failureCount = 0;
   let continueFn;
@@ -14759,7 +14759,7 @@ function createRetryer(config) {
     if (!isResolved()) {
       const error = new CancelledError(cancelOptions);
       reject(error);
-      (_a2 = config.onCancel) == null ? void 0 : _a2.call(config, error);
+      (_a2 = config2.onCancel) == null ? void 0 : _a2.call(config2, error);
     }
   };
   const cancelRetry = () => {
@@ -14768,8 +14768,8 @@ function createRetryer(config) {
   const continueRetry = () => {
     isRetryCancelled = false;
   };
-  const canContinue = () => focusManager.isFocused() && (config.networkMode === "always" || onlineManager.isOnline()) && config.canRun();
-  const canStart = () => canFetch(config.networkMode) && config.canRun();
+  const canContinue = () => focusManager.isFocused() && (config2.networkMode === "always" || onlineManager.isOnline()) && config2.canRun();
+  const canStart = () => canFetch(config2.networkMode) && config2.canRun();
   const resolve = (value) => {
     if (!isResolved()) {
       continueFn == null ? void 0 : continueFn();
@@ -14790,12 +14790,12 @@ function createRetryer(config) {
           continueResolve(value);
         }
       };
-      (_a2 = config.onPause) == null ? void 0 : _a2.call(config);
+      (_a2 = config2.onPause) == null ? void 0 : _a2.call(config2);
     }).then(() => {
       var _a2;
       continueFn = void 0;
       if (!isResolved()) {
-        (_a2 = config.onContinue) == null ? void 0 : _a2.call(config);
+        (_a2 = config2.onContinue) == null ? void 0 : _a2.call(config2);
       }
     });
   };
@@ -14804,9 +14804,9 @@ function createRetryer(config) {
       return;
     }
     let promiseOrValue;
-    const initialPromise = failureCount === 0 ? config.initialPromise : void 0;
+    const initialPromise = failureCount === 0 ? config2.initialPromise : void 0;
     try {
-      promiseOrValue = initialPromise ?? config.fn();
+      promiseOrValue = initialPromise ?? config2.fn();
     } catch (error) {
       promiseOrValue = Promise.reject(error);
     }
@@ -14815,8 +14815,8 @@ function createRetryer(config) {
       if (isResolved()) {
         return;
       }
-      const retry = config.retry ?? (isServer ? 0 : 3);
-      const retryDelay = config.retryDelay ?? defaultRetryDelay;
+      const retry = config2.retry ?? (isServer ? 0 : 3);
+      const retryDelay = config2.retryDelay ?? defaultRetryDelay;
       const delay2 = typeof retryDelay === "function" ? retryDelay(failureCount, error) : retryDelay;
       const shouldRetry = retry === true || typeof retry === "number" && failureCount < retry || typeof retry === "function" && retry(failureCount, error);
       if (isRetryCancelled || !shouldRetry) {
@@ -14824,7 +14824,7 @@ function createRetryer(config) {
         return;
       }
       failureCount++;
-      (_a2 = config.onFail) == null ? void 0 : _a2.call(config, failureCount, error);
+      (_a2 = config2.onFail) == null ? void 0 : _a2.call(config2, failureCount, error);
       sleep(delay2).then(() => {
         return canContinue() ? void 0 : pause();
       }).then(() => {
@@ -14964,7 +14964,7 @@ var Removable = (_c = class {
   }
 }, _gcTimeout = new WeakMap(), _c);
 var Query = (_d = class extends Removable {
-  constructor(config) {
+  constructor(config2) {
     super();
     __privateAdd(this, _Query_instances);
     __privateAdd(this, _initialState);
@@ -14975,15 +14975,15 @@ var Query = (_d = class extends Removable {
     __privateAdd(this, _defaultOptions);
     __privateAdd(this, _abortSignalConsumed);
     __privateSet(this, _abortSignalConsumed, false);
-    __privateSet(this, _defaultOptions, config.defaultOptions);
-    this.setOptions(config.options);
+    __privateSet(this, _defaultOptions, config2.defaultOptions);
+    this.setOptions(config2.options);
     this.observers = [];
-    __privateSet(this, _client, config.client);
+    __privateSet(this, _client, config2.client);
     __privateSet(this, _cache, __privateGet(this, _client).getQueryCache());
-    this.queryKey = config.queryKey;
-    this.queryHash = config.queryHash;
+    this.queryKey = config2.queryKey;
+    this.queryHash = config2.queryHash;
     __privateSet(this, _initialState, getDefaultState$1(this.options));
-    this.state = config.state ?? __privateGet(this, _initialState);
+    this.state = config2.state ?? __privateGet(this, _initialState);
     this.scheduleGc();
   }
   get meta() {
@@ -15360,10 +15360,10 @@ function getDefaultState$1(options) {
   };
 }
 var QueryCache = (_e = class extends Subscribable {
-  constructor(config = {}) {
+  constructor(config2 = {}) {
     super();
     __privateAdd(this, _queries);
-    this.config = config;
+    this.config = config2;
     __privateSet(this, _queries, /* @__PURE__ */ new Map());
   }
   build(client2, options, state) {
@@ -15448,17 +15448,17 @@ var QueryCache = (_e = class extends Subscribable {
   }
 }, _queries = new WeakMap(), _e);
 var Mutation = (_f = class extends Removable {
-  constructor(config) {
+  constructor(config2) {
     super();
     __privateAdd(this, _Mutation_instances);
     __privateAdd(this, _observers);
     __privateAdd(this, _mutationCache);
     __privateAdd(this, _retryer2);
-    this.mutationId = config.mutationId;
-    __privateSet(this, _mutationCache, config.mutationCache);
+    this.mutationId = config2.mutationId;
+    __privateSet(this, _mutationCache, config2.mutationCache);
     __privateSet(this, _observers, []);
-    this.state = config.state || getDefaultState();
-    this.setOptions(config.options);
+    this.state = config2.state || getDefaultState();
+    this.setOptions(config2.options);
     this.scheduleGc();
   }
   setOptions(options) {
@@ -15686,12 +15686,12 @@ function getDefaultState() {
   };
 }
 var MutationCache = (_g = class extends Subscribable {
-  constructor(config = {}) {
+  constructor(config2 = {}) {
     super();
     __privateAdd(this, _mutations);
     __privateAdd(this, _scopes);
     __privateAdd(this, _mutationId);
-    this.config = config;
+    this.config = config2;
     __privateSet(this, _mutations, /* @__PURE__ */ new Set());
     __privateSet(this, _scopes, /* @__PURE__ */ new Map());
     __privateSet(this, _mutationId, 0);
@@ -15913,7 +15913,7 @@ function getPreviousPageParam(options, { pages, pageParams }) {
   return pages.length > 0 ? (_a2 = options.getPreviousPageParam) == null ? void 0 : _a2.call(options, pages[0], pages, pageParams[0], pageParams) : void 0;
 }
 var QueryClient = (_h = class {
-  constructor(config = {}) {
+  constructor(config2 = {}) {
     __privateAdd(this, _queryCache);
     __privateAdd(this, _mutationCache2);
     __privateAdd(this, _defaultOptions2);
@@ -15922,9 +15922,9 @@ var QueryClient = (_h = class {
     __privateAdd(this, _mountCount);
     __privateAdd(this, _unsubscribeFocus);
     __privateAdd(this, _unsubscribeOnline);
-    __privateSet(this, _queryCache, config.queryCache || new QueryCache());
-    __privateSet(this, _mutationCache2, config.mutationCache || new MutationCache());
-    __privateSet(this, _defaultOptions2, config.defaultOptions || {});
+    __privateSet(this, _queryCache, config2.queryCache || new QueryCache());
+    __privateSet(this, _mutationCache2, config2.mutationCache || new MutationCache());
+    __privateSet(this, _defaultOptions2, config2.defaultOptions || {});
     __privateSet(this, _queryDefaults, /* @__PURE__ */ new Map());
     __privateSet(this, _mutationDefaults, /* @__PURE__ */ new Map());
     __privateSet(this, _mountCount, 0);
@@ -17723,7 +17723,7 @@ function useControllableState({
     (nextValue) => {
       var _a2;
       if (isControlled) {
-        const value2 = isFunction(nextValue) ? nextValue(prop) : nextValue;
+        const value2 = isFunction$1(nextValue) ? nextValue(prop) : nextValue;
         if (value2 !== prop) {
           (_a2 = onChangeRef.current) == null ? void 0 : _a2.call(onChangeRef, value2);
         }
@@ -17754,7 +17754,7 @@ function useUncontrolledState({
   }, [value, prevValueRef]);
   return [value, setValue, onChangeRef];
 }
-function isFunction(value) {
+function isFunction$1(value) {
   return typeof value === "function";
 }
 var VISUALLY_HIDDEN_STYLES = Object.freeze({
@@ -18412,10 +18412,10 @@ function clsx() {
 }
 const falsyToString = (value) => typeof value === "boolean" ? `${value}` : value === 0 ? "0" : value;
 const cx = clsx;
-const cva = (base, config) => (props) => {
+const cva = (base, config2) => (props) => {
   var _config_compoundVariants;
-  if ((config === null || config === void 0 ? void 0 : config.variants) == null) return cx(base, props === null || props === void 0 ? void 0 : props.class, props === null || props === void 0 ? void 0 : props.className);
-  const { variants, defaultVariants } = config;
+  if ((config2 === null || config2 === void 0 ? void 0 : config2.variants) == null) return cx(base, props === null || props === void 0 ? void 0 : props.class, props === null || props === void 0 ? void 0 : props.className);
+  const { variants, defaultVariants } = config2;
   const getVariantClassNames = Object.keys(variants).map((variant) => {
     const variantProp = props === null || props === void 0 ? void 0 : props[variant];
     const defaultVariantProp = defaultVariants === null || defaultVariants === void 0 ? void 0 : defaultVariants[variant];
@@ -18431,7 +18431,7 @@ const cva = (base, config) => (props) => {
     acc[key] = value;
     return acc;
   }, {});
-  const getCompoundVariantClassNames = config === null || config === void 0 ? void 0 : (_config_compoundVariants = config.compoundVariants) === null || _config_compoundVariants === void 0 ? void 0 : _config_compoundVariants.reduce((acc, param) => {
+  const getCompoundVariantClassNames = config2 === null || config2 === void 0 ? void 0 : (_config_compoundVariants = config2.compoundVariants) === null || _config_compoundVariants === void 0 ? void 0 : _config_compoundVariants.reduce((acc, param) => {
     let { class: cvClass, className: cvClassName, ...compoundVariantOptions } = param;
     return Object.entries(compoundVariantOptions).every((param2) => {
       let [key, value] = param2;
@@ -18549,11 +18549,34 @@ const createLucideIcon = (iconName, iconNode) => {
  * This source code is licensed under the ISC license.
  * See the LICENSE file in the root directory of this source tree.
  */
-const __iconNode$U = [
+const __iconNode$W = [
   ["path", { d: "m12 19-7-7 7-7", key: "1l729n" }],
   ["path", { d: "M19 12H5", key: "x3x0zl" }]
 ];
-const ArrowLeft = createLucideIcon("arrow-left", __iconNode$U);
+const ArrowLeft = createLucideIcon("arrow-left", __iconNode$W);
+/**
+ * @license lucide-react v0.484.0 - ISC
+ *
+ * This source code is licensed under the ISC license.
+ * See the LICENSE file in the root directory of this source tree.
+ */
+const __iconNode$V = [
+  ["path", { d: "M5 12h14", key: "1ays0h" }],
+  ["path", { d: "m12 5 7 7-7 7", key: "xquz4c" }]
+];
+const ArrowRight = createLucideIcon("arrow-right", __iconNode$V);
+/**
+ * @license lucide-react v0.484.0 - ISC
+ *
+ * This source code is licensed under the ISC license.
+ * See the LICENSE file in the root directory of this source tree.
+ */
+const __iconNode$U = [
+  ["rect", { width: "20", height: "12", x: "2", y: "6", rx: "2", key: "9lu3g6" }],
+  ["circle", { cx: "12", cy: "12", r: "2", key: "1c9p78" }],
+  ["path", { d: "M6 12h.01M18 12h.01", key: "113zkx" }]
+];
+const Banknote = createLucideIcon("banknote", __iconNode$U);
 /**
  * @license lucide-react v0.484.0 - ISC
  *
@@ -18561,10 +18584,12 @@ const ArrowLeft = createLucideIcon("arrow-left", __iconNode$U);
  * See the LICENSE file in the root directory of this source tree.
  */
 const __iconNode$T = [
-  ["path", { d: "M5 12h14", key: "1ays0h" }],
-  ["path", { d: "m12 5 7 7-7 7", key: "xquz4c" }]
+  ["path", { d: "M2 4v16", key: "vw9hq8" }],
+  ["path", { d: "M2 8h18a2 2 0 0 1 2 2v10", key: "1dgv2r" }],
+  ["path", { d: "M2 17h20", key: "18nfp3" }],
+  ["path", { d: "M6 8v9", key: "1yriud" }]
 ];
-const ArrowRight = createLucideIcon("arrow-right", __iconNode$T);
+const Bed = createLucideIcon("bed", __iconNode$T);
 /**
  * @license lucide-react v0.484.0 - ISC
  *
@@ -18572,31 +18597,6 @@ const ArrowRight = createLucideIcon("arrow-right", __iconNode$T);
  * See the LICENSE file in the root directory of this source tree.
  */
 const __iconNode$S = [
-  ["rect", { width: "20", height: "12", x: "2", y: "6", rx: "2", key: "9lu3g6" }],
-  ["circle", { cx: "12", cy: "12", r: "2", key: "1c9p78" }],
-  ["path", { d: "M6 12h.01M18 12h.01", key: "113zkx" }]
-];
-const Banknote = createLucideIcon("banknote", __iconNode$S);
-/**
- * @license lucide-react v0.484.0 - ISC
- *
- * This source code is licensed under the ISC license.
- * See the LICENSE file in the root directory of this source tree.
- */
-const __iconNode$R = [
-  ["path", { d: "M2 4v16", key: "vw9hq8" }],
-  ["path", { d: "M2 8h18a2 2 0 0 1 2 2v10", key: "1dgv2r" }],
-  ["path", { d: "M2 17h20", key: "18nfp3" }],
-  ["path", { d: "M6 8v9", key: "1yriud" }]
-];
-const Bed = createLucideIcon("bed", __iconNode$R);
-/**
- * @license lucide-react v0.484.0 - ISC
- *
- * This source code is licensed under the ISC license.
- * See the LICENSE file in the root directory of this source tree.
- */
-const __iconNode$Q = [
   ["path", { d: "M6 22V4a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v18Z", key: "1b4qmf" }],
   ["path", { d: "M6 12H4a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h2", key: "i71pzd" }],
   ["path", { d: "M18 9h2a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-2", key: "10jefs" }],
@@ -18605,14 +18605,28 @@ const __iconNode$Q = [
   ["path", { d: "M10 14h4", key: "kelpxr" }],
   ["path", { d: "M10 18h4", key: "1ulq68" }]
 ];
-const Building2 = createLucideIcon("building-2", __iconNode$Q);
+const Building2 = createLucideIcon("building-2", __iconNode$S);
 /**
  * @license lucide-react v0.484.0 - ISC
  *
  * This source code is licensed under the ISC license.
  * See the LICENSE file in the root directory of this source tree.
  */
-const __iconNode$P = [
+const __iconNode$R = [
+  ["path", { d: "M8 2v4", key: "1cmpym" }],
+  ["path", { d: "M16 2v4", key: "4m81vk" }],
+  ["rect", { width: "18", height: "18", x: "3", y: "4", rx: "2", key: "1hopcy" }],
+  ["path", { d: "M3 10h18", key: "8toen8" }],
+  ["path", { d: "m9 16 2 2 4-4", key: "19s6y9" }]
+];
+const CalendarCheck = createLucideIcon("calendar-check", __iconNode$R);
+/**
+ * @license lucide-react v0.484.0 - ISC
+ *
+ * This source code is licensed under the ISC license.
+ * See the LICENSE file in the root directory of this source tree.
+ */
+const __iconNode$Q = [
   ["path", { d: "M8 2v4", key: "1cmpym" }],
   ["path", { d: "M16 2v4", key: "4m81vk" }],
   ["rect", { width: "18", height: "18", x: "3", y: "4", rx: "2", key: "1hopcy" }],
@@ -18624,7 +18638,20 @@ const __iconNode$P = [
   ["path", { d: "M12 18h.01", key: "mhygvu" }],
   ["path", { d: "M16 18h.01", key: "kzsmim" }]
 ];
-const CalendarDays = createLucideIcon("calendar-days", __iconNode$P);
+const CalendarDays = createLucideIcon("calendar-days", __iconNode$Q);
+/**
+ * @license lucide-react v0.484.0 - ISC
+ *
+ * This source code is licensed under the ISC license.
+ * See the LICENSE file in the root directory of this source tree.
+ */
+const __iconNode$P = [
+  ["path", { d: "M8 2v4", key: "1cmpym" }],
+  ["path", { d: "M16 2v4", key: "4m81vk" }],
+  ["rect", { width: "18", height: "18", x: "3", y: "4", rx: "2", key: "1hopcy" }],
+  ["path", { d: "M3 10h18", key: "8toen8" }]
+];
+const Calendar = createLucideIcon("calendar", __iconNode$P);
 /**
  * @license lucide-react v0.484.0 - ISC
  *
@@ -18632,12 +18659,12 @@ const CalendarDays = createLucideIcon("calendar-days", __iconNode$P);
  * See the LICENSE file in the root directory of this source tree.
  */
 const __iconNode$O = [
-  ["path", { d: "M8 2v4", key: "1cmpym" }],
-  ["path", { d: "M16 2v4", key: "4m81vk" }],
-  ["rect", { width: "18", height: "18", x: "3", y: "4", rx: "2", key: "1hopcy" }],
-  ["path", { d: "M3 10h18", key: "8toen8" }]
+  ["path", { d: "M3 3v16a2 2 0 0 0 2 2h16", key: "c24i48" }],
+  ["path", { d: "M18 17V9", key: "2bz60n" }],
+  ["path", { d: "M13 17V5", key: "1frdt8" }],
+  ["path", { d: "M8 17v-3", key: "17ska0" }]
 ];
-const Calendar = createLucideIcon("calendar", __iconNode$O);
+const ChartColumn = createLucideIcon("chart-column", __iconNode$O);
 /**
  * @license lucide-react v0.484.0 - ISC
  *
@@ -18645,19 +18672,6 @@ const Calendar = createLucideIcon("calendar", __iconNode$O);
  * See the LICENSE file in the root directory of this source tree.
  */
 const __iconNode$N = [
-  ["path", { d: "M3 3v16a2 2 0 0 0 2 2h16", key: "c24i48" }],
-  ["path", { d: "M18 17V9", key: "2bz60n" }],
-  ["path", { d: "M13 17V5", key: "1frdt8" }],
-  ["path", { d: "M8 17v-3", key: "17ska0" }]
-];
-const ChartColumn = createLucideIcon("chart-column", __iconNode$N);
-/**
- * @license lucide-react v0.484.0 - ISC
- *
- * This source code is licensed under the ISC license.
- * See the LICENSE file in the root directory of this source tree.
- */
-const __iconNode$M = [
   [
     "path",
     {
@@ -18667,31 +18681,43 @@ const __iconNode$M = [
   ],
   ["path", { d: "M21.21 15.89A10 10 0 1 1 8 2.83", key: "k2fpak" }]
 ];
-const ChartPie = createLucideIcon("chart-pie", __iconNode$M);
+const ChartPie = createLucideIcon("chart-pie", __iconNode$N);
 /**
  * @license lucide-react v0.484.0 - ISC
  *
  * This source code is licensed under the ISC license.
  * See the LICENSE file in the root directory of this source tree.
  */
-const __iconNode$L = [["path", { d: "M20 6 9 17l-5-5", key: "1gmf2c" }]];
-const Check = createLucideIcon("check", __iconNode$L);
+const __iconNode$M = [["path", { d: "M20 6 9 17l-5-5", key: "1gmf2c" }]];
+const Check = createLucideIcon("check", __iconNode$M);
 /**
  * @license lucide-react v0.484.0 - ISC
  *
  * This source code is licensed under the ISC license.
  * See the LICENSE file in the root directory of this source tree.
  */
-const __iconNode$K = [["path", { d: "m6 9 6 6 6-6", key: "qrunsl" }]];
-const ChevronDown = createLucideIcon("chevron-down", __iconNode$K);
+const __iconNode$L = [["path", { d: "m6 9 6 6 6-6", key: "qrunsl" }]];
+const ChevronDown = createLucideIcon("chevron-down", __iconNode$L);
 /**
  * @license lucide-react v0.484.0 - ISC
  *
  * This source code is licensed under the ISC license.
  * See the LICENSE file in the root directory of this source tree.
  */
-const __iconNode$J = [["path", { d: "m18 15-6-6-6 6", key: "153udz" }]];
-const ChevronUp = createLucideIcon("chevron-up", __iconNode$J);
+const __iconNode$K = [["path", { d: "m18 15-6-6-6 6", key: "153udz" }]];
+const ChevronUp = createLucideIcon("chevron-up", __iconNode$K);
+/**
+ * @license lucide-react v0.484.0 - ISC
+ *
+ * This source code is licensed under the ISC license.
+ * See the LICENSE file in the root directory of this source tree.
+ */
+const __iconNode$J = [
+  ["circle", { cx: "12", cy: "12", r: "10", key: "1mglay" }],
+  ["line", { x1: "12", x2: "12", y1: "8", y2: "12", key: "1pkeuh" }],
+  ["line", { x1: "12", x2: "12.01", y1: "16", y2: "16", key: "4dfq90" }]
+];
+const CircleAlert = createLucideIcon("circle-alert", __iconNode$J);
 /**
  * @license lucide-react v0.484.0 - ISC
  *
@@ -18700,10 +18726,9 @@ const ChevronUp = createLucideIcon("chevron-up", __iconNode$J);
  */
 const __iconNode$I = [
   ["circle", { cx: "12", cy: "12", r: "10", key: "1mglay" }],
-  ["line", { x1: "12", x2: "12", y1: "8", y2: "12", key: "1pkeuh" }],
-  ["line", { x1: "12", x2: "12.01", y1: "16", y2: "16", key: "4dfq90" }]
+  ["path", { d: "m9 12 2 2 4-4", key: "dzmm74" }]
 ];
-const CircleAlert = createLucideIcon("circle-alert", __iconNode$I);
+const CircleCheck = createLucideIcon("circle-check", __iconNode$I);
 /**
  * @license lucide-react v0.484.0 - ISC
  *
@@ -18745,7 +18770,7 @@ const __iconNode$E = [
   ["circle", { cx: "12", cy: "12", r: "10", key: "1mglay" }],
   ["polyline", { points: "12 6 12 12 16 14", key: "68esgv" }]
 ];
-const Clock = createLucideIcon("clock", __iconNode$E);
+const Clock4 = createLucideIcon("clock-4", __iconNode$E);
 /**
  * @license lucide-react v0.484.0 - ISC
  *
@@ -18753,10 +18778,10 @@ const Clock = createLucideIcon("clock", __iconNode$E);
  * See the LICENSE file in the root directory of this source tree.
  */
 const __iconNode$D = [
-  ["rect", { width: "20", height: "14", x: "2", y: "5", rx: "2", key: "ynyp8z" }],
-  ["line", { x1: "2", x2: "22", y1: "10", y2: "10", key: "1b3vmo" }]
+  ["circle", { cx: "12", cy: "12", r: "10", key: "1mglay" }],
+  ["polyline", { points: "12 6 12 12 16 14", key: "68esgv" }]
 ];
-const CreditCard = createLucideIcon("credit-card", __iconNode$D);
+const Clock = createLucideIcon("clock", __iconNode$D);
 /**
  * @license lucide-react v0.484.0 - ISC
  *
@@ -18764,11 +18789,10 @@ const CreditCard = createLucideIcon("credit-card", __iconNode$D);
  * See the LICENSE file in the root directory of this source tree.
  */
 const __iconNode$C = [
-  ["ellipse", { cx: "12", cy: "5", rx: "9", ry: "3", key: "msslwz" }],
-  ["path", { d: "M3 5V19A9 3 0 0 0 21 19V5", key: "1wlel7" }],
-  ["path", { d: "M3 12A9 3 0 0 0 21 12", key: "mv7ke4" }]
+  ["rect", { width: "20", height: "14", x: "2", y: "5", rx: "2", key: "ynyp8z" }],
+  ["line", { x1: "2", x2: "22", y1: "10", y2: "10", key: "1b3vmo" }]
 ];
-const Database = createLucideIcon("database", __iconNode$C);
+const CreditCard = createLucideIcon("credit-card", __iconNode$C);
 /**
  * @license lucide-react v0.484.0 - ISC
  *
@@ -18776,10 +18800,11 @@ const Database = createLucideIcon("database", __iconNode$C);
  * See the LICENSE file in the root directory of this source tree.
  */
 const __iconNode$B = [
-  ["line", { x1: "12", x2: "12", y1: "2", y2: "22", key: "7eqyqh" }],
-  ["path", { d: "M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6", key: "1b0p4s" }]
+  ["ellipse", { cx: "12", cy: "5", rx: "9", ry: "3", key: "msslwz" }],
+  ["path", { d: "M3 5V19A9 3 0 0 0 21 19V5", key: "1wlel7" }],
+  ["path", { d: "M3 12A9 3 0 0 0 21 12", key: "mv7ke4" }]
 ];
-const DollarSign = createLucideIcon("dollar-sign", __iconNode$B);
+const Database = createLucideIcon("database", __iconNode$B);
 /**
  * @license lucide-react v0.484.0 - ISC
  *
@@ -19281,12 +19306,12 @@ const __iconNode = [
 ];
 const Zap = createLucideIcon("zap", __iconNode);
 const CLASS_PART_SEPARATOR = "-";
-const createClassGroupUtils = (config) => {
-  const classMap = createClassMap(config);
+const createClassGroupUtils = (config2) => {
+  const classMap = createClassMap(config2);
   const {
     conflictingClassGroups,
     conflictingClassGroupModifiers
-  } = config;
+  } = config2;
   const getClassGroupId = (className) => {
     const classParts = className.split(CLASS_PART_SEPARATOR);
     if (classParts[0] === "" && classParts.length !== 1) {
@@ -19335,11 +19360,11 @@ const getGroupIdForArbitraryProperty = (className) => {
     }
   }
 };
-const createClassMap = (config) => {
+const createClassMap = (config2) => {
   const {
     theme,
     classGroups
-  } = config;
+  } = config2;
   const classMap = {
     nextPart: /* @__PURE__ */ new Map(),
     validators: []
@@ -19429,11 +19454,11 @@ const createLruCache = (maxCacheSize) => {
 const IMPORTANT_MODIFIER = "!";
 const MODIFIER_SEPARATOR = ":";
 const MODIFIER_SEPARATOR_LENGTH = MODIFIER_SEPARATOR.length;
-const createParseClassName = (config) => {
+const createParseClassName = (config2) => {
   const {
     prefix,
     experimentalParseClassName
-  } = config;
+  } = config2;
   let parseClassName = (className) => {
     const modifiers = [];
     let bracketDepth = 0;
@@ -19503,8 +19528,8 @@ const stripImportantModifier = (baseClassName) => {
   }
   return baseClassName;
 };
-const createSortModifiers = (config) => {
-  const orderSensitiveModifiers = Object.fromEntries(config.orderSensitiveModifiers.map((modifier) => [modifier, true]));
+const createSortModifiers = (config2) => {
+  const orderSensitiveModifiers = Object.fromEntries(config2.orderSensitiveModifiers.map((modifier) => [modifier, true]));
   const sortModifiers = (modifiers) => {
     if (modifiers.length <= 1) {
       return modifiers;
@@ -19525,11 +19550,11 @@ const createSortModifiers = (config) => {
   };
   return sortModifiers;
 };
-const createConfigUtils = (config) => ({
-  cache: createLruCache(config.cacheSize),
-  parseClassName: createParseClassName(config),
-  sortModifiers: createSortModifiers(config),
-  ...createClassGroupUtils(config)
+const createConfigUtils = (config2) => ({
+  cache: createLruCache(config2.cacheSize),
+  parseClassName: createParseClassName(config2),
+  sortModifiers: createSortModifiers(config2),
+  ...createClassGroupUtils(config2)
 });
 const SPLIT_CLASSES_REGEX = /\s+/;
 const mergeClassList = (classList, configUtils) => {
@@ -19622,8 +19647,8 @@ function createTailwindMerge(createConfigFirst, ...createConfigRest) {
   let cacheSet;
   let functionToCall = initTailwindMerge;
   function initTailwindMerge(classList) {
-    const config = createConfigRest.reduce((previousConfig, createConfigCurrent) => createConfigCurrent(previousConfig), createConfigFirst());
-    configUtils = createConfigUtils(config);
+    const config2 = createConfigRest.reduce((previousConfig, createConfigCurrent) => createConfigCurrent(previousConfig), createConfigFirst());
+    configUtils = createConfigUtils(config2);
     cacheGet = configUtils.cache.get;
     cacheSet = configUtils.cache.set;
     functionToCall = tailwindMerge;
@@ -22346,10 +22371,12 @@ class Client {
     __publicField(this, "analytics");
     __publicField(this, "auth");
     __publicField(this, "branding");
+    __publicField(this, "config");
     __publicField(this, "finance");
     __publicField(this, "frontend");
     __publicField(this, "orgs");
     __publicField(this, "properties");
+    __publicField(this, "reports");
     __publicField(this, "seed");
     __publicField(this, "staff");
     __publicField(this, "tasks");
@@ -22363,10 +22390,12 @@ class Client {
     this.analytics = new analytics.ServiceClient(base);
     this.auth = new auth.ServiceClient(base);
     this.branding = new branding.ServiceClient(base);
+    this.config = new config.ServiceClient(base);
     this.finance = new finance.ServiceClient(base);
     this.frontend = new frontend.ServiceClient(base);
     this.orgs = new orgs.ServiceClient(base);
     this.properties = new properties.ServiceClient(base);
+    this.reports = new reports.ServiceClient(base);
     this.seed = new seed.ServiceClient(base);
     this.staff = new staff.ServiceClient(base);
     this.tasks = new tasks.ServiceClient(base);
@@ -22524,6 +22553,24 @@ var branding;
   }
   branding2.ServiceClient = ServiceClient;
 })(branding || (branding = {}));
+var config;
+((config2) => {
+  class ServiceClient {
+    constructor(baseClient) {
+      __publicField(this, "baseClient");
+      this.baseClient = baseClient;
+      this.healthCheck = this.healthCheck.bind(this);
+    }
+    /**
+     * Health check endpoint
+     */
+    async healthCheck() {
+      const resp = await this.baseClient.callTypedAPI("GET", `/health`);
+      return await resp.json();
+    }
+  }
+  config2.ServiceClient = ServiceClient;
+})(config || (config = {}));
 var finance;
 ((finance2) => {
   class ServiceClient {
@@ -22531,30 +22578,74 @@ var finance;
       __publicField(this, "baseClient");
       this.baseClient = baseClient;
       this.addExpense = this.addExpense.bind(this);
+      this.addReceiptFileIdColumns = this.addReceiptFileIdColumns.bind(this);
       this.addRevenue = this.addRevenue.bind(this);
+      this.addRevenueMinimal = this.addRevenueMinimal.bind(this);
       this.approveExpense = this.approveExpense.bind(this);
+      this.approveExpenseById = this.approveExpenseById.bind(this);
       this.approveRevenue = this.approveRevenue.bind(this);
+      this.approveRevenueById = this.approveRevenueById.bind(this);
+      this.bulkApproveTransactions = this.bulkApproveTransactions.bind(this);
       this.checkDailyApproval = this.checkDailyApproval.bind(this);
+      this.checkDbSchemaDirect = this.checkDbSchemaDirect.bind(this);
+      this.checkDbStatus = this.checkDbStatus.bind(this);
       this.checkNotifications = this.checkNotifications.bind(this);
+      this.checkPaymentColumns = this.checkPaymentColumns.bind(this);
+      this.checkSchema = this.checkSchema.bind(this);
+      this.debugDailyApproval = this.debugDailyApproval.bind(this);
       this.debugTransactionStatus = this.debugTransactionStatus.bind(this);
+      this.deleteExpense = this.deleteExpense.bind(this);
+      this.deleteRevenue = this.deleteRevenue.bind(this);
+      this.ensureDailyApprovalsTable = this.ensureDailyApprovalsTable.bind(this);
+      this.ensureNotificationsTable = this.ensureNotificationsTable.bind(this);
+      this.ensureSchema = this.ensureSchema.bind(this);
+      this.forceInitDb = this.forceInitDb.bind(this);
       this.getBankAccounts = this.getBankAccounts.bind(this);
-      this.getDailyReport = this.getDailyReport.bind(this);
-      this.getDailyReports = this.getDailyReports.bind(this);
+      this.getDailyApprovalStats = this.getDailyApprovalStats.bind(this);
+      this.getDailyApprovalSummary = this.getDailyApprovalSummary.bind(this);
+      this.getFinancialSummary = this.getFinancialSummary.bind(this);
+      this.getPendingApprovals = this.getPendingApprovals.bind(this);
+      this.getTodayPendingTransactions = this.getTodayPendingTransactions.bind(this);
       this.grantDailyApproval = this.grantDailyApproval.bind(this);
+      this.initDb = this.initDb.bind(this);
       this.listExpenses = this.listExpenses.bind(this);
-      this.listPendingApprovals = this.listPendingApprovals.bind(this);
       this.listRevenues = this.listRevenues.bind(this);
       this.markNotificationsRead = this.markNotificationsRead.bind(this);
-      this.profitLoss = this.profitLoss.bind(this);
+      this.quickSetup = this.quickSetup.bind(this);
       this.reconcileTransaction = this.reconcileTransaction.bind(this);
+      this.resetApprovalStatus = this.resetApprovalStatus.bind(this);
+      this.runMigration = this.runMigration.bind(this);
+      this.runMigrationApi = this.runMigrationApi.bind(this);
+      this.runMigrationNoAuth = this.runMigrationNoAuth.bind(this);
+      this.runPaymentMigration = this.runPaymentMigration.bind(this);
+      this.setupDatabase = this.setupDatabase.bind(this);
+      this.simpleTest = this.simpleTest.bind(this);
       this.syncBankTransactions = this.syncBankTransactions.bind(this);
-      this.updateDailyCashBalance = this.updateDailyCashBalance.bind(this);
+      this.testAddExpense = this.testAddExpense.bind(this);
+      this.testAddRevenue = this.testAddRevenue.bind(this);
+      this.testDatabase = this.testDatabase.bind(this);
+      this.testDbSchema = this.testDbSchema.bind(this);
+      this.testDbTables = this.testDbTables.bind(this);
+      this.testMinimalAdd = this.testMinimalAdd.bind(this);
+      this.testPaymentMode = this.testPaymentMode.bind(this);
+      this.testSimple = this.testSimple.bind(this);
+      this.testSimpleRevenue = this.testSimpleRevenue.bind(this);
+      this.updateExpense = this.updateExpense.bind(this);
+      this.updateRevenue = this.updateRevenue.bind(this);
+      this.verySimpleTest = this.verySimpleTest.bind(this);
     }
     /**
      * Adds a new expense record
      */
     async addExpense(params) {
       const resp = await this.baseClient.callTypedAPI("POST", `/finance/expenses`, JSON.stringify(params));
+      return await resp.json();
+    }
+    /**
+     * API endpoint to add receipt_file_id columns to revenues and expenses tables
+     */
+    async addReceiptFileIdColumns() {
+      const resp = await this.baseClient.callTypedAPI("POST", `/finance/add-receipt-file-id-columns`);
       return await resp.json();
     }
     /**
@@ -22565,10 +22656,24 @@ var finance;
       return await resp.json();
     }
     /**
+     * Minimal version of add revenue to isolate issues
+     */
+    async addRevenueMinimal(params) {
+      const resp = await this.baseClient.callTypedAPI("POST", `/finance/revenues-minimal`, JSON.stringify(params));
+      return await resp.json();
+    }
+    /**
      * Approves or rejects an expense
      */
     async approveExpense(params) {
       const resp = await this.baseClient.callTypedAPI("POST", `/finance/expenses/approve`, JSON.stringify(params));
+      return await resp.json();
+    }
+    /**
+     * Approves or rejects an expense by ID (matches frontend URL pattern)
+     */
+    async approveExpenseById(id2, params) {
+      const resp = await this.baseClient.callTypedAPI("PATCH", `/finance/expenses/${encodeURIComponent(id2)}/approve`, JSON.stringify(params));
       return await resp.json();
     }
     /**
@@ -22579,11 +22684,38 @@ var finance;
       return await resp.json();
     }
     /**
-     * Check if a manager can add new transactions based on daily approval workflow
+     * Approves or rejects a revenue by ID (matches frontend URL pattern)
+     */
+    async approveRevenueById(id2, params) {
+      const resp = await this.baseClient.callTypedAPI("PATCH", `/finance/revenues/${encodeURIComponent(id2)}/approve`, JSON.stringify(params));
+      return await resp.json();
+    }
+    /**
+     * Bulk approve or reject transactions for a specific day
+     */
+    async bulkApproveTransactions(params) {
+      const resp = await this.baseClient.callTypedAPI("POST", `/finance/bulk-approve`, JSON.stringify(params));
+      return await resp.json();
+    }
+    /**
+     * API endpoint that calls the helper function
      */
     async checkDailyApproval() {
       const resp = await this.baseClient.callTypedAPI("POST", `/finance/check-daily-approval`);
       return await resp.json();
+    }
+    /**
+     * Direct database schema check
+     */
+    async checkDbSchemaDirect() {
+      const resp = await this.baseClient.callTypedAPI("GET", `/finance/check-db-schema-direct`);
+      return await resp.json();
+    }
+    /**
+     * Check database status without authentication
+     */
+    async checkDbStatus() {
+      await this.baseClient.callTypedAPI("GET", `/finance/check-db-status`);
     }
     /**
      * Enhanced notification system for all real-time updates
@@ -22599,11 +22731,69 @@ var finance;
       return await resp.json();
     }
     /**
+     * Check if payment mode columns exist in the database
+     */
+    async checkPaymentColumns() {
+      const resp = await this.baseClient.callTypedAPI("GET", `/finance/check-payment-columns`);
+      return await resp.json();
+    }
+    /**
+     * Temporary endpoint to check the current database schema (no auth required for testing)
+     */
+    async checkSchema() {
+      await this.baseClient.callTypedAPI("GET", `/finance/check-schema`);
+    }
+    /**
+     * Debug endpoint to check daily approval logic
+     */
+    async debugDailyApproval() {
+      const resp = await this.baseClient.callTypedAPI("POST", `/finance/debug-daily-approval`);
+      return await resp.json();
+    }
+    /**
      * Debug endpoint to check transaction status for a manager
      */
     async debugTransactionStatus() {
       const resp = await this.baseClient.callTypedAPI("POST", `/finance/debug-transaction-status`);
       return await resp.json();
+    }
+    /**
+     * Deletes an expense record
+     */
+    async deleteExpense(id2) {
+      const resp = await this.baseClient.callTypedAPI("DELETE", `/finance/expenses/${encodeURIComponent(id2)}`);
+      return await resp.json();
+    }
+    /**
+     * Deletes a revenue record
+     */
+    async deleteRevenue(id2) {
+      const resp = await this.baseClient.callTypedAPI("DELETE", `/finance/revenues/${encodeURIComponent(id2)}`);
+      return await resp.json();
+    }
+    /**
+     * Ensure daily_approvals table exists with correct schema
+     */
+    async ensureDailyApprovalsTable() {
+      await this.baseClient.callTypedAPI("POST", `/finance/ensure-daily-approvals-table`);
+    }
+    /**
+     * Ensure notifications table exists with correct schema
+     */
+    async ensureNotificationsTable() {
+      await this.baseClient.callTypedAPI("POST", `/finance/ensure-notifications-table`);
+    }
+    /**
+     * Ensure all required columns exist in the database
+     */
+    async ensureSchema() {
+      await this.baseClient.callTypedAPI("POST", `/finance/ensure-schema`);
+    }
+    /**
+     * Force initialize database tables without authentication
+     */
+    async forceInitDb() {
+      await this.baseClient.callTypedAPI("POST", `/finance/force-init-db`);
     }
     /**
      * Placeholder for retrieving connected bank accounts
@@ -22613,29 +22803,56 @@ var finance;
       return await resp.json();
     }
     /**
-     * Get daily financial report for a specific date
+     * Get daily approval statistics and transactions
      */
-    async getDailyReport(params) {
+    async getDailyApprovalStats(params) {
       const query = makeRecord({
-        date: params.date,
-        endDate: params.endDate,
-        propertyId: params.propertyId === void 0 ? void 0 : String(params.propertyId),
-        startDate: params.startDate
+        date: params.date
       });
-      const resp = await this.baseClient.callTypedAPI("GET", `/finance/daily-report`, void 0, { query });
+      const resp = await this.baseClient.callTypedAPI("GET", `/finance/daily-approval-stats`, void 0, { query });
       return await resp.json();
     }
     /**
-     * Get daily reports for a date range
+     * Get daily approval summary for a date range
      */
-    async getDailyReports(params) {
+    async getDailyApprovalSummary(params) {
+      const query = makeRecord({
+        endDate: params.endDate,
+        startDate: params.startDate
+      });
+      const resp = await this.baseClient.callTypedAPI("GET", `/finance/daily-approval-summary`, void 0, { query });
+      return await resp.json();
+    }
+    /**
+     * Get comprehensive financial summary with payment mode breakdown
+     */
+    async getFinancialSummary(params) {
+      const query = makeRecord({
+        endDate: params.endDate,
+        propertyId: params.propertyId === void 0 ? void 0 : String(params.propertyId),
+        startDate: params.startDate
+      });
+      const resp = await this.baseClient.callTypedAPI("GET", `/finance/summary`, void 0, { query });
+      return await resp.json();
+    }
+    /**
+     * Get pending approvals for admin review
+     */
+    async getPendingApprovals() {
+      const resp = await this.baseClient.callTypedAPI("GET", `/finance/pending-approvals`);
+      return await resp.json();
+    }
+    /**
+     * Get today's pending transactions for approval
+     */
+    async getTodayPendingTransactions(params) {
       const query = makeRecord({
         date: params.date,
         endDate: params.endDate,
         propertyId: params.propertyId === void 0 ? void 0 : String(params.propertyId),
         startDate: params.startDate
       });
-      const resp = await this.baseClient.callTypedAPI("GET", `/finance/daily-reports`, void 0, { query });
+      const resp = await this.baseClient.callTypedAPI("GET", `/finance/today-pending-transactions`, void 0, { query });
       return await resp.json();
     }
     /**
@@ -22644,6 +22861,12 @@ var finance;
     async grantDailyApproval(params) {
       const resp = await this.baseClient.callTypedAPI("POST", `/finance/grant-daily-approval`, JSON.stringify(params));
       return await resp.json();
+    }
+    /**
+     * Initialize database tables without authentication
+     */
+    async initDb() {
+      await this.baseClient.callTypedAPI("POST", `/finance/init-db`);
     }
     /**
      * Lists expenses with filtering
@@ -22657,13 +22880,6 @@ var finance;
         status: params.status
       });
       const resp = await this.baseClient.callTypedAPI("GET", `/finance/expenses`, void 0, { query });
-      return await resp.json();
-    }
-    /**
-     * List managers who need daily approval
-     */
-    async listPendingApprovals() {
-      const resp = await this.baseClient.callTypedAPI("GET", `/finance/pending-approvals`);
       return await resp.json();
     }
     /**
@@ -22687,17 +22903,10 @@ var finance;
       return await resp.json();
     }
     /**
-     * Gets profit and loss statement
+     * Quick setup endpoint that can be called without authentication for initial setup
      */
-    async profitLoss(params) {
-      const query = makeRecord({
-        endDate: params.endDate,
-        includePending: params.includePending === void 0 ? void 0 : String(params.includePending),
-        propertyId: params.propertyId === void 0 ? void 0 : String(params.propertyId),
-        startDate: params.startDate
-      });
-      const resp = await this.baseClient.callTypedAPI("GET", `/finance/profit-loss`, void 0, { query });
-      return await resp.json();
+    async quickSetup() {
+      await this.baseClient.callTypedAPI("POST", `/finance/quick-setup`);
     }
     /**
      * Placeholder for transaction reconciliation
@@ -22705,6 +22914,52 @@ var finance;
     async reconcileTransaction(params) {
       const resp = await this.baseClient.callTypedAPI("POST", `/finance/reconcile-transaction`, JSON.stringify(params));
       return await resp.json();
+    }
+    /**
+     * Reset all approved transactions to pending status (for testing purposes)
+     */
+    async resetApprovalStatus() {
+      const resp = await this.baseClient.callTypedAPI("POST", `/finance/reset-approval-status`);
+      return await resp.json();
+    }
+    /**
+     * Temporary endpoint to run the database migration
+     */
+    async runMigration() {
+      await this.baseClient.callTypedAPI("POST", `/finance/run-migration`);
+    }
+    /**
+     * API endpoint to run the payment mode migration
+     */
+    async runMigrationApi() {
+      const resp = await this.baseClient.callTypedAPI("POST", `/finance/run-migration-auth`);
+      return await resp.json();
+    }
+    /**
+     * API endpoint to run the payment mode migration without authentication
+     */
+    async runMigrationNoAuth() {
+      const resp = await this.baseClient.callTypedAPI("POST", `/finance/run-migration-no-auth`);
+      return await resp.json();
+    }
+    /**
+     * Run the payment mode migration manually
+     */
+    async runPaymentMigration() {
+      const resp = await this.baseClient.callTypedAPI("POST", `/finance/run-payment-migration`);
+      return await resp.json();
+    }
+    /**
+     * Comprehensive database setup to ensure all required tables exist
+     */
+    async setupDatabase() {
+      await this.baseClient.callTypedAPI("POST", `/finance/setup-database`);
+    }
+    /**
+     * Very simple test endpoint
+     */
+    async simpleTest() {
+      await this.baseClient.callTypedAPI("GET", `/finance/simple-test`);
     }
     /**
      * Placeholder for future bank API integration
@@ -22715,11 +22970,85 @@ var finance;
       return await resp.json();
     }
     /**
-     * Create or update daily cash balance
+     * Test version of add expense without daily approval check
      */
-    async updateDailyCashBalance(params) {
-      const resp = await this.baseClient.callTypedAPI("POST", `/finance/daily-cash-balance`, JSON.stringify(params));
+    async testAddExpense(params) {
+      const resp = await this.baseClient.callTypedAPI("POST", `/finance/test-add-expense`, JSON.stringify(params));
       return await resp.json();
+    }
+    /**
+     * Test version of add revenue without daily approval check
+     */
+    async testAddRevenue(params) {
+      const resp = await this.baseClient.callTypedAPI("POST", `/finance/test-add-revenue`, JSON.stringify(params));
+      return await resp.json();
+    }
+    /**
+     * Test database connection and table structure
+     */
+    async testDatabase() {
+      await this.baseClient.callTypedAPI("GET", `/finance/test-database`);
+    }
+    /**
+     * Test database schema and table access
+     */
+    async testDbSchema() {
+      const resp = await this.baseClient.callTypedAPI("GET", `/finance/test-db-schema`);
+      return await resp.json();
+    }
+    /**
+     * Test endpoint to check if database tables exist
+     */
+    async testDbTables() {
+      const resp = await this.baseClient.callTypedAPI("GET", `/finance/test-db-tables`);
+      return await resp.json();
+    }
+    /**
+     * Minimal test endpoint to check if basic functionality works
+     */
+    async testMinimalAdd(params) {
+      const resp = await this.baseClient.callTypedAPI("POST", `/finance/test-minimal-add`, JSON.stringify(params));
+      return await resp.json();
+    }
+    /**
+     * Test endpoint to verify payment mode functionality
+     */
+    async testPaymentMode() {
+      const resp = await this.baseClient.callTypedAPI("GET", `/finance/test-payment-mode`);
+      return await resp.json();
+    }
+    /**
+     * Simple test endpoint to check database without authentication
+     */
+    async testSimple() {
+      await this.baseClient.callTypedAPI("GET", `/finance/test-simple`);
+    }
+    /**
+     * Very simple test endpoint to check if basic functionality works
+     */
+    async testSimpleRevenue(params) {
+      const resp = await this.baseClient.callTypedAPI("POST", `/finance/test-simple-revenue`, JSON.stringify(params));
+      return await resp.json();
+    }
+    /**
+     * Updates an existing expense record
+     */
+    async updateExpense(id2, params) {
+      const resp = await this.baseClient.callTypedAPI("PATCH", `/finance/expenses/${encodeURIComponent(id2)}`, JSON.stringify(params));
+      return await resp.json();
+    }
+    /**
+     * Updates an existing revenue record
+     */
+    async updateRevenue(id2, params) {
+      const resp = await this.baseClient.callTypedAPI("PATCH", `/finance/revenues/${encodeURIComponent(id2)}`, JSON.stringify(params));
+      return await resp.json();
+    }
+    /**
+     * Very simple test endpoint that returns an object
+     */
+    async verySimpleTest() {
+      await this.baseClient.callTypedAPI("GET", `/finance/very-simple-test`);
     }
   }
   finance2.ServiceClient = ServiceClient;
@@ -22730,10 +23059,13 @@ var frontend;
     constructor(baseClient) {
       __publicField(this, "baseClient");
       this.baseClient = baseClient;
-      this.assets = this.assets.bind(this);
+      this.serveStatic = this.serveStatic.bind(this);
     }
-    async assets(path) {
-      await this.baseClient.callTypedAPI("HEAD", `/frontend/${path.map(encodeURIComponent).join("/")}`);
+    /**
+     * Custom static file serving with raw response and proper MIME types
+     */
+    async serveStatic(method, path, body, options) {
+      return this.baseClient.callAPI(method, `/${path.map(encodeURIComponent).join("/")}`, body, options);
     }
   }
   frontend2.ServiceClient = ServiceClient;
@@ -22771,6 +23103,7 @@ var properties;
       __publicField(this, "baseClient");
       this.baseClient = baseClient;
       this.create = this.create.bind(this);
+      this.deleteProperty = this.deleteProperty.bind(this);
       this.getOccupancy = this.getOccupancy.bind(this);
       this.list = this.list.bind(this);
       this.update = this.update.bind(this);
@@ -22780,6 +23113,13 @@ var properties;
      */
     async create(params) {
       const resp = await this.baseClient.callTypedAPI("POST", `/properties`, JSON.stringify(params));
+      return await resp.json();
+    }
+    /**
+     * Deletes a property (Admin only)
+     */
+    async deleteProperty(id2) {
+      const resp = await this.baseClient.callTypedAPI("DELETE", `/properties/${encodeURIComponent(id2)}`);
       return await resp.json();
     }
     /**
@@ -22810,6 +23150,168 @@ var properties;
   }
   properties2.ServiceClient = ServiceClient;
 })(properties || (properties = {}));
+var reports;
+((reports2) => {
+  class ServiceClient {
+    constructor(baseClient) {
+      __publicField(this, "baseClient");
+      this.baseClient = baseClient;
+      this.calculateOpeningBalanceEndpoint = this.calculateOpeningBalanceEndpoint.bind(this);
+      this.checkSchema = this.checkSchema.bind(this);
+      this.debugAllTransactions = this.debugAllTransactions.bind(this);
+      this.debugDailyReport = this.debugDailyReport.bind(this);
+      this.exportDailyReportExcel = this.exportDailyReportExcel.bind(this);
+      this.exportDailyReportPDF = this.exportDailyReportPDF.bind(this);
+      this.generatePDF = this.generatePDF.bind(this);
+      this.getDailyReport = this.getDailyReport.bind(this);
+      this.getDailyReports = this.getDailyReports.bind(this);
+      this.getMonthlySummary = this.getMonthlySummary.bind(this);
+      this.getMonthlyYearlyReport = this.getMonthlyYearlyReport.bind(this);
+      this.getYearlySummary = this.getYearlySummary.bind(this);
+      this.runCompleteMigration = this.runCompleteMigration.bind(this);
+      this.runMigration = this.runMigration.bind(this);
+      this.updateDailyCashBalance = this.updateDailyCashBalance.bind(this);
+      this.updateDailyCashBalanceSmart = this.updateDailyCashBalanceSmart.bind(this);
+    }
+    /**
+     * Calculate opening balance for a specific date and property
+     */
+    async calculateOpeningBalanceEndpoint(params) {
+      const resp = await this.baseClient.callTypedAPI("POST", `/reports/calculate-opening-balance`, JSON.stringify(params));
+      return await resp.json();
+    }
+    /**
+     * Check the current database schema for daily_cash_balances table
+     */
+    async checkSchema() {
+      await this.baseClient.callTypedAPI("GET", `/reports/check-schema`);
+    }
+    /**
+     * Debug endpoint to check ALL transactions in the database
+     */
+    async debugAllTransactions(params) {
+      const resp = await this.baseClient.callTypedAPI("POST", `/reports/debug-all-transactions`, JSON.stringify(params));
+      return await resp.json();
+    }
+    /**
+     * Debug endpoint to check transaction data and daily report logic
+     */
+    async debugDailyReport(params) {
+      const resp = await this.baseClient.callTypedAPI("POST", `/reports/debug-daily-report`, JSON.stringify(params));
+      return await resp.json();
+    }
+    /**
+     * Export daily report to Excel
+     */
+    async exportDailyReportExcel(params) {
+      const resp = await this.baseClient.callTypedAPI("POST", `/reports/export-daily-excel`, JSON.stringify(params));
+      return await resp.json();
+    }
+    /**
+     * Export daily report to PDF
+     */
+    async exportDailyReportPDF(params) {
+      const resp = await this.baseClient.callTypedAPI("POST", `/reports/export-daily-pdf`, JSON.stringify(params));
+      return await resp.json();
+    }
+    /**
+     * Simple PDF generation using HTML to PDF conversion
+     */
+    async generatePDF(params) {
+      const resp = await this.baseClient.callTypedAPI("POST", `/reports/generate-pdf`, JSON.stringify(params));
+      return await resp.json();
+    }
+    /**
+     * Get daily financial report for a specific date
+     */
+    async getDailyReport(params) {
+      const query = makeRecord({
+        date: params.date,
+        endDate: params.endDate,
+        propertyId: params.propertyId === void 0 ? void 0 : String(params.propertyId),
+        startDate: params.startDate
+      });
+      const resp = await this.baseClient.callTypedAPI("GET", `/reports/daily-report`, void 0, { query });
+      return await resp.json();
+    }
+    /**
+     * Get daily reports for a date range
+     */
+    async getDailyReports(params) {
+      const query = makeRecord({
+        date: params.date,
+        endDate: params.endDate,
+        propertyId: params.propertyId === void 0 ? void 0 : String(params.propertyId),
+        startDate: params.startDate
+      });
+      const resp = await this.baseClient.callTypedAPI("GET", `/reports/daily-reports`, void 0, { query });
+      return await resp.json();
+    }
+    /**
+     * Get monthly summary report
+     */
+    async getMonthlySummary(params) {
+      const query = makeRecord({
+        month: params.month,
+        propertyId: params.propertyId === void 0 ? void 0 : String(params.propertyId),
+        year: params.year
+      });
+      const resp = await this.baseClient.callTypedAPI("GET", `/reports/monthly-summary`, void 0, { query });
+      return await resp.json();
+    }
+    /**
+     * Gets profit and loss statement for monthly/yearly reports
+     */
+    async getMonthlyYearlyReport(params) {
+      const query = makeRecord({
+        endDate: params.endDate,
+        includePending: params.includePending === void 0 ? void 0 : String(params.includePending),
+        propertyId: params.propertyId === void 0 ? void 0 : String(params.propertyId),
+        startDate: params.startDate
+      });
+      const resp = await this.baseClient.callTypedAPI("GET", `/reports/monthly-yearly-report`, void 0, { query });
+      return await resp.json();
+    }
+    /**
+     * Get yearly summary report
+     */
+    async getYearlySummary(params) {
+      const query = makeRecord({
+        propertyId: params.propertyId === void 0 ? void 0 : String(params.propertyId),
+        year: params.year
+      });
+      const resp = await this.baseClient.callTypedAPI("GET", `/reports/yearly-summary`, void 0, { query });
+      return await resp.json();
+    }
+    /**
+     * Complete migration that handles both initial table creation and enhancements
+     */
+    async runCompleteMigration() {
+      await this.baseClient.callTypedAPI("POST", `/reports/run-complete-migration`);
+    }
+    /**
+     * Temporary endpoint to run the database migration for daily cash balances enhancement
+     */
+    async runMigration() {
+      await this.baseClient.callTypedAPI("POST", `/reports/run-migration`);
+    }
+    /**
+     * Create or update daily cash balance (legacy endpoint)
+     */
+    async updateDailyCashBalance(params) {
+      const resp = await this.baseClient.callTypedAPI("POST", `/reports/daily-cash-balance`, JSON.stringify(params));
+      return await resp.json();
+    }
+    /**
+     * Smart daily cash balance update with automatic opening balance calculation
+     */
+    async updateDailyCashBalanceSmart(params) {
+      const resp = await this.baseClient.callTypedAPI("POST", `/reports/daily-cash-balance-smart`, JSON.stringify(params));
+      return await resp.json();
+    }
+  }
+  reports2.ServiceClient = ServiceClient;
+})(reports || (reports = {}));
 var seed;
 ((seed2) => {
   class ServiceClient {
@@ -22821,8 +23323,8 @@ var seed;
     /**
      * Seeds the database with demo data
      */
-    async seedData(params) {
-      await this.baseClient.callTypedAPI("POST", `/seed/data`, JSON.stringify(params));
+    async seedData() {
+      await this.baseClient.callTypedAPI("POST", `/seed/data`);
     }
   }
   seed2.ServiceClient = ServiceClient;
@@ -22833,22 +23335,93 @@ var staff;
     constructor(baseClient) {
       __publicField(this, "baseClient");
       this.baseClient = baseClient;
+      this.approveEmergencyLeave = this.approveEmergencyLeave.bind(this);
       this.approveLeave = this.approveLeave.bind(this);
+      this.approveLeaveRequest = this.approveLeaveRequest.bind(this);
+      this.approveScheduleChangeRequest = this.approveScheduleChangeRequest.bind(this);
+      this.assignProperty = this.assignProperty.bind(this);
+      this.calculateSalary = this.calculateSalary.bind(this);
       this.checkIn = this.checkIn.bind(this);
       this.checkOut = this.checkOut.bind(this);
       this.create = this.create.bind(this);
+      this.createEmergencyLeave = this.createEmergencyLeave.bind(this);
+      this.createSalaryComponent = this.createSalaryComponent.bind(this);
       this.createSchedule = this.createSchedule.bind(this);
+      this.createScheduleChangeRequest = this.createScheduleChangeRequest.bind(this);
+      this.deleteStaff = this.deleteStaff.bind(this);
+      this.exportAttendance = this.exportAttendance.bind(this);
+      this.exportLeave = this.exportLeave.bind(this);
+      this.exportSalary = this.exportSalary.bind(this);
+      this.generatePayslip = this.generatePayslip.bind(this);
+      this.getAttendanceStatistics = this.getAttendanceStatistics.bind(this);
+      this.getLeaveBalance = this.getLeaveBalance.bind(this);
+      this.getLeaveStatistics = this.getLeaveStatistics.bind(this);
+      this.getPayslip = this.getPayslip.bind(this);
+      this.getSalaryStatistics = this.getSalaryStatistics.bind(this);
+      this.getScheduleStatistics = this.getScheduleStatistics.bind(this);
+      this.getStatistics = this.getStatistics.bind(this);
       this.list = this.list.bind(this);
+      this.listAttendance = this.listAttendance.bind(this);
       this.listLeaveRequests = this.listLeaveRequests.bind(this);
+      this.listPayslips = this.listPayslips.bind(this);
+      this.listSalaryComponents = this.listSalaryComponents.bind(this);
+      this.listScheduleChangeRequests = this.listScheduleChangeRequests.bind(this);
       this.listSchedules = this.listSchedules.bind(this);
+      this.markScheduleCompletion = this.markScheduleCompletion.bind(this);
       this.requestLeave = this.requestLeave.bind(this);
+      this.search = this.search.bind(this);
+      this.update = this.update.bind(this);
+      this.updateAttendance = this.updateAttendance.bind(this);
+      this.updateDepartment = this.updateDepartment.bind(this);
+      this.updateLeaveBalance = this.updateLeaveBalance.bind(this);
+      this.updatePayslipStatus = this.updatePayslipStatus.bind(this);
       this.updatePerformance = this.updatePerformance.bind(this);
+      this.updateStatus = this.updateStatus.bind(this);
+      this.validateAttendance = this.validateAttendance.bind(this);
+      this.validateLeaveRequest = this.validateLeaveRequest.bind(this);
+      this.validateSalary = this.validateSalary.bind(this);
+      this.validateSchedule = this.validateSchedule.bind(this);
+    }
+    /**
+     * Approves or rejects an emergency leave request
+     */
+    async approveEmergencyLeave(leaveRequestId, params) {
+      const resp = await this.baseClient.callTypedAPI("PUT", `/staff/emergency-leave/${encodeURIComponent(leaveRequestId)}/approve`, JSON.stringify(params));
+      return await resp.json();
     }
     /**
      * Approves or rejects a leave request
      */
     async approveLeave(params) {
       const resp = await this.baseClient.callTypedAPI("POST", `/staff/leave/approve`, JSON.stringify(params));
+      return await resp.json();
+    }
+    /**
+     * Approves or rejects a leave request
+     */
+    async approveLeaveRequest(leaveRequestId, params) {
+      const resp = await this.baseClient.callTypedAPI("PUT", `/staff/leave-requests/${encodeURIComponent(leaveRequestId)}/approve`, JSON.stringify(params));
+      return await resp.json();
+    }
+    /**
+     * Approves or rejects a schedule change request
+     */
+    async approveScheduleChangeRequest(changeRequestId, params) {
+      const resp = await this.baseClient.callTypedAPI("PUT", `/staff/schedule-change-requests/${encodeURIComponent(changeRequestId)}/approve`, JSON.stringify(params));
+      return await resp.json();
+    }
+    /**
+     * Assigns a staff member to a property
+     */
+    async assignProperty(staffId, params) {
+      const resp = await this.baseClient.callTypedAPI("PUT", `/staff/${encodeURIComponent(staffId)}/assign-property`, JSON.stringify(params));
+      return await resp.json();
+    }
+    /**
+     * Calculates salary based on attendance and salary components
+     */
+    async calculateSalary(params) {
+      const resp = await this.baseClient.callTypedAPI("POST", `/staff/calculate-salary`, JSON.stringify(params));
       return await resp.json();
     }
     /**
@@ -22873,6 +23446,20 @@ var staff;
       return await resp.json();
     }
     /**
+     * Creates an emergency leave request
+     */
+    async createEmergencyLeave(params) {
+      const resp = await this.baseClient.callTypedAPI("POST", `/staff/emergency-leave`, JSON.stringify(params));
+      return await resp.json();
+    }
+    /**
+     * Creates a new salary component
+     */
+    async createSalaryComponent(params) {
+      const resp = await this.baseClient.callTypedAPI("POST", `/staff/salary-components`, JSON.stringify(params));
+      return await resp.json();
+    }
+    /**
      * Creates a new staff schedule
      */
     async createSchedule(params) {
@@ -22880,41 +23467,262 @@ var staff;
       return await resp.json();
     }
     /**
-     * Lists staff members with filtering
+     * Creates a schedule change request
+     */
+    async createScheduleChangeRequest(params) {
+      const resp = await this.baseClient.callTypedAPI("POST", `/staff/schedule-change-requests`, JSON.stringify(params));
+      return await resp.json();
+    }
+    /**
+     * Deletes a staff record and all related data
+     */
+    async deleteStaff(id2) {
+      const resp = await this.baseClient.callTypedAPI("DELETE", `/staff/${encodeURIComponent(id2)}`);
+      return await resp.json();
+    }
+    /**
+     * Exports attendance records in various formats
+     */
+    async exportAttendance(params) {
+      const resp = await this.baseClient.callTypedAPI("POST", `/staff/attendance/export`, JSON.stringify(params));
+      return await resp.json();
+    }
+    /**
+     * Exports leave data in various formats
+     */
+    async exportLeave(params) {
+      const resp = await this.baseClient.callTypedAPI("POST", `/staff/leave/export`, JSON.stringify(params));
+      return await resp.json();
+    }
+    /**
+     * Exports salary data in various formats
+     */
+    async exportSalary(params) {
+      const resp = await this.baseClient.callTypedAPI("POST", `/staff/salary/export`, JSON.stringify(params));
+      return await resp.json();
+    }
+    /**
+     * Generates payslip for a staff member
+     */
+    async generatePayslip(params) {
+      const resp = await this.baseClient.callTypedAPI("POST", `/staff/generate-payslip`, JSON.stringify(params));
+      return await resp.json();
+    }
+    /**
+     * Gets comprehensive attendance statistics and analytics
+     */
+    async getAttendanceStatistics(params) {
+      const query = makeRecord({
+        endDate: params.endDate === void 0 ? void 0 : String(params.endDate),
+        groupBy: params.groupBy === void 0 ? void 0 : String(params.groupBy),
+        propertyId: params.propertyId === void 0 ? void 0 : String(params.propertyId),
+        staffId: params.staffId === void 0 ? void 0 : String(params.staffId),
+        startDate: params.startDate === void 0 ? void 0 : String(params.startDate)
+      });
+      const resp = await this.baseClient.callTypedAPI("GET", `/staff/attendance/statistics`, void 0, { query });
+      return await resp.json();
+    }
+    /**
+     * Gets leave balance for a staff member
+     */
+    async getLeaveBalance(staffId) {
+      const resp = await this.baseClient.callTypedAPI("GET", `/staff/${encodeURIComponent(staffId)}/leave-balance`);
+      return await resp.json();
+    }
+    /**
+     * Gets comprehensive leave statistics and analytics
+     */
+    async getLeaveStatistics(params) {
+      const query = makeRecord({
+        endDate: params.endDate === void 0 ? void 0 : String(params.endDate),
+        groupBy: params.groupBy === void 0 ? void 0 : String(params.groupBy),
+        propertyId: params.propertyId === void 0 ? void 0 : String(params.propertyId),
+        startDate: params.startDate === void 0 ? void 0 : String(params.startDate)
+      });
+      const resp = await this.baseClient.callTypedAPI("GET", `/staff/leave/statistics`, void 0, { query });
+      return await resp.json();
+    }
+    /**
+     * Gets detailed payslip information
+     */
+    async getPayslip(payslipId) {
+      const resp = await this.baseClient.callTypedAPI("GET", `/staff/payslips/${encodeURIComponent(payslipId)}`);
+      return await resp.json();
+    }
+    /**
+     * Gets comprehensive salary statistics and analytics
+     */
+    async getSalaryStatistics(params) {
+      const query = makeRecord({
+        endDate: params.endDate === void 0 ? void 0 : String(params.endDate),
+        groupBy: params.groupBy === void 0 ? void 0 : String(params.groupBy),
+        propertyId: params.propertyId === void 0 ? void 0 : String(params.propertyId),
+        startDate: params.startDate === void 0 ? void 0 : String(params.startDate)
+      });
+      const resp = await this.baseClient.callTypedAPI("GET", `/staff/salary/statistics`, void 0, { query });
+      return await resp.json();
+    }
+    /**
+     * Gets comprehensive schedule statistics and analytics
+     */
+    async getScheduleStatistics(params) {
+      const query = makeRecord({
+        endDate: params.endDate === void 0 ? void 0 : String(params.endDate),
+        groupBy: params.groupBy === void 0 ? void 0 : String(params.groupBy),
+        propertyId: params.propertyId === void 0 ? void 0 : String(params.propertyId),
+        startDate: params.startDate === void 0 ? void 0 : String(params.startDate)
+      });
+      const resp = await this.baseClient.callTypedAPI("GET", `/staff/schedules/statistics`, void 0, { query });
+      return await resp.json();
+    }
+    /**
+     * Gets comprehensive staff statistics and analytics
+     */
+    async getStatistics(params) {
+      const query = makeRecord({
+        dateRange: params.dateRange === void 0 ? void 0 : String(params.dateRange),
+        department: params.department,
+        propertyId: params.propertyId === void 0 ? void 0 : String(params.propertyId)
+      });
+      const resp = await this.baseClient.callTypedAPI("GET", `/staff/statistics`, void 0, { query });
+      return await resp.json();
+    }
+    /**
+     * Lists staff members with enhanced filtering, pagination, and search
      */
     async list(params) {
       const query = makeRecord({
         department: params.department,
+        limit: params.limit === void 0 ? void 0 : String(params.limit),
+        page: params.page === void 0 ? void 0 : String(params.page),
         propertyId: params.propertyId === void 0 ? void 0 : String(params.propertyId),
+        search: params.search,
+        sortBy: params.sortBy === void 0 ? void 0 : String(params.sortBy),
+        sortOrder: params.sortOrder === void 0 ? void 0 : String(params.sortOrder),
         status: params.status
       });
       const resp = await this.baseClient.callTypedAPI("GET", `/staff`, void 0, { query });
       return await resp.json();
     }
     /**
-     * Lists leave requests with filtering
+     * Lists attendance records with filtering and pagination
+     */
+    async listAttendance(params) {
+      const query = makeRecord({
+        endDate: params.endDate === void 0 ? void 0 : String(params.endDate),
+        limit: params.limit === void 0 ? void 0 : String(params.limit),
+        page: params.page === void 0 ? void 0 : String(params.page),
+        propertyId: params.propertyId === void 0 ? void 0 : String(params.propertyId),
+        search: params.search,
+        sortBy: params.sortBy === void 0 ? void 0 : String(params.sortBy),
+        sortOrder: params.sortOrder === void 0 ? void 0 : String(params.sortOrder),
+        staffId: params.staffId === void 0 ? void 0 : String(params.staffId),
+        startDate: params.startDate === void 0 ? void 0 : String(params.startDate),
+        status: params.status === void 0 ? void 0 : String(params.status)
+      });
+      const resp = await this.baseClient.callTypedAPI("GET", `/staff/attendance`, void 0, { query });
+      return await resp.json();
+    }
+    /**
+     * Lists leave requests with advanced filtering and pagination
      */
     async listLeaveRequests(params) {
       const query = makeRecord({
-        leaveType: params.leaveType,
+        endDate: params.endDate === void 0 ? void 0 : String(params.endDate),
+        isEmergency: params.isEmergency === void 0 ? void 0 : String(params.isEmergency),
+        leaveType: params.leaveType === void 0 ? void 0 : String(params.leaveType),
+        limit: params.limit === void 0 ? void 0 : String(params.limit),
+        page: params.page === void 0 ? void 0 : String(params.page),
+        priority: params.priority === void 0 ? void 0 : String(params.priority),
+        propertyId: params.propertyId === void 0 ? void 0 : String(params.propertyId),
+        search: params.search,
+        sortBy: params.sortBy === void 0 ? void 0 : String(params.sortBy),
+        sortOrder: params.sortOrder === void 0 ? void 0 : String(params.sortOrder),
         staffId: params.staffId === void 0 ? void 0 : String(params.staffId),
-        status: params.status
+        startDate: params.startDate === void 0 ? void 0 : String(params.startDate),
+        status: params.status === void 0 ? void 0 : String(params.status)
       });
       const resp = await this.baseClient.callTypedAPI("GET", `/staff/leave-requests`, void 0, { query });
       return await resp.json();
     }
     /**
-     * Lists staff schedules with filtering
+     * Lists payslips with filtering and pagination
+     */
+    async listPayslips(params) {
+      const query = makeRecord({
+        limit: params.limit === void 0 ? void 0 : String(params.limit),
+        page: params.page === void 0 ? void 0 : String(params.page),
+        payPeriodEnd: params.payPeriodEnd === void 0 ? void 0 : String(params.payPeriodEnd),
+        payPeriodStart: params.payPeriodStart === void 0 ? void 0 : String(params.payPeriodStart),
+        propertyId: params.propertyId === void 0 ? void 0 : String(params.propertyId),
+        staffId: params.staffId === void 0 ? void 0 : String(params.staffId),
+        status: params.status === void 0 ? void 0 : String(params.status)
+      });
+      const resp = await this.baseClient.callTypedAPI("GET", `/staff/payslips`, void 0, { query });
+      return await resp.json();
+    }
+    /**
+     * Lists salary components with filtering
+     */
+    async listSalaryComponents(params) {
+      const query = makeRecord({
+        effectiveDate: params.effectiveDate === void 0 ? void 0 : String(params.effectiveDate),
+        isActive: params.isActive === void 0 ? void 0 : String(params.isActive),
+        limit: params.limit === void 0 ? void 0 : String(params.limit),
+        page: params.page === void 0 ? void 0 : String(params.page),
+        propertyId: params.propertyId === void 0 ? void 0 : String(params.propertyId),
+        staffId: params.staffId === void 0 ? void 0 : String(params.staffId)
+      });
+      const resp = await this.baseClient.callTypedAPI("GET", `/staff/salary-components`, void 0, { query });
+      return await resp.json();
+    }
+    /**
+     * Lists schedule change requests with filtering and pagination
+     */
+    async listScheduleChangeRequests(params) {
+      const query = makeRecord({
+        endDate: params.endDate === void 0 ? void 0 : String(params.endDate),
+        limit: params.limit === void 0 ? void 0 : String(params.limit),
+        page: params.page === void 0 ? void 0 : String(params.page),
+        priority: params.priority === void 0 ? void 0 : String(params.priority),
+        propertyId: params.propertyId === void 0 ? void 0 : String(params.propertyId),
+        search: params.search,
+        sortBy: params.sortBy === void 0 ? void 0 : String(params.sortBy),
+        sortOrder: params.sortOrder === void 0 ? void 0 : String(params.sortOrder),
+        staffId: params.staffId === void 0 ? void 0 : String(params.staffId),
+        startDate: params.startDate === void 0 ? void 0 : String(params.startDate),
+        status: params.status === void 0 ? void 0 : String(params.status)
+      });
+      const resp = await this.baseClient.callTypedAPI("GET", `/staff/schedule-change-requests`, void 0, { query });
+      return await resp.json();
+    }
+    /**
+     * Lists schedules with advanced filtering and pagination
      */
     async listSchedules(params) {
       const query = makeRecord({
-        endDate: params.endDate,
+        endDate: params.endDate === void 0 ? void 0 : String(params.endDate),
+        isRecurring: params.isRecurring === void 0 ? void 0 : String(params.isRecurring),
+        limit: params.limit === void 0 ? void 0 : String(params.limit),
+        page: params.page === void 0 ? void 0 : String(params.page),
+        priority: params.priority === void 0 ? void 0 : String(params.priority),
         propertyId: params.propertyId === void 0 ? void 0 : String(params.propertyId),
+        search: params.search,
+        shiftType: params.shiftType === void 0 ? void 0 : String(params.shiftType),
+        sortBy: params.sortBy === void 0 ? void 0 : String(params.sortBy),
+        sortOrder: params.sortOrder === void 0 ? void 0 : String(params.sortOrder),
         staffId: params.staffId === void 0 ? void 0 : String(params.staffId),
-        startDate: params.startDate,
-        status: params.status
+        startDate: params.startDate === void 0 ? void 0 : String(params.startDate),
+        status: params.status === void 0 ? void 0 : String(params.status)
       });
       const resp = await this.baseClient.callTypedAPI("GET", `/staff/schedules`, void 0, { query });
+      return await resp.json();
+    }
+    /**
+     * Marks schedule as completed with actual times
+     */
+    async markScheduleCompletion(scheduleId, params) {
+      const resp = await this.baseClient.callTypedAPI("PUT", `/staff/schedules/${encodeURIComponent(scheduleId)}/completion`, JSON.stringify(params));
       return await resp.json();
     }
     /**
@@ -22925,10 +23733,87 @@ var staff;
       return await resp.json();
     }
     /**
-     * Updates staff performance rating
+     * Advanced staff search with filtering and relevance scoring
      */
-    async updatePerformance(params) {
-      const resp = await this.baseClient.callTypedAPI("POST", `/staff/performance`, JSON.stringify(params));
+    async search(params) {
+      const resp = await this.baseClient.callTypedAPI("POST", `/staff/search`, JSON.stringify(params));
+      return await resp.json();
+    }
+    /**
+     * Updates an existing staff record with enhanced fields
+     */
+    async update(params) {
+      const resp = await this.baseClient.callTypedAPI("PUT", `/staff/update`, JSON.stringify(params));
+      return await resp.json();
+    }
+    /**
+     * Updates attendance record (Admin only)
+     */
+    async updateAttendance(attendanceId, params) {
+      const resp = await this.baseClient.callTypedAPI("PUT", `/staff/attendance/${encodeURIComponent(attendanceId)}`, JSON.stringify(params));
+      return await resp.json();
+    }
+    /**
+     * Updates staff department assignment
+     */
+    async updateDepartment(staffId, params) {
+      const resp = await this.baseClient.callTypedAPI("PUT", `/staff/${encodeURIComponent(staffId)}/department`, JSON.stringify(params));
+      return await resp.json();
+    }
+    /**
+     * Updates leave balance for a staff member (Admin only)
+     */
+    async updateLeaveBalance(staffId, params) {
+      const resp = await this.baseClient.callTypedAPI("PUT", `/staff/${encodeURIComponent(staffId)}/leave-balance`, JSON.stringify(params));
+      return await resp.json();
+    }
+    /**
+     * Updates payslip status
+     */
+    async updatePayslipStatus(payslipId, params) {
+      const resp = await this.baseClient.callTypedAPI("PUT", `/staff/payslips/${encodeURIComponent(payslipId)}/status`, JSON.stringify(params));
+      return await resp.json();
+    }
+    /**
+     * Updates staff performance rating and review notes
+     */
+    async updatePerformance(staffId, params) {
+      const resp = await this.baseClient.callTypedAPI("PUT", `/staff/${encodeURIComponent(staffId)}/performance`, JSON.stringify(params));
+      return await resp.json();
+    }
+    /**
+     * Updates staff status (active/inactive)
+     */
+    async updateStatus(staffId, params) {
+      const resp = await this.baseClient.callTypedAPI("PUT", `/staff/${encodeURIComponent(staffId)}/status`, JSON.stringify(params));
+      return await resp.json();
+    }
+    /**
+     * Validates attendance operations and provides guidance
+     */
+    async validateAttendance(params) {
+      const resp = await this.baseClient.callTypedAPI("POST", `/staff/attendance/validate`, JSON.stringify(params));
+      return await resp.json();
+    }
+    /**
+     * Validates leave request creation and provides guidance
+     */
+    async validateLeaveRequest(params) {
+      const resp = await this.baseClient.callTypedAPI("POST", `/staff/leave/validate`, JSON.stringify(params));
+      return await resp.json();
+    }
+    /**
+     * Validates salary calculation and provides guidance
+     */
+    async validateSalary(params) {
+      const resp = await this.baseClient.callTypedAPI("POST", `/staff/salary/validate`, JSON.stringify(params));
+      return await resp.json();
+    }
+    /**
+     * Validates schedule creation and provides guidance
+     */
+    async validateSchedule(params) {
+      const resp = await this.baseClient.callTypedAPI("POST", `/staff/schedules/validate`, JSON.stringify(params));
       return await resp.json();
     }
   }
@@ -22943,9 +23828,17 @@ var tasks;
       this.addAttachment = this.addAttachment.bind(this);
       this.assign = this.assign.bind(this);
       this.create = this.create.bind(this);
+      this.deleteTask = this.deleteTask.bind(this);
+      this.deleteTaskImage = this.deleteTaskImage.bind(this);
+      this.getTaskImages = this.getTaskImages.bind(this);
       this.list = this.list.bind(this);
+      this.quickSetupAttachments = this.quickSetupAttachments.bind(this);
+      this.setPrimaryImage = this.setPrimaryImage.bind(this);
+      this.setupTaskAttachmentsTable = this.setupTaskAttachmentsTable.bind(this);
+      this.update = this.update.bind(this);
       this.updateHours = this.updateHours.bind(this);
       this.updateStatus = this.updateStatus.bind(this);
+      this.uploadTaskImage = this.uploadTaskImage.bind(this);
     }
     /**
      * Adds an attachment to a task
@@ -22969,6 +23862,27 @@ var tasks;
       return await resp.json();
     }
     /**
+     * Deletes a task
+     */
+    async deleteTask(id2) {
+      const resp = await this.baseClient.callTypedAPI("DELETE", `/tasks/${encodeURIComponent(id2)}`);
+      return await resp.json();
+    }
+    /**
+     * Delete a task image
+     */
+    async deleteTaskImage(taskId, imageId) {
+      const resp = await this.baseClient.callTypedAPI("DELETE", `/tasks/${encodeURIComponent(taskId)}/images/${encodeURIComponent(imageId)}`);
+      return await resp.json();
+    }
+    /**
+     * Get all images for a task
+     */
+    async getTaskImages(taskId) {
+      const resp = await this.baseClient.callTypedAPI("GET", `/tasks/${encodeURIComponent(taskId)}/images`);
+      return await resp.json();
+    }
+    /**
      * Lists tasks with role-based filtering
      */
     async list(params) {
@@ -22981,6 +23895,32 @@ var tasks;
         type: params.type === void 0 ? void 0 : String(params.type)
       });
       const resp = await this.baseClient.callTypedAPI("GET", `/tasks`, void 0, { query });
+      return await resp.json();
+    }
+    /**
+     * Quick setup endpoint that can be called without authentication for initial setup
+     */
+    async quickSetupAttachments() {
+      await this.baseClient.callTypedAPI("POST", `/tasks/quick-setup-attachments`);
+    }
+    /**
+     * Set an image as primary (for future enhancement)
+     */
+    async setPrimaryImage(taskId, imageId) {
+      const resp = await this.baseClient.callTypedAPI("PUT", `/tasks/${encodeURIComponent(taskId)}/images/${encodeURIComponent(imageId)}/primary`);
+      return await resp.json();
+    }
+    /**
+     * Ensure task_attachments table exists with correct schema
+     */
+    async setupTaskAttachmentsTable() {
+      await this.baseClient.callTypedAPI("POST", `/tasks/setup-attachments-table`);
+    }
+    /**
+     * Updates an existing task
+     */
+    async update(id2, params) {
+      const resp = await this.baseClient.callTypedAPI("PATCH", `/tasks/${encodeURIComponent(id2)}`, JSON.stringify(params));
       return await resp.json();
     }
     /**
@@ -22997,6 +23937,13 @@ var tasks;
       const resp = await this.baseClient.callTypedAPI("PATCH", `/tasks/${encodeURIComponent(id2)}/status`, JSON.stringify(params));
       return await resp.json();
     }
+    /**
+     * Upload reference image for a task
+     */
+    async uploadTaskImage(taskId, params) {
+      const resp = await this.baseClient.callTypedAPI("POST", `/tasks/${encodeURIComponent(taskId)}/images`, JSON.stringify(params));
+      return await resp.json();
+    }
   }
   tasks2.ServiceClient = ServiceClient;
 })(tasks || (tasks = {}));
@@ -23006,9 +23953,36 @@ var uploads;
     constructor(baseClient) {
       __publicField(this, "baseClient");
       this.baseClient = baseClient;
+      this.checkFilesTable = this.checkFilesTable.bind(this);
+      this.cleanupOrphanedFiles = this.cleanupOrphanedFiles.bind(this);
+      this.deleteFile = this.deleteFile.bind(this);
       this.downloadFile = this.downloadFile.bind(this);
       this.getFileInfo = this.getFileInfo.bind(this);
+      this.serveTaskImage = this.serveTaskImage.bind(this);
+      this.setupFilesTable = this.setupFilesTable.bind(this);
+      this.updateFile = this.updateFile.bind(this);
       this.uploadFile = this.uploadFile.bind(this);
+    }
+    /**
+     * API endpoint to check and create files table
+     */
+    async checkFilesTable() {
+      const resp = await this.baseClient.callTypedAPI("GET", `/uploads/check-files-table`);
+      return await resp.json();
+    }
+    /**
+     * Clean up orphaned files (files not referenced by any transactions)
+     */
+    async cleanupOrphanedFiles() {
+      const resp = await this.baseClient.callTypedAPI("POST", `/uploads/cleanup-orphaned`);
+      return await resp.json();
+    }
+    /**
+     * Delete a file (receipt, document, etc.)
+     */
+    async deleteFile(fileId) {
+      const resp = await this.baseClient.callTypedAPI("DELETE", `/uploads/file/${encodeURIComponent(fileId)}`);
+      return await resp.json();
     }
     /**
      * Download/serve a file
@@ -23022,6 +23996,23 @@ var uploads;
      */
     async getFileInfo(fileId) {
       const resp = await this.baseClient.callTypedAPI("GET", `/uploads/${encodeURIComponent(fileId)}/info`);
+      return await resp.json();
+    }
+    /**
+     * Serve task images with proper authentication and access control
+     */
+    async serveTaskImage(imageId) {
+      const resp = await this.baseClient.callTypedAPI("GET", `/uploads/tasks/${encodeURIComponent(imageId)}`);
+      return await resp.json();
+    }
+    async setupFilesTable() {
+      await this.baseClient.callTypedAPI("POST", `/uploads/setup-files-table`);
+    }
+    /**
+     * Update/replace a file (receipt, document, etc.)
+     */
+    async updateFile(fileId, params) {
+      const resp = await this.baseClient.callTypedAPI("PUT", `/uploads/file/${encodeURIComponent(fileId)}`, JSON.stringify(params));
       return await resp.json();
     }
     /**
@@ -23042,6 +24033,7 @@ var users;
       this.baseClient = baseClient;
       this.assignProperties = this.assignProperties.bind(this);
       this.create = this.create.bind(this);
+      this.deleteUser = this.deleteUser.bind(this);
       this.get = this.get.bind(this);
       this.list = this.list.bind(this);
       this.update = this.update.bind(this);
@@ -23060,6 +24052,13 @@ var users;
      */
     async create(params) {
       const resp = await this.baseClient.callTypedAPI("POST", `/users`, JSON.stringify(params));
+      return await resp.json();
+    }
+    /**
+     * Deletes a user and all related data (Admin only)
+     */
+    async deleteUser(id2) {
+      const resp = await this.baseClient.callTypedAPI("DELETE", `/users/${encodeURIComponent(id2)}`);
       return await resp.json();
     }
     /**
@@ -23257,7 +24256,7 @@ class BaseClient {
     this.baseURL = baseURL;
     this.headers = {};
     if (!BROWSER) {
-      this.headers["User-Agent"] = "hospitality-management-platform-cr8i-Generated-TS-Client (Encore/v1.49.1)";
+      this.headers["User-Agent"] = "hospitality-management-platform-cr8i-Generated-TS-Client (Encore/v1.50.0)";
     }
     this.requestInit = options.requestInit ?? {};
     if (options.fetcher !== void 0) {
@@ -24234,6 +25233,23 @@ function AuthProvider({ children }) {
       await trackUserActivity(parseInt(user.userID), "activity");
     }
   };
+  const refreshUser = async () => {
+    try {
+      console.log("🔄 Refreshing user data...");
+      const authenticatedBackend = getAuthenticatedBackend();
+      if (!authenticatedBackend) {
+        console.error("No authenticated backend available for user refresh");
+        return;
+      }
+      console.log("📡 Calling /auth/me endpoint...");
+      const meResponse = await authenticatedBackend.auth.me();
+      console.log("📥 Received fresh user data:", meResponse.user);
+      setUser(meResponse.user);
+      console.log("✅ User data refreshed successfully in AuthContext");
+    } catch (error) {
+      console.error("❌ Failed to refresh user data:", error);
+    }
+  };
   return /* @__PURE__ */ jsxRuntimeExports.jsx(AuthContext.Provider, { value: {
     user,
     login,
@@ -24242,6 +25258,7 @@ function AuthProvider({ children }) {
     isLoading,
     getAuthenticatedBackend,
     trackActivity,
+    refreshUser,
     showLogoutProgress,
     setShowLogoutProgress,
     setIsTestingLogoutDialog,
@@ -25761,11 +26778,11 @@ var Dialog$1 = (props) => {
   );
 };
 Dialog$1.displayName = DIALOG_NAME;
-var TRIGGER_NAME$2 = "DialogTrigger";
+var TRIGGER_NAME$3 = "DialogTrigger";
 var DialogTrigger$1 = reactExports.forwardRef(
   (props, forwardedRef) => {
     const { __scopeDialog, ...triggerProps } = props;
-    const context = useDialogContext(TRIGGER_NAME$2, __scopeDialog);
+    const context = useDialogContext(TRIGGER_NAME$3, __scopeDialog);
     const composedTriggerRef = useComposedRefs(forwardedRef, context.triggerRef);
     return /* @__PURE__ */ jsxRuntimeExports.jsx(
       Primitive.button,
@@ -25774,7 +26791,7 @@ var DialogTrigger$1 = reactExports.forwardRef(
         "aria-haspopup": "dialog",
         "aria-expanded": context.open,
         "aria-controls": context.contentId,
-        "data-state": getState(context.open),
+        "data-state": getState$1(context.open),
         ...triggerProps,
         ref: composedTriggerRef,
         onClick: composeEventHandlers$1(props.onClick, context.onOpenToggle)
@@ -25782,7 +26799,7 @@ var DialogTrigger$1 = reactExports.forwardRef(
     );
   }
 );
-DialogTrigger$1.displayName = TRIGGER_NAME$2;
+DialogTrigger$1.displayName = TRIGGER_NAME$3;
 var PORTAL_NAME$1 = "DialogPortal";
 var [PortalProvider, usePortalContext] = createDialogContext(PORTAL_NAME$1, {
   forceMount: void 0
@@ -25814,7 +26831,7 @@ var DialogOverlayImpl = reactExports.forwardRef(
       /* @__PURE__ */ jsxRuntimeExports.jsx(ReactRemoveScroll, { as: Slot$1, allowPinchZoom: true, shards: [context.contentRef], children: /* @__PURE__ */ jsxRuntimeExports.jsx(
         Primitive.div,
         {
-          "data-state": getState(context.open),
+          "data-state": getState$1(context.open),
           ...overlayProps,
           ref: forwardedRef,
           style: { pointerEvents: "auto", ...overlayProps.style }
@@ -25933,7 +26950,7 @@ var DialogContentImpl = reactExports.forwardRef(
               id: context.contentId,
               "aria-describedby": context.descriptionId,
               "aria-labelledby": context.titleId,
-              "data-state": getState(context.open),
+              "data-state": getState$1(context.open),
               ...contentProps,
               ref: composedRefs,
               onDismiss: () => context.onOpenChange(false)
@@ -25983,7 +27000,7 @@ var DialogClose = reactExports.forwardRef(
   }
 );
 DialogClose.displayName = CLOSE_NAME;
-function getState(open) {
+function getState$1(open) {
   return open ? "open" : "closed";
 }
 var TITLE_WARNING_NAME = "DialogTitleWarning";
@@ -27714,8 +28731,8 @@ const API_ENDPOINTS = {
   // Properties
   PROPERTIES: "/properties",
   // Finance
-  EXPENSES: "/expenses",
-  REVENUES: "/revenues",
+  EXPENSES: "/finance/expenses",
+  REVENUES: "/finance/revenues",
   PENDING_APPROVALS: "/finance/pending-approvals",
   LEAVE_REQUESTS: "/staff/leave-requests"
 };
@@ -28704,6 +29721,267 @@ function DashboardPage() {
     ] }) })
   ] });
 }
+function useWelcomePopup() {
+  var _a2, _b2, _c2, _d2;
+  const { user, getAuthenticatedBackend: getAuthenticatedBackend2 } = useAuth();
+  const [showWelcomePopup, setShowWelcomePopup] = reactExports.useState(false);
+  const [hasShownWelcome, setHasShownWelcome] = reactExports.useState(false);
+  const { data: properties2 } = useQuery({
+    queryKey: ["properties"],
+    queryFn: async () => {
+      const backend2 = getAuthenticatedBackend2();
+      return backend2.properties.list({});
+    },
+    enabled: !!user
+  });
+  const { data: tasks2 } = useQuery({
+    queryKey: ["tasks"],
+    queryFn: async () => {
+      const backend2 = getAuthenticatedBackend2();
+      return backend2.tasks.list({});
+    },
+    enabled: !!user
+  });
+  const { data: expenses } = useQuery({
+    queryKey: ["expenses"],
+    queryFn: async () => {
+      const backend2 = getAuthenticatedBackend2();
+      const now2 = /* @__PURE__ */ new Date();
+      const startDate = new Date(now2.getFullYear(), now2.getMonth(), 1);
+      const endDate = new Date(now2.getFullYear(), now2.getMonth() + 1, 0);
+      return backend2.finance.listExpenses({
+        startDate: startDate.toISOString().split("T")[0],
+        endDate: endDate.toISOString().split("T")[0]
+      });
+    },
+    enabled: !!user && user.role === "ADMIN"
+  });
+  const { data: revenues } = useQuery({
+    queryKey: ["revenues"],
+    queryFn: async () => {
+      const backend2 = getAuthenticatedBackend2();
+      const now2 = /* @__PURE__ */ new Date();
+      const startDate = new Date(now2.getFullYear(), now2.getMonth(), 1);
+      const endDate = new Date(now2.getFullYear(), now2.getMonth() + 1, 0);
+      return backend2.finance.listRevenues({
+        startDate: startDate.toISOString().split("T")[0],
+        endDate: endDate.toISOString().split("T")[0]
+      });
+    },
+    enabled: !!user && user.role === "ADMIN"
+  });
+  const { data: leaveRequests } = useQuery({
+    queryKey: ["leave-requests"],
+    queryFn: async () => {
+      const backend2 = getAuthenticatedBackend2();
+      return backend2.staff.listLeaveRequests({});
+    },
+    enabled: !!user
+  });
+  const dashboardData = {
+    pendingApprovals: (() => {
+      var _a3, _b3, _c3;
+      const pendingExpenses = ((_a3 = expenses == null ? void 0 : expenses.expenses) == null ? void 0 : _a3.filter(
+        (expense) => expense.status === "pending"
+      )) || [];
+      const pendingRevenues = ((_b3 = revenues == null ? void 0 : revenues.revenues) == null ? void 0 : _b3.filter(
+        (revenue) => revenue.status === "pending"
+      )) || [];
+      const pendingLeaveRequests = ((_c3 = leaveRequests == null ? void 0 : leaveRequests.leaveRequests) == null ? void 0 : _c3.filter(
+        (leave) => leave.status === "pending"
+      )) || [];
+      return pendingExpenses.length + pendingRevenues.length + pendingLeaveRequests.length;
+    })(),
+    urgentTasks: ((_a2 = tasks2 == null ? void 0 : tasks2.tasks) == null ? void 0 : _a2.filter(
+      (task) => task.priority === "high" && task.status !== "done"
+    ).length) || 0,
+    overdueTasks: ((_b2 = tasks2 == null ? void 0 : tasks2.tasks) == null ? void 0 : _b2.filter(
+      (task) => task.dueAt && new Date(task.dueAt) < /* @__PURE__ */ new Date() && task.status !== "done"
+    ).length) || 0,
+    financialPending: (() => {
+      var _a3, _b3;
+      const pendingExpenses = ((_a3 = expenses == null ? void 0 : expenses.expenses) == null ? void 0 : _a3.filter(
+        (expense) => expense.status === "pending"
+      )) || [];
+      const pendingRevenues = ((_b3 = revenues == null ? void 0 : revenues.revenues) == null ? void 0 : _b3.filter(
+        (revenue) => revenue.status === "pending"
+      )) || [];
+      return pendingExpenses.length + pendingRevenues.length;
+    })(),
+    activeProperties: ((_c2 = properties2 == null ? void 0 : properties2.properties) == null ? void 0 : _c2.length) || 0,
+    activeTasks: ((_d2 = tasks2 == null ? void 0 : tasks2.tasks) == null ? void 0 : _d2.filter((task) => task.status !== "done").length) || 0
+  };
+  const getCompletedSteps = () => {
+    try {
+      return JSON.parse(localStorage.getItem("completedOnboardingSteps") || "[]");
+    } catch {
+      return [];
+    }
+  };
+  const completedSteps = getCompletedSteps();
+  const accountAge = 0;
+  const hasCompletedEssentialSteps = (() => {
+    if ((user == null ? void 0 : user.role) === "ADMIN") {
+      const hasOrgSetup = completedSteps.includes("setup-organization");
+      const hasProperties = ((properties2 == null ? void 0 : properties2.properties.length) || 0) > 0;
+      return hasOrgSetup && hasProperties;
+    } else {
+      const hasProfileComplete = completedSteps.includes("complete-profile");
+      const hasViewedProperties = completedSteps.includes("view-assigned-properties");
+      return hasProfileComplete && hasViewedProperties;
+    }
+  })();
+  const isNewUser = accountAge <= 7 && !hasCompletedEssentialSteps;
+  const userData = {
+    name: (user == null ? void 0 : user.displayName) || "User",
+    role: (user == null ? void 0 : user.role) || "USER",
+    hasProperties: ((properties2 == null ? void 0 : properties2.properties.length) || 0) > 0,
+    propertyCount: (properties2 == null ? void 0 : properties2.properties.length) || 0,
+    isNewUser,
+    accountAge,
+    completedOnboardingSteps: completedSteps
+  };
+  reactExports.useEffect(() => {
+    console.log("Welcome popup effect:", { user: !!user, hasShownWelcome, showWelcomePopup, isNewUser });
+    if (user && !hasShownWelcome && isNewUser) {
+      console.log("Showing welcome popup for new user...");
+      const timer = setTimeout(() => {
+        console.log("Setting welcome popup to true");
+        setShowWelcomePopup(true);
+        setHasShownWelcome(true);
+      }, 100);
+      return () => clearTimeout(timer);
+    }
+  }, [user, hasShownWelcome, isNewUser]);
+  reactExports.useEffect(() => {
+    if (!user) {
+      setShowWelcomePopup(false);
+      setHasShownWelcome(false);
+    }
+  }, [user]);
+  const closeWelcomePopup = reactExports.useCallback(() => {
+    setShowWelcomePopup(false);
+  }, []);
+  const resetWelcomePopup = reactExports.useCallback(() => {
+    setHasShownWelcome(false);
+    setShowWelcomePopup(false);
+    setTimeout(() => {
+      setShowWelcomePopup(true);
+      setHasShownWelcome(true);
+    }, 100);
+  }, []);
+  const markStepCompleted = reactExports.useCallback((stepId) => {
+    const currentSteps = getCompletedSteps();
+    if (!currentSteps.includes(stepId)) {
+      const updatedSteps = [...currentSteps, stepId];
+      localStorage.setItem("completedOnboardingSteps", JSON.stringify(updatedSteps));
+    }
+  }, []);
+  const getOnboardingSteps = reactExports.useCallback(() => {
+    const steps = [];
+    if ((user == null ? void 0 : user.role) === "ADMIN") {
+      steps.push(
+        {
+          id: "setup-organization",
+          title: "Set Up Your Organization",
+          description: "Configure your organization settings and branding",
+          completed: completedSteps.includes("setup-organization"),
+          required: true,
+          action: { label: "Configure", route: "/settings" },
+          icon: "🏢"
+        },
+        {
+          id: "add-properties",
+          title: "Add Your First Property",
+          description: "Create your hotel, hostel, or resort listing",
+          completed: userData.hasProperties,
+          required: true,
+          action: { label: "Add Property", route: "/properties" },
+          icon: "🏨"
+        },
+        {
+          id: "invite-team",
+          title: "Invite Team Members",
+          description: "Create manager accounts for your team",
+          completed: completedSteps.includes("invite-team"),
+          required: false,
+          action: { label: "Invite Team", route: "/users" },
+          icon: "👥"
+        },
+        {
+          id: "create-first-task",
+          title: "Create Your First Task",
+          description: "Set up operational tasks and workflows",
+          completed: completedSteps.includes("create-first-task"),
+          required: false,
+          action: { label: "Create Task", route: "/tasks" },
+          icon: "✅"
+        }
+      );
+    } else {
+      steps.push(
+        {
+          id: "complete-profile",
+          title: "Complete Your Profile",
+          description: "Update your personal information and preferences",
+          completed: completedSteps.includes("complete-profile"),
+          required: true,
+          action: { label: "Update Profile", route: "/settings" },
+          icon: "👤"
+        },
+        {
+          id: "view-assigned-properties",
+          title: "View Assigned Properties",
+          description: "Check out the properties you can manage",
+          completed: completedSteps.includes("view-assigned-properties"),
+          required: true,
+          action: { label: "View Properties", route: "/properties" },
+          icon: "🏨"
+        },
+        {
+          id: "create-first-task",
+          title: "Create Your First Task",
+          description: "Set up operational tasks for your properties",
+          completed: completedSteps.includes("create-first-task"),
+          required: false,
+          action: { label: "Create Task", route: "/tasks" },
+          icon: "✅"
+        }
+      );
+    }
+    return steps;
+  }, [user == null ? void 0 : user.role, userData.hasProperties, completedSteps]);
+  reactExports.useEffect(() => {
+    if (!user || !markStepCompleted) return;
+    if (user.role === "ADMIN") {
+      if (userData.hasProperties && !completedSteps.includes("add-properties")) {
+        markStepCompleted("add-properties");
+      }
+    } else {
+      if (completedSteps.includes("view-assigned-properties") && !completedSteps.includes("view-assigned-properties")) {
+        markStepCompleted("view-assigned-properties");
+      }
+    }
+  }, [user, userData.hasProperties, completedSteps, markStepCompleted]);
+  const markEssentialStepCompleted = reactExports.useCallback((stepId) => {
+    if (markStepCompleted) {
+      markStepCompleted(stepId);
+    }
+  }, [markStepCompleted]);
+  return {
+    showWelcomePopup,
+    closeWelcomePopup,
+    resetWelcomePopup,
+    dashboardData,
+    userData,
+    isLoading: false,
+    // Don't block popup on data loading
+    onboardingSteps: getOnboardingSteps(),
+    markStepCompleted,
+    markEssentialStepCompleted
+    // Export this for use in other components
+  };
+}
 function clamp$2(value, [min2, max2]) {
   return Math.min(max2, Math.max(min2, value));
 }
@@ -28897,13 +30175,13 @@ function computeCoordsFromPlacement(_ref, placement, rtl) {
   }
   return coords;
 }
-const computePosition$1 = async (reference, floating, config) => {
+const computePosition$1 = async (reference, floating, config2) => {
   const {
     placement = "bottom",
     strategy = "absolute",
     middleware = [],
     platform: platform2
-  } = config;
+  } = config2;
   const validMiddleware = middleware.filter(Boolean);
   const rtl = await (platform2.isRTL == null ? void 0 : platform2.isRTL(floating));
   let rects = await platform2.getElementRects({
@@ -30435,15 +31713,15 @@ function useFloating(options) {
     if (!referenceRef.current || !floatingRef.current) {
       return;
     }
-    const config = {
+    const config2 = {
       placement,
       strategy,
       middleware: latestMiddleware
     };
     if (platformRef.current) {
-      config.platform = platformRef.current;
+      config2.platform = platformRef.current;
     }
-    computePosition(referenceRef.current, floatingRef.current, config).then((data2) => {
+    computePosition(referenceRef.current, floatingRef.current, config2).then((data2) => {
       const fullData = {
         ...data2,
         // The floating element's position may be recomputed while it's closed
@@ -31032,12 +32310,12 @@ var Select$1 = (props) => {
   ) });
 };
 Select$1.displayName = SELECT_NAME;
-var TRIGGER_NAME$1 = "SelectTrigger";
+var TRIGGER_NAME$2 = "SelectTrigger";
 var SelectTrigger$1 = reactExports.forwardRef(
   (props, forwardedRef) => {
     const { __scopeSelect, disabled = false, ...triggerProps } = props;
     const popperScope = usePopperScope(__scopeSelect);
-    const context = useSelectContext(TRIGGER_NAME$1, __scopeSelect);
+    const context = useSelectContext(TRIGGER_NAME$2, __scopeSelect);
     const isDisabled = context.disabled || disabled;
     const composedRefs = useComposedRefs(forwardedRef, context.onTriggerChange);
     const getItems = useCollection$1(__scopeSelect);
@@ -31109,7 +32387,7 @@ var SelectTrigger$1 = reactExports.forwardRef(
     ) });
   }
 );
-SelectTrigger$1.displayName = TRIGGER_NAME$1;
+SelectTrigger$1.displayName = TRIGGER_NAME$2;
 var VALUE_NAME = "SelectValue";
 var SelectValue$1 = reactExports.forwardRef(
   (props, forwardedRef) => {
@@ -31973,7 +33251,7 @@ var SelectArrow = reactExports.forwardRef(
   }
 );
 SelectArrow.displayName = ARROW_NAME;
-var BUBBLE_INPUT_NAME = "SelectBubbleInput";
+var BUBBLE_INPUT_NAME$1 = "SelectBubbleInput";
 var SelectBubbleInput = reactExports.forwardRef(
   ({ __scopeSelect, value, ...props }, forwardedRef) => {
     const ref = reactExports.useRef(null);
@@ -32005,7 +33283,7 @@ var SelectBubbleInput = reactExports.forwardRef(
     );
   }
 );
-SelectBubbleInput.displayName = BUBBLE_INPUT_NAME;
+SelectBubbleInput.displayName = BUBBLE_INPUT_NAME$1;
 function shouldShowPlaceholder(value) {
   return value === "" || value === void 0;
 }
@@ -32188,10 +33466,16 @@ function PropertiesPage() {
   const { user, getAuthenticatedBackend: getAuthenticatedBackend2 } = useAuth();
   const { setPageTitle } = usePageTitle();
   const { toast: toast2 } = useToast();
-  useQueryClient();
+  const queryClient2 = useQueryClient();
+  const { markEssentialStepCompleted } = useWelcomePopup();
   reactExports.useEffect(() => {
     setPageTitle("Properties Management", "Manage your hospitality properties and their details");
   }, [setPageTitle]);
+  reactExports.useEffect(() => {
+    if ((user == null ? void 0 : user.role) === "MANAGER") {
+      markEssentialStepCompleted("view-assigned-properties");
+    }
+  }, [user == null ? void 0 : user.role, markEssentialStepCompleted]);
   const [searchTerm, setSearchTerm] = reactExports.useState("");
   const [typeFilter, setTypeFilter] = reactExports.useState("all");
   const [isCreateDialogOpen, setIsCreateDialogOpen] = reactExports.useState(false);
@@ -32227,12 +33511,15 @@ function PropertiesPage() {
     API_ENDPOINTS.PROPERTIES,
     "POST",
     {
-      invalidateQueries: [QUERY_KEYS.PROPERTIES],
+      invalidateQueries: [QUERY_KEYS.PROPERTIES, QUERY_KEYS.DASHBOARD, QUERY_KEYS.ANALYTICS],
+      refetchQueries: [QUERY_KEYS.PROPERTIES],
       successMessage: "The property has been created successfully.",
       errorMessage: "Failed to create property. Please try again.",
       onSuccess: () => {
         setIsCreateDialogOpen(false);
         resetForm();
+        queryClient2.invalidateQueries({ queryKey: [QUERY_KEYS.PROPERTIES] });
+        queryClient2.refetchQueries({ queryKey: [QUERY_KEYS.PROPERTIES] });
       }
     }
   );
@@ -32240,12 +33527,15 @@ function PropertiesPage() {
     "/properties/:id",
     "PATCH",
     {
-      invalidateQueries: [QUERY_KEYS.PROPERTIES],
+      invalidateQueries: [QUERY_KEYS.PROPERTIES, QUERY_KEYS.DASHBOARD, QUERY_KEYS.ANALYTICS],
+      refetchQueries: [QUERY_KEYS.PROPERTIES],
       successMessage: "The property has been updated successfully.",
       errorMessage: "Failed to update property. Please try again.",
       onSuccess: () => {
         setIsEditDialogOpen(false);
         setEditingProperty(null);
+        queryClient2.invalidateQueries({ queryKey: [QUERY_KEYS.PROPERTIES] });
+        queryClient2.refetchQueries({ queryKey: [QUERY_KEYS.PROPERTIES] });
       }
     }
   );
@@ -32253,12 +33543,15 @@ function PropertiesPage() {
     "/properties/:id",
     "DELETE",
     {
-      invalidateQueries: [QUERY_KEYS.PROPERTIES],
+      invalidateQueries: [QUERY_KEYS.PROPERTIES, QUERY_KEYS.DASHBOARD, QUERY_KEYS.ANALYTICS],
+      refetchQueries: [QUERY_KEYS.PROPERTIES],
       successMessage: "The property has been deleted successfully.",
       errorMessage: "Failed to delete property. Please try again.",
       onSuccess: () => {
         setIsDeleteDialogOpen(false);
         setDeletingProperty(null);
+        queryClient2.invalidateQueries({ queryKey: [QUERY_KEYS.PROPERTIES] });
+        queryClient2.refetchQueries({ queryKey: [QUERY_KEYS.PROPERTIES] });
       }
     }
   );
@@ -32303,7 +33596,27 @@ function PropertiesPage() {
       });
       return;
     }
-    createPropertyMutation.mutate(propertyForm);
+    const capacity = {
+      ...propertyForm.capacity.totalRooms && propertyForm.capacity.totalRooms !== "0" ? { totalRooms: parseInt(propertyForm.capacity.totalRooms) } : {},
+      ...propertyForm.capacity.totalBeds && propertyForm.capacity.totalBeds !== "0" ? { totalBeds: parseInt(propertyForm.capacity.totalBeds) } : {},
+      ...propertyForm.capacity.maxGuests && propertyForm.capacity.maxGuests !== "0" ? { maxGuests: parseInt(propertyForm.capacity.maxGuests) } : {}
+    };
+    const address = Object.fromEntries(
+      Object.entries(propertyForm.address).filter(([_, value]) => value && value.trim() !== "")
+    );
+    const formattedData = {
+      name: propertyForm.name.trim(),
+      type: propertyForm.type,
+      ...Object.keys(address).length > 0 ? { address } : {},
+      ...propertyForm.amenities.length > 0 ? { amenities: propertyForm.amenities } : {},
+      ...Object.keys(capacity).length > 0 ? { capacity } : {}
+    };
+    console.log("=== PROPERTY CREATION DEBUG ===");
+    console.log("Original form data:", propertyForm);
+    console.log("Formatted data being sent:", formattedData);
+    console.log("Address after filtering:", address);
+    console.log("Capacity after filtering:", capacity);
+    createPropertyMutation.mutate(formattedData);
   };
   const handleAmenityToggle = (amenity) => {
     setPropertyForm((prev) => ({
@@ -33334,11 +34647,11 @@ var TabsList$1 = reactExports.forwardRef(
   }
 );
 TabsList$1.displayName = TAB_LIST_NAME;
-var TRIGGER_NAME = "TabsTrigger";
+var TRIGGER_NAME$1 = "TabsTrigger";
 var TabsTrigger$1 = reactExports.forwardRef(
   (props, forwardedRef) => {
     const { __scopeTabs, value, disabled = false, ...triggerProps } = props;
-    const context = useTabsContext(TRIGGER_NAME, __scopeTabs);
+    const context = useTabsContext(TRIGGER_NAME$1, __scopeTabs);
     const rovingFocusGroupScope = useRovingFocusGroupScope(__scopeTabs);
     const triggerId = makeTriggerId(context.baseId, value);
     const contentId = makeContentId(context.baseId, value);
@@ -33385,7 +34698,7 @@ var TabsTrigger$1 = reactExports.forwardRef(
     );
   }
 );
-TabsTrigger$1.displayName = TRIGGER_NAME;
+TabsTrigger$1.displayName = TRIGGER_NAME$1;
 var CONTENT_NAME = "TabsContent";
 var TabsContent$1 = reactExports.forwardRef(
   (props, forwardedRef) => {
@@ -36813,7 +38126,9 @@ function formatCardDateTime(date) {
 }
 const formatDateForAPI = (dateString) => {
   if (!dateString) return (/* @__PURE__ */ new Date()).toISOString();
-  return (/* @__PURE__ */ new Date(`${dateString}T00:00:00.000Z`)).toISOString();
+  const [year, month, day] = dateString.split("-").map(Number);
+  const localDate = new Date(year, month - 1, day, 0, 0, 0, 0);
+  return localDate.toISOString();
 };
 const formatDateTimeForAPI = (dateTimeString) => {
   if (!dateTimeString) return (/* @__PURE__ */ new Date()).toISOString();
@@ -37115,11 +38430,12 @@ function useTaskImageManagement({ taskId, existingImages }) {
   ]);
 }
 function TasksPage() {
-  const { getAuthenticatedBackend: getAuthenticatedBackend2 } = useAuth();
+  var _a2, _b2;
+  const { getAuthenticatedBackend: getAuthenticatedBackend2, user } = useAuth();
   const { setPageTitle } = usePageTitle();
   const { toast: toast2 } = useToast();
-  useQueryClient();
-  useApiError();
+  const queryClient2 = useQueryClient();
+  const { handleError } = useApiError();
   const { refreshNow } = useTasksRealtime();
   reactExports.useEffect(() => {
     setPageTitle("Task Management", "Create, assign, and track tasks across your properties");
@@ -37128,7 +38444,20 @@ function TasksPage() {
   const [statusFilter, setStatusFilter] = reactExports.useState("all");
   const [priorityFilter, setPriorityFilter] = reactExports.useState("all");
   const [isCreateDialogOpen, setIsCreateDialogOpen] = reactExports.useState(false);
+  const [isEditDialogOpen, setIsEditDialogOpen] = reactExports.useState(false);
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = reactExports.useState(false);
+  const [selectedTask, setSelectedTask] = reactExports.useState(null);
   const [taskForm, setTaskForm] = reactExports.useState({
+    propertyId: "",
+    type: "maintenance",
+    title: "",
+    description: "",
+    priority: "med",
+    dueAt: "",
+    estimatedHours: "",
+    assigneeStaffId: "none"
+  });
+  const [editForm, setEditForm] = reactExports.useState({
     propertyId: "",
     type: "maintenance",
     title: "",
@@ -37193,9 +38522,32 @@ function TasksPage() {
       errorMessage: "Failed to update task assignment. Please try again."
     }
   );
+  const updateTaskMutation = useStandardMutation(
+    "/tasks/:id",
+    "PATCH",
+    {
+      invalidateQueries: [QUERY_KEYS.TASKS, QUERY_KEYS.DASHBOARD, QUERY_KEYS.ANALYTICS],
+      refetchQueries: [QUERY_KEYS.TASKS],
+      successMessage: "Task updated successfully",
+      errorMessage: "Failed to update task. Please try again.",
+      onSuccess: () => {
+        queryClient2.invalidateQueries({ queryKey: [QUERY_KEYS.TASKS] });
+        queryClient2.refetchQueries({ queryKey: [QUERY_KEYS.TASKS] });
+      }
+    }
+  );
+  const deleteTaskMutation = useStandardMutation(
+    "/tasks/:id",
+    "DELETE",
+    {
+      invalidateQueries: [QUERY_KEYS.TASKS],
+      successMessage: "Task deleted successfully",
+      errorMessage: "Failed to delete task. Please try again."
+    }
+  );
   const filteredTasks = (tasks2 == null ? void 0 : tasks2.tasks.filter((task) => {
-    var _a2;
-    const matchesSearch = task.title.toLowerCase().includes(searchTerm.toLowerCase()) || ((_a2 = task.description) == null ? void 0 : _a2.toLowerCase().includes(searchTerm.toLowerCase())) || task.propertyName.toLowerCase().includes(searchTerm.toLowerCase());
+    var _a3;
+    const matchesSearch = task.title.toLowerCase().includes(searchTerm.toLowerCase()) || ((_a3 = task.description) == null ? void 0 : _a3.toLowerCase().includes(searchTerm.toLowerCase())) || task.propertyName.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesStatus = statusFilter === "all" || task.status === statusFilter;
     const matchesPriority = priorityFilter === "all" || task.priority === priorityFilter;
     return matchesSearch && matchesStatus && matchesPriority;
@@ -37284,6 +38636,56 @@ function TasksPage() {
       status: newStatus
     });
   };
+  const handleEditTask = (task) => {
+    var _a3, _b3;
+    setSelectedTask(task);
+    setEditForm({
+      propertyId: task.propertyId.toString(),
+      type: task.type,
+      title: task.title,
+      description: task.description || "",
+      priority: task.priority,
+      dueAt: task.dueAt ? new Date(task.dueAt).toISOString().slice(0, 16) : "",
+      estimatedHours: ((_a3 = task.estimatedHours) == null ? void 0 : _a3.toString()) || "",
+      assigneeStaffId: ((_b3 = task.assigneeStaffId) == null ? void 0 : _b3.toString()) || "none"
+    });
+    setIsEditDialogOpen(true);
+  };
+  const handleUpdateTask = async () => {
+    if (!selectedTask) return;
+    try {
+      const updateData = {
+        id: selectedTask.id,
+        propertyId: parseInt(editForm.propertyId),
+        type: editForm.type,
+        title: editForm.title,
+        description: editForm.description || void 0,
+        priority: editForm.priority,
+        assigneeStaffId: editForm.assigneeStaffId === "none" ? void 0 : parseInt(editForm.assigneeStaffId),
+        dueAt: editForm.dueAt || void 0,
+        estimatedHours: editForm.estimatedHours ? parseInt(editForm.estimatedHours) : void 0
+      };
+      await updateTaskMutation.mutateAsync(updateData);
+      setIsEditDialogOpen(false);
+      setSelectedTask(null);
+    } catch (error) {
+      handleError(error);
+    }
+  };
+  const handleDeleteTask = (task) => {
+    setSelectedTask(task);
+    setIsDeleteDialogOpen(true);
+  };
+  const confirmDeleteTask = async () => {
+    if (!selectedTask) return;
+    try {
+      await deleteTaskMutation.mutateAsync({ id: selectedTask.id });
+      setIsDeleteDialogOpen(false);
+      setSelectedTask(null);
+    } catch (error) {
+      handleError(error);
+    }
+  };
   const StaffSelect = ({ propertyId, value, onChange, disabled }) => {
     const { data, isLoading: loadingStaff } = useStandardQuery(
       ["staff", "by-property", propertyId.toString()],
@@ -37362,7 +38764,33 @@ function TasksPage() {
           /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex-1 min-w-0", children: [
             /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2 mb-2", children: [
               /* @__PURE__ */ jsxRuntimeExports.jsx(CardTitle, { className: "text-lg font-bold text-gray-900 leading-tight flex-1 min-w-0 break-words", children: task.title }),
-              /* @__PURE__ */ jsxRuntimeExports.jsx(Badge, { className: `${getPriorityColor(task.priority)} flex-shrink-0 self-start text-xs px-2 py-1`, children: task.priority })
+              /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center gap-2 flex-shrink-0", children: [
+                /* @__PURE__ */ jsxRuntimeExports.jsx(Badge, { className: `${getPriorityColor(task.priority)} text-xs px-2 py-1`, children: task.priority }),
+                (user == null ? void 0 : user.role) === "ADMIN" && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center gap-1", children: [
+                  /* @__PURE__ */ jsxRuntimeExports.jsx(
+                    Button,
+                    {
+                      variant: "ghost",
+                      size: "sm",
+                      onClick: () => handleEditTask(task),
+                      className: "h-8 w-8 p-0 hover:bg-blue-100 hover:text-blue-600 transition-all duration-200",
+                      title: "Edit task",
+                      children: /* @__PURE__ */ jsxRuntimeExports.jsx(SquarePen, { className: "h-4 w-4" })
+                    }
+                  ),
+                  /* @__PURE__ */ jsxRuntimeExports.jsx(
+                    Button,
+                    {
+                      variant: "ghost",
+                      size: "sm",
+                      onClick: () => handleDeleteTask(task),
+                      className: "h-8 w-8 p-0 hover:bg-red-100 hover:text-red-600 transition-all duration-200",
+                      title: "Delete task",
+                      children: /* @__PURE__ */ jsxRuntimeExports.jsx(Trash2, { className: "h-4 w-4" })
+                    }
+                  )
+                ] })
+              ] })
             ] }),
             /* @__PURE__ */ jsxRuntimeExports.jsx(CardDescription, { className: "text-sm text-gray-600 break-words", children: task.propertyName })
           ] })
@@ -37756,21 +39184,186 @@ function TasksPage() {
                 )
               ] }) })
             ] })
-          ] })
+          ] }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(Dialog, { open: isEditDialogOpen, onOpenChange: setIsEditDialogOpen, children: /* @__PURE__ */ jsxRuntimeExports.jsxs(DialogContent, { className: "max-w-2xl max-h-[95vh] overflow-hidden flex flex-col", children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsxs(DialogHeader, { className: "pb-4", children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsxs(DialogTitle, { className: "text-xl font-bold text-gray-900 flex items-center gap-2", children: [
+                /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "p-2 bg-blue-100 rounded-lg shadow-sm", children: /* @__PURE__ */ jsxRuntimeExports.jsx(SquarePen, { className: "h-5 w-5 text-blue-600" }) }),
+                "Edit Task"
+              ] }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx(DialogDescription, { className: "text-sm text-gray-600", children: "Update task details and assignment" })
+            ] }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "flex-1 overflow-y-auto px-1", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "space-y-4", children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "space-y-2", children: [
+                /* @__PURE__ */ jsxRuntimeExports.jsx(Label, { htmlFor: "edit-property", className: "text-sm font-medium text-gray-700", children: "Property *" }),
+                /* @__PURE__ */ jsxRuntimeExports.jsxs(Select, { value: editForm.propertyId, onValueChange: (value) => setEditForm((prev) => ({ ...prev, propertyId: value, assigneeStaffId: "none" })), children: [
+                  /* @__PURE__ */ jsxRuntimeExports.jsx(SelectTrigger, { className: "h-11 border-gray-300 focus:border-blue-500 focus:ring-blue-500", children: /* @__PURE__ */ jsxRuntimeExports.jsx(SelectValue, { placeholder: "Select property" }) }),
+                  /* @__PURE__ */ jsxRuntimeExports.jsx(SelectContent, { children: properties2 == null ? void 0 : properties2.properties.map((property) => /* @__PURE__ */ jsxRuntimeExports.jsx(SelectItem, { value: property.id.toString(), children: property.name }, property.id)) })
+                ] })
+              ] }),
+              /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "space-y-2", children: [
+                /* @__PURE__ */ jsxRuntimeExports.jsx(Label, { htmlFor: "edit-title", className: "text-sm font-medium text-gray-700", children: "Task Title *" }),
+                /* @__PURE__ */ jsxRuntimeExports.jsx(
+                  Input,
+                  {
+                    id: "edit-title",
+                    value: editForm.title,
+                    onChange: (e) => setEditForm((prev) => ({ ...prev, title: e.target.value })),
+                    placeholder: "Enter task title",
+                    className: "h-11 border-gray-300 focus:border-blue-500 focus:ring-blue-500"
+                  }
+                )
+              ] }),
+              /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "space-y-2", children: [
+                /* @__PURE__ */ jsxRuntimeExports.jsx(Label, { htmlFor: "edit-description", className: "text-sm font-medium text-gray-700", children: "Description" }),
+                /* @__PURE__ */ jsxRuntimeExports.jsx(
+                  Textarea,
+                  {
+                    id: "edit-description",
+                    value: editForm.description,
+                    onChange: (e) => setEditForm((prev) => ({ ...prev, description: e.target.value })),
+                    placeholder: "Enter task description (optional)",
+                    className: "border-gray-300 focus:border-blue-500 focus:ring-blue-500",
+                    rows: 3
+                  }
+                )
+              ] }),
+              /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "grid grid-cols-2 gap-4", children: [
+                /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "space-y-2", children: [
+                  /* @__PURE__ */ jsxRuntimeExports.jsx(Label, { htmlFor: "edit-type", className: "text-sm font-medium text-gray-700", children: "Type *" }),
+                  /* @__PURE__ */ jsxRuntimeExports.jsxs(Select, { value: editForm.type, onValueChange: (value) => setEditForm((prev) => ({ ...prev, type: value })), children: [
+                    /* @__PURE__ */ jsxRuntimeExports.jsx(SelectTrigger, { className: "h-11 border-gray-300 focus:border-blue-500 focus:ring-blue-500", children: /* @__PURE__ */ jsxRuntimeExports.jsx(SelectValue, {}) }),
+                    /* @__PURE__ */ jsxRuntimeExports.jsxs(SelectContent, { children: [
+                      /* @__PURE__ */ jsxRuntimeExports.jsx(SelectItem, { value: "maintenance", children: "Maintenance" }),
+                      /* @__PURE__ */ jsxRuntimeExports.jsx(SelectItem, { value: "housekeeping", children: "Housekeeping" }),
+                      /* @__PURE__ */ jsxRuntimeExports.jsx(SelectItem, { value: "service", children: "Service" })
+                    ] })
+                  ] })
+                ] }),
+                /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "space-y-2", children: [
+                  /* @__PURE__ */ jsxRuntimeExports.jsx(Label, { htmlFor: "edit-priority", className: "text-sm font-medium text-gray-700", children: "Priority *" }),
+                  /* @__PURE__ */ jsxRuntimeExports.jsxs(Select, { value: editForm.priority, onValueChange: (value) => setEditForm((prev) => ({ ...prev, priority: value })), children: [
+                    /* @__PURE__ */ jsxRuntimeExports.jsx(SelectTrigger, { className: "h-11 border-gray-300 focus:border-blue-500 focus:ring-blue-500", children: /* @__PURE__ */ jsxRuntimeExports.jsx(SelectValue, {}) }),
+                    /* @__PURE__ */ jsxRuntimeExports.jsxs(SelectContent, { children: [
+                      /* @__PURE__ */ jsxRuntimeExports.jsx(SelectItem, { value: "low", children: "Low" }),
+                      /* @__PURE__ */ jsxRuntimeExports.jsx(SelectItem, { value: "med", children: "Medium" }),
+                      /* @__PURE__ */ jsxRuntimeExports.jsx(SelectItem, { value: "high", children: "High" })
+                    ] })
+                  ] })
+                ] })
+              ] }),
+              /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "space-y-2", children: [
+                /* @__PURE__ */ jsxRuntimeExports.jsx(Label, { htmlFor: "edit-due", className: "text-sm font-medium text-gray-700", children: "Due Date & Time" }),
+                /* @__PURE__ */ jsxRuntimeExports.jsx(
+                  Input,
+                  {
+                    id: "edit-due",
+                    type: "datetime-local",
+                    value: editForm.dueAt,
+                    onChange: (e) => setEditForm((prev) => ({ ...prev, dueAt: e.target.value })),
+                    className: "h-11 border-gray-300 focus:border-blue-500 focus:ring-blue-500"
+                  }
+                )
+              ] }),
+              /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "space-y-2", children: [
+                /* @__PURE__ */ jsxRuntimeExports.jsx(Label, { htmlFor: "edit-hours", className: "text-sm font-medium text-gray-700", children: "Estimated Hours" }),
+                /* @__PURE__ */ jsxRuntimeExports.jsx(
+                  Input,
+                  {
+                    id: "edit-hours",
+                    type: "number",
+                    value: editForm.estimatedHours,
+                    onChange: (e) => setEditForm((prev) => ({ ...prev, estimatedHours: e.target.value })),
+                    placeholder: "Enter estimated hours (optional)",
+                    className: "h-11 border-gray-300 focus:border-blue-500 focus:ring-blue-500"
+                  }
+                )
+              ] }),
+              /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "space-y-2", children: [
+                /* @__PURE__ */ jsxRuntimeExports.jsx(Label, { className: "text-sm font-medium text-gray-700", children: "Assignee" }),
+                /* @__PURE__ */ jsxRuntimeExports.jsxs(
+                  Select,
+                  {
+                    value: editForm.assigneeStaffId,
+                    onValueChange: (value) => setEditForm((prev) => ({ ...prev, assigneeStaffId: value })),
+                    disabled: !editForm.propertyId,
+                    children: [
+                      /* @__PURE__ */ jsxRuntimeExports.jsx(SelectTrigger, { className: "h-11 border-gray-300 focus:border-blue-500 focus:ring-blue-500", children: /* @__PURE__ */ jsxRuntimeExports.jsx(SelectValue, { placeholder: "Select assignee (optional)" }) }),
+                      /* @__PURE__ */ jsxRuntimeExports.jsxs(SelectContent, { children: [
+                        /* @__PURE__ */ jsxRuntimeExports.jsx(SelectItem, { value: "none", children: "Unassigned" }),
+                        (_b2 = (_a2 = properties2 == null ? void 0 : properties2.properties.find((p) => p.id.toString() === editForm.propertyId)) == null ? void 0 : _a2.staff) == null ? void 0 : _b2.map((staff2) => /* @__PURE__ */ jsxRuntimeExports.jsx(SelectItem, { value: staff2.id.toString(), children: staff2.userName }, staff2.id))
+                      ] })
+                    ]
+                  }
+                )
+              ] })
+            ] }) }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(DialogFooter, { className: "border-t pt-4 mt-6 bg-gray-50 -mx-6 -mb-6 px-6 py-4", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center justify-between w-full", children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { variant: "outline", onClick: () => setIsEditDialogOpen(false), children: "Cancel" }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx(
+                Button,
+                {
+                  onClick: handleUpdateTask,
+                  disabled: updateTaskMutation.isPending || !editForm.propertyId || !editForm.title,
+                  className: "bg-blue-600 hover:bg-blue-700",
+                  children: updateTaskMutation.isPending ? /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
+                    /* @__PURE__ */ jsxRuntimeExports.jsx(LoaderCircle, { className: "mr-2 h-4 w-4 animate-spin" }),
+                    "Updating..."
+                  ] }) : "Update Task"
+                }
+              )
+            ] }) })
+          ] }) }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(Dialog, { open: isDeleteDialogOpen, onOpenChange: setIsDeleteDialogOpen, children: /* @__PURE__ */ jsxRuntimeExports.jsxs(DialogContent, { className: "max-w-md", children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsxs(DialogHeader, { className: "pb-4", children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsxs(DialogTitle, { className: "text-xl font-bold text-red-900 flex items-center gap-2", children: [
+                /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "p-2 bg-red-100 rounded-lg shadow-sm", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Trash2, { className: "h-5 w-5 text-red-600" }) }),
+                "Delete Task"
+              ] }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx(DialogDescription, { className: "text-sm text-gray-600", children: "Are you sure you want to delete this task? This action cannot be undone." })
+            ] }),
+            selectedTask && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "py-4", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "p-4 bg-gray-50 rounded-lg border", children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsx("h4", { className: "font-medium text-gray-900", children: selectedTask.title }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-sm text-gray-600 mt-1", children: selectedTask.propertyName }),
+              /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { className: "text-xs text-gray-500 mt-2", children: [
+                "Priority: ",
+                selectedTask.priority
+              ] })
+            ] }) }),
+            /* @__PURE__ */ jsxRuntimeExports.jsxs(DialogFooter, { className: "flex gap-2", children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { variant: "outline", onClick: () => setIsDeleteDialogOpen(false), children: "Cancel" }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx(
+                Button,
+                {
+                  variant: "destructive",
+                  onClick: confirmDeleteTask,
+                  disabled: deleteTaskMutation.isPending,
+                  className: "bg-red-600 hover:bg-red-700",
+                  children: deleteTaskMutation.isPending ? /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
+                    /* @__PURE__ */ jsxRuntimeExports.jsx(LoaderCircle, { className: "mr-2 h-4 w-4 animate-spin" }),
+                    "Deleting..."
+                  ] }) : "Delete Task"
+                }
+              )
+            ] })
+          ] }) })
         ] })
       ] })
     ] }),
     /* @__PURE__ */ jsxRuntimeExports.jsxs(Tabs, { defaultValue: "all", className: "space-y-0", children: [
-      /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "sticky top-20 z-30 bg-white border-b border-gray-200 -mx-6 px-4 sm:px-6 py-3 shadow-sm", children: /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "overflow-x-auto", children: /* @__PURE__ */ jsxRuntimeExports.jsxs(TabsList, { className: "grid w-full grid-cols-5 min-w-max bg-gray-100", children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "sticky top-20 z-30 bg-gradient-to-br from-orange-500 via-orange-600 to-orange-700 border-b-2 border-orange-400 -mx-6 px-4 py-3 shadow-2xl rounded-b-xl", children: /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "overflow-x-auto", children: /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "bg-white/10 backdrop-blur-sm rounded-lg p-1 border border-white/20 shadow-inner", children: /* @__PURE__ */ jsxRuntimeExports.jsxs(TabsList, { className: "grid w-full grid-cols-5 min-w-max bg-transparent h-auto p-0 gap-2", children: [
         /* @__PURE__ */ jsxRuntimeExports.jsxs(
           TabsTrigger,
           {
             value: "all",
-            className: "text-xs sm:text-sm px-2 sm:px-4 py-2 data-[state=active]:bg-white data-[state=active]:shadow-sm transition-all duration-200",
+            className: "text-xs sm:text-sm px-4 sm:px-8 py-4 data-[state=active]:bg-white data-[state=active]:text-orange-600 data-[state=active]:shadow-xl data-[state=active]:border-2 data-[state=active]:border-orange-300 data-[state=inactive]:text-white data-[state=inactive]:bg-gradient-to-r data-[state=inactive]:from-orange-500/30 data-[state=inactive]:to-orange-600/30 data-[state=inactive]:hover:from-orange-500/50 data-[state=inactive]:hover:to-orange-600/50 data-[state=inactive]:hover:shadow-lg data-[state=inactive]:border data-[state=inactive]:border-white/30 transition-all duration-500 flex items-center gap-2 rounded-xl font-semibold relative overflow-hidden group",
             children: [
-              "All (",
-              filteredTasks.length,
-              ")"
+              /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "absolute inset-0 bg-gradient-to-r from-white/0 via-white/10 to-white/0 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700" }),
+              /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: "relative z-10", children: [
+                "All (",
+                filteredTasks.length,
+                ")"
+              ] })
             ]
           }
         ),
@@ -37778,11 +39371,14 @@ function TasksPage() {
           TabsTrigger,
           {
             value: "open",
-            className: "text-xs sm:text-sm px-2 sm:px-4 py-2 data-[state=active]:bg-white data-[state=active]:shadow-sm transition-all duration-200",
+            className: "text-xs sm:text-sm px-4 sm:px-8 py-4 data-[state=active]:bg-white data-[state=active]:text-orange-600 data-[state=active]:shadow-xl data-[state=active]:border-2 data-[state=active]:border-orange-300 data-[state=inactive]:text-white data-[state=inactive]:bg-gradient-to-r data-[state=inactive]:from-orange-500/30 data-[state=inactive]:to-orange-600/30 data-[state=inactive]:hover:from-orange-500/50 data-[state=inactive]:hover:to-orange-600/50 data-[state=inactive]:hover:shadow-lg data-[state=inactive]:border data-[state=inactive]:border-white/30 transition-all duration-500 flex items-center gap-2 rounded-xl font-semibold relative overflow-hidden group",
             children: [
-              "Open (",
-              groupedTasks.open.length,
-              ")"
+              /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "absolute inset-0 bg-gradient-to-r from-white/0 via-white/10 to-white/0 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700" }),
+              /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: "relative z-10", children: [
+                "Open (",
+                groupedTasks.open.length,
+                ")"
+              ] })
             ]
           }
         ),
@@ -37790,11 +39386,14 @@ function TasksPage() {
           TabsTrigger,
           {
             value: "in_progress",
-            className: "text-xs sm:text-sm px-2 sm:px-4 py-2 data-[state=active]:bg-white data-[state=active]:shadow-sm transition-all duration-200",
+            className: "text-xs sm:text-sm px-4 sm:px-8 py-4 data-[state=active]:bg-white data-[state=active]:text-orange-600 data-[state=active]:shadow-xl data-[state=active]:border-2 data-[state=active]:border-orange-300 data-[state=inactive]:text-white data-[state=inactive]:bg-gradient-to-r data-[state=inactive]:from-orange-500/30 data-[state=inactive]:to-orange-600/30 data-[state=inactive]:hover:from-orange-500/50 data-[state=inactive]:hover:to-orange-600/50 data-[state=inactive]:hover:shadow-lg data-[state=inactive]:border data-[state=inactive]:border-white/30 transition-all duration-500 flex items-center gap-2 rounded-xl font-semibold relative overflow-hidden group",
             children: [
-              "Progress (",
-              groupedTasks.in_progress.length,
-              ")"
+              /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "absolute inset-0 bg-gradient-to-r from-white/0 via-white/10 to-white/0 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700" }),
+              /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: "relative z-10", children: [
+                "Progress (",
+                groupedTasks.in_progress.length,
+                ")"
+              ] })
             ]
           }
         ),
@@ -37802,11 +39401,14 @@ function TasksPage() {
           TabsTrigger,
           {
             value: "blocked",
-            className: "text-xs sm:text-sm px-2 sm:px-4 py-2 data-[state=active]:bg-white data-[state=active]:shadow-sm transition-all duration-200",
+            className: "text-xs sm:text-sm px-4 sm:px-8 py-4 data-[state=active]:bg-white data-[state=active]:text-orange-600 data-[state=active]:shadow-xl data-[state=active]:border-2 data-[state=active]:border-orange-300 data-[state=inactive]:text-white data-[state=inactive]:bg-gradient-to-r data-[state=inactive]:from-orange-500/30 data-[state=inactive]:to-orange-600/30 data-[state=inactive]:hover:from-orange-500/50 data-[state=inactive]:hover:to-orange-600/50 data-[state=inactive]:hover:shadow-lg data-[state=inactive]:border data-[state=inactive]:border-white/30 transition-all duration-500 flex items-center gap-2 rounded-xl font-semibold relative overflow-hidden group",
             children: [
-              "Blocked (",
-              groupedTasks.blocked.length,
-              ")"
+              /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "absolute inset-0 bg-gradient-to-r from-white/0 via-white/10 to-white/0 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700" }),
+              /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: "relative z-10", children: [
+                "Blocked (",
+                groupedTasks.blocked.length,
+                ")"
+              ] })
             ]
           }
         ),
@@ -37814,15 +39416,18 @@ function TasksPage() {
           TabsTrigger,
           {
             value: "done",
-            className: "text-xs sm:text-sm px-2 sm:px-4 py-2 data-[state=active]:bg-white data-[state=active]:shadow-sm transition-all duration-200",
+            className: "text-xs sm:text-sm px-4 sm:px-8 py-4 data-[state=active]:bg-white data-[state=active]:text-orange-600 data-[state=active]:shadow-xl data-[state=active]:border-2 data-[state=active]:border-orange-300 data-[state=inactive]:text-white data-[state=inactive]:bg-gradient-to-r data-[state=inactive]:from-orange-500/30 data-[state=inactive]:to-orange-600/30 data-[state=inactive]:hover:from-orange-500/50 data-[state=inactive]:hover:to-orange-600/50 data-[state=inactive]:hover:shadow-lg data-[state=inactive]:border data-[state=inactive]:border-white/30 transition-all duration-500 flex items-center gap-2 rounded-xl font-semibold relative overflow-hidden group",
             children: [
-              "Done (",
-              groupedTasks.done.length,
-              ")"
+              /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "absolute inset-0 bg-gradient-to-r from-white/0 via-white/10 to-white/0 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700" }),
+              /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: "relative z-10", children: [
+                "Done (",
+                groupedTasks.done.length,
+                ")"
+              ] })
             ]
           }
         )
-      ] }) }) }),
+      ] }) }) }) }),
       /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "px-6 py-6", children: [
         /* @__PURE__ */ jsxRuntimeExports.jsx(TabsContent, { value: "all", className: "pt-4", children: filteredTasks.length === 0 ? /* @__PURE__ */ jsxRuntimeExports.jsx(Card, { className: "border-l-4 border-l-blue-500", children: /* @__PURE__ */ jsxRuntimeExports.jsxs(CardContent, { className: "flex flex-col items-center justify-center py-12", children: [
           /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4", children: /* @__PURE__ */ jsxRuntimeExports.jsx(SquareCheckBig, { className: "h-8 w-8 text-blue-600" }) }),
@@ -37896,19 +39501,19 @@ const CURRENCY_CONFIGS = {
   }
 };
 function formatCurrency$1(amountInCents, currencyCode = "INR") {
-  const config = CURRENCY_CONFIGS[currencyCode] || CURRENCY_CONFIGS.INR;
+  const config2 = CURRENCY_CONFIGS[currencyCode] || CURRENCY_CONFIGS.INR;
   const amountInUnits = amountInCents / 100;
   try {
-    return new Intl.NumberFormat(config.locale, {
+    return new Intl.NumberFormat(config2.locale, {
       style: "currency",
-      currency: config.code,
-      minimumFractionDigits: config.decimals,
-      maximumFractionDigits: config.decimals
+      currency: config2.code,
+      minimumFractionDigits: config2.decimals,
+      maximumFractionDigits: config2.decimals
     }).format(amountInUnits);
   } catch (error) {
-    return `${config.symbol}${amountInUnits.toLocaleString(config.locale, {
-      minimumFractionDigits: config.decimals,
-      maximumFractionDigits: config.decimals
+    return `${config2.symbol}${amountInUnits.toLocaleString(config2.locale, {
+      minimumFractionDigits: config2.decimals,
+      maximumFractionDigits: config2.decimals
     })}`;
   }
 }
@@ -38067,11 +39672,36 @@ function ReceiptViewer({ isOpen, onClose, transaction }) {
   const { getAuthenticatedBackend: getAuthenticatedBackend2 } = useAuth();
   const { theme } = useTheme();
   const [imageError, setImageError] = reactExports.useState(false);
+  const [zoomLevel, setZoomLevel] = reactExports.useState(100);
+  reactExports.useEffect(() => {
+    if (transaction) {
+      console.log("ReceiptViewer transaction data:", {
+        id: transaction.id,
+        type: transaction.type,
+        status: transaction.status,
+        date: transaction.date,
+        createdAt: transaction.createdAt,
+        approvedByName: transaction.approvedByName,
+        approvedAt: transaction.approvedAt,
+        createdByName: transaction.createdByName,
+        amountCents: transaction.amountCents
+      });
+    }
+  }, [transaction]);
+  const handleZoomIn = () => {
+    setZoomLevel((prev) => Math.min(prev + 25, 300));
+  };
+  const handleZoomOut = () => {
+    setZoomLevel((prev) => Math.max(prev - 25, 50));
+  };
+  const handleZoomReset = () => {
+    setZoomLevel(100);
+  };
   const { data: fileInfo, isLoading: fileInfoLoading } = useQuery({
     queryKey: ["file-info", transaction == null ? void 0 : transaction.receiptFileId],
     queryFn: async () => {
       if (!(transaction == null ? void 0 : transaction.receiptFileId)) return null;
-      const response = await fetch(`${API_CONFIG.BASE_URL}/uploads/file/${transaction.receiptFileId}/info`, {
+      const response = await fetch(`${API_CONFIG.BASE_URL}/uploads/${transaction.receiptFileId}/info`, {
         headers: {
           "Authorization": `Bearer ${localStorage.getItem("accessToken")}`
         }
@@ -38087,7 +39717,7 @@ function ReceiptViewer({ isOpen, onClose, transaction }) {
     queryKey: ["file-data", transaction == null ? void 0 : transaction.receiptFileId],
     queryFn: async () => {
       if (!(transaction == null ? void 0 : transaction.receiptFileId)) return null;
-      const response = await fetch(`${API_CONFIG.BASE_URL}/uploads/file/${transaction.receiptFileId}`, {
+      const response = await fetch(`${API_CONFIG.BASE_URL}/uploads/${transaction.receiptFileId}/download`, {
         headers: {
           "Authorization": `Bearer ${localStorage.getItem("accessToken")}`
         }
@@ -38161,38 +39791,38 @@ function ReceiptViewer({ isOpen, onClose, transaction }) {
   return /* @__PURE__ */ jsxRuntimeExports.jsx(Dialog, { open: isOpen, onOpenChange: onClose, children: /* @__PURE__ */ jsxRuntimeExports.jsx(DialogPortal, { children: /* @__PURE__ */ jsxRuntimeExports.jsxs(
     DialogContent,
     {
-      className: "max-w-5xl max-h-[95vh] overflow-auto border-2 border-blue-200 shadow-2xl bg-gradient-to-br from-white to-blue-50",
+      className: "max-w-6xl max-h-[98vh] w-[95vw] border-0 shadow-2xl bg-gradient-to-br from-slate-50 via-white to-blue-50 flex flex-col rounded-3xl overflow-hidden",
       showCloseButton: false,
       children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "sticky top-0 right-0 z-[60] flex justify-end p-2", children: /* @__PURE__ */ jsxRuntimeExports.jsx(
-          Button,
-          {
-            variant: "ghost",
-            size: "sm",
-            onClick: onClose,
-            className: "h-10 w-10 rounded-full bg-red-500 hover:bg-red-600 text-white shadow-lg hover:shadow-xl transition-all duration-200 hover:scale-110",
-            children: /* @__PURE__ */ jsxRuntimeExports.jsx(X, { className: "h-5 w-5" })
-          }
-        ) }),
-        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "px-6 pb-6", children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsx(DialogHeader, { className: "pb-6 border-b border-blue-100", children: /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "flex items-center justify-between", children: /* @__PURE__ */ jsxRuntimeExports.jsxs(DialogTitle, { className: "flex items-center gap-3 text-2xl font-bold", children: [
-            /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: `p-2 rounded-full ${transaction.type === "expense" ? "bg-red-100" : "bg-green-100"}`, children: transaction.type === "expense" ? "💰" : "📈" }),
-            /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: "bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent", children: [
-              transaction.type === "expense" ? "Expense" : "Revenue",
-              " Receipt"
-            ] }),
-            transaction.status && /* @__PURE__ */ jsxRuntimeExports.jsx(Badge, { className: `${getStatusColor(transaction.status)} text-sm font-semibold px-3 py-1 shadow-sm`, children: transaction.status.charAt(0).toUpperCase() + transaction.status.slice(1) })
-          ] }) }) }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "sticky top-0 z-[60] bg-gradient-to-r from-white via-blue-50 to-indigo-50 border-b border-blue-200/50 shadow-xl backdrop-blur-sm", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center justify-between p-4 sm:p-6", children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center gap-3 sm:gap-4 flex-1 min-w-0", children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: `p-3 rounded-2xl shadow-lg ${transaction.type === "expense" ? "bg-gradient-to-br from-red-100 to-red-200" : "bg-gradient-to-br from-green-100 to-green-200"}`, children: /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "text-2xl", children: transaction.type === "expense" ? "💰" : "📈" }) }),
+            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex-1 min-w-0", children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsxs(DialogTitle, { className: "text-xl sm:text-2xl lg:text-3xl font-bold bg-gradient-to-r from-blue-600 via-purple-600 to-indigo-600 bg-clip-text text-transparent truncate", children: [
+                transaction.type === "expense" ? "Expense" : "Revenue",
+                " Receipt"
+              ] }),
+              /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center gap-2 mt-1", children: [
+                transaction.status && /* @__PURE__ */ jsxRuntimeExports.jsx(Badge, { className: `${getStatusColor(transaction.status)} text-xs sm:text-sm font-bold px-3 py-1 shadow-md rounded-full`, children: transaction.status.charAt(0).toUpperCase() + transaction.status.slice(1) }),
+                /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "text-xs sm:text-sm text-gray-600 bg-white/50 px-2 py-1 rounded-full", children: formatCurrency$1(transaction.amountCents) })
+              ] })
+            ] })
+          ] }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(
+            Button,
+            {
+              variant: "ghost",
+              size: "sm",
+              onClick: onClose,
+              className: "h-10 w-10 sm:h-12 sm:w-12 rounded-full bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 text-white shadow-xl hover:shadow-2xl transition-all duration-300 hover:scale-110 flex-shrink-0",
+              children: /* @__PURE__ */ jsxRuntimeExports.jsx(X, { className: "h-5 w-5 sm:h-6 sm:w-6" })
+            }
+          )
+        ] }) }),
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex-1 overflow-auto px-6 pb-6", children: [
           /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "space-y-6 p-2", children: [
             /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "grid grid-cols-1 md:grid-cols-2 gap-6 p-6 border-2 border-blue-100 rounded-xl bg-gradient-to-r from-blue-50 to-indigo-50 shadow-lg", children: [
               /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "space-y-4", children: [
-                /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center gap-3 p-3 bg-white rounded-lg shadow-sm border border-gray-100 hover:shadow-md transition-shadow", children: [
-                  /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: `p-2 rounded-full ${transaction.type === "expense" ? "bg-red-100" : "bg-green-100"}`, children: /* @__PURE__ */ jsxRuntimeExports.jsx(Receipt, { className: `h-4 w-4 ${transaction.type === "expense" ? "text-red-600" : "text-green-600"}` }) }),
-                  /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex-1", children: [
-                    /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-sm text-gray-600 block", children: "Amount" }),
-                    /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: `font-bold text-lg ${transaction.type === "expense" ? "text-red-600" : "text-green-600"}`, children: formatCurrency$1(transaction.amountCents, theme.currency) })
-                  ] })
-                ] }),
                 /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center gap-3 p-3 bg-white rounded-lg shadow-sm border border-gray-100 hover:shadow-md transition-shadow", children: [
                   /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "p-2 rounded-full bg-blue-100", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Building2, { className: "h-4 w-4 text-blue-600" }) }),
                   /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex-1", children: [
@@ -38203,7 +39833,7 @@ function ReceiptViewer({ isOpen, onClose, transaction }) {
                 /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center gap-3 p-3 bg-white rounded-lg shadow-sm border border-gray-100 hover:shadow-md transition-shadow", children: [
                   /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "p-2 rounded-full bg-purple-100", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Calendar, { className: "h-4 w-4 text-purple-600" }) }),
                   /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex-1", children: [
-                    /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-sm text-gray-600 block", children: "Date & Time" }),
+                    /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-sm text-gray-600 block", children: transaction.type === "expense" ? "Expense Date" : "Revenue Date" }),
                     /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "font-semibold text-gray-800", children: formatTransactionDateTime(transaction.date) })
                   ] })
                 ] }),
@@ -38212,6 +39842,13 @@ function ReceiptViewer({ isOpen, onClose, transaction }) {
                   /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex-1", children: [
                     /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-sm text-gray-600 block", children: "Created By" }),
                     /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "font-semibold text-gray-800", children: transaction.createdByName })
+                  ] })
+                ] }),
+                transaction.createdAt && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center gap-3 p-3 bg-white rounded-lg shadow-sm border border-gray-100 hover:shadow-md transition-shadow", children: [
+                  /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "p-2 rounded-full bg-indigo-100", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Calendar, { className: "h-4 w-4 text-indigo-600" }) }),
+                  /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex-1", children: [
+                    /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-sm text-gray-600 block", children: "Created At" }),
+                    /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "font-semibold text-gray-800", children: formatTransactionDateTime(transaction.createdAt) })
                   ] })
                 ] })
               ] }),
@@ -38224,33 +39861,136 @@ function ReceiptViewer({ isOpen, onClose, transaction }) {
                   /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-sm text-gray-600 block mb-1", children: "Source" }),
                   /* @__PURE__ */ jsxRuntimeExports.jsx(Badge, { className: `${getSourceColor(transaction.source)} font-semibold px-3 py-1 shadow-sm`, children: transaction.source })
                 ] }),
+                transaction.paymentMode && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "p-3 bg-white rounded-lg shadow-sm border border-gray-100", children: [
+                  /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-sm text-gray-600 block mb-1", children: "Payment Mode" }),
+                  /* @__PURE__ */ jsxRuntimeExports.jsx(Badge, { className: `${transaction.paymentMode === "cash" ? "bg-green-100 text-green-800" : "bg-blue-100 text-blue-800"} font-semibold px-3 py-1 shadow-sm`, children: transaction.paymentMode === "cash" ? "Cash" : "Bank/UPI/Online" })
+                ] }),
+                transaction.bankReference && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "p-3 bg-white rounded-lg shadow-sm border border-gray-100", children: [
+                  /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-sm text-gray-600 block mb-1", children: "Bank Reference" }),
+                  /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "font-semibold text-gray-800 text-sm", children: transaction.bankReference })
+                ] }),
                 transaction.description && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "p-3 bg-white rounded-lg shadow-sm border border-gray-100", children: [
                   /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-sm text-gray-600 block mb-2", children: "Description" }),
                   /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-gray-800 font-medium", children: transaction.description })
+                ] }),
+                (transaction.status === "approved" || transaction.status === "rejected") && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "p-3 bg-white rounded-lg shadow-sm border border-gray-100", children: [
+                  /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-sm text-gray-600 block mb-1", children: transaction.status === "approved" ? "Approved By" : "Rejected By" }),
+                  /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center gap-2", children: [
+                    /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: `p-1 rounded-full ${transaction.status === "approved" ? "bg-green-100" : "bg-red-100"}`, children: /* @__PURE__ */ jsxRuntimeExports.jsx(Check, { className: `h-3 w-3 ${transaction.status === "approved" ? "text-green-600" : "text-red-600"}` }) }),
+                    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
+                      /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "font-semibold text-gray-800 text-sm", children: transaction.approvedByName || "System Action" }),
+                      transaction.approvedAt ? /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { className: "text-xs text-gray-500", children: [
+                        new Date(transaction.approvedAt).toLocaleDateString(),
+                        " at ",
+                        new Date(transaction.approvedAt).toLocaleTimeString()
+                      ] }) : /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { className: "text-xs text-gray-500", children: [
+                        "Auto-",
+                        transaction.status
+                      ] })
+                    ] })
+                  ] })
+                ] }),
+                transaction.status === "pending" && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "p-3 bg-white rounded-lg shadow-sm border border-gray-100", children: [
+                  /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-sm text-gray-600 block mb-1", children: "Status" }),
+                  /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center gap-2", children: [
+                    /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "p-1 rounded-full bg-yellow-100", children: /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "h-3 w-3 rounded-full bg-yellow-500 animate-pulse" }) }),
+                    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
+                      /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "font-semibold text-gray-800 text-sm", children: "Pending Approval" }),
+                      /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-xs text-gray-500", children: "Awaiting admin review" })
+                    ] })
+                  ] })
                 ] })
               ] })
             ] }),
             /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "space-y-4", children: [
               /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center justify-between p-4 bg-gradient-to-r from-indigo-100 to-purple-100 rounded-lg border-2 border-indigo-200", children: [
                 /* @__PURE__ */ jsxRuntimeExports.jsx("h3", { className: "text-xl font-bold text-indigo-800 flex items-center gap-2", children: "📄 Receipt Document" }),
-                (fileData || transaction.receiptUrl) && /* @__PURE__ */ jsxRuntimeExports.jsxs(
-                  Button,
-                  {
-                    onClick: downloadReceipt,
-                    className: "bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700 text-white font-semibold px-6 py-2 shadow-lg hover:shadow-xl transition-all duration-200 transform hover:scale-105",
-                    children: [
-                      /* @__PURE__ */ jsxRuntimeExports.jsx(Download, { className: "h-4 w-4 mr-2" }),
-                      "Download Receipt"
-                    ]
-                  }
-                )
+                /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "flex items-center gap-2", children: (fileData || transaction.receiptUrl) && /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
+                  /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center gap-1 bg-white rounded-lg px-3 py-1 border border-indigo-200", children: [
+                    /* @__PURE__ */ jsxRuntimeExports.jsx(
+                      Button,
+                      {
+                        size: "sm",
+                        variant: "ghost",
+                        onClick: handleZoomOut,
+                        disabled: zoomLevel <= 50,
+                        className: "h-8 w-8 p-0 hover:bg-indigo-100",
+                        children: "−"
+                      }
+                    ),
+                    /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: "text-sm font-medium text-indigo-700 min-w-[3rem] text-center", children: [
+                      zoomLevel,
+                      "%"
+                    ] }),
+                    /* @__PURE__ */ jsxRuntimeExports.jsx(
+                      Button,
+                      {
+                        size: "sm",
+                        variant: "ghost",
+                        onClick: handleZoomIn,
+                        disabled: zoomLevel >= 300,
+                        className: "h-8 w-8 p-0 hover:bg-indigo-100",
+                        children: "+"
+                      }
+                    ),
+                    /* @__PURE__ */ jsxRuntimeExports.jsx(
+                      Button,
+                      {
+                        size: "sm",
+                        variant: "ghost",
+                        onClick: handleZoomReset,
+                        className: "h-8 px-2 text-xs hover:bg-indigo-100",
+                        children: "Reset"
+                      }
+                    )
+                  ] }),
+                  /* @__PURE__ */ jsxRuntimeExports.jsx(
+                    Button,
+                    {
+                      onClick: downloadReceipt,
+                      size: "sm",
+                      className: "bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700 text-white font-semibold px-3 py-2 shadow-lg hover:shadow-xl transition-all duration-200 transform hover:scale-105",
+                      title: "Download Receipt",
+                      children: /* @__PURE__ */ jsxRuntimeExports.jsx(Download, { className: "h-4 w-4" })
+                    }
+                  )
+                ] }) })
               ] }),
-              fileInfoLoading || fileDataLoading ? /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "flex items-center justify-center h-64 border-2 border-dashed border-blue-300 rounded-xl bg-gradient-to-br from-blue-50 to-indigo-50", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "text-center", children: [
+              !transaction.receiptFileId && !transaction.receiptUrl ? /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "flex items-center justify-center h-64 border-2 border-dashed border-gray-400 rounded-xl bg-gradient-to-br from-gray-100 to-gray-200", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "text-center", children: [
+                /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "p-4 bg-gray-200 rounded-full inline-block mb-4", children: /* @__PURE__ */ jsxRuntimeExports.jsx(FileText, { className: "h-12 w-12 text-gray-500" }) }),
+                /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-gray-700 font-semibold text-lg", children: "📝 No Receipt Available" }),
+                /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-gray-600 text-sm", children: "No receipt was uploaded for this transaction" })
+              ] }) }) : fileInfoLoading || fileDataLoading ? /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "flex items-center justify-center h-64 border-2 border-dashed border-blue-300 rounded-xl bg-gradient-to-br from-blue-50 to-indigo-50", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "text-center", children: [
                 /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "animate-spin rounded-full h-12 w-12 border-b-4 border-blue-600 mx-auto" }),
                 /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "mt-4 text-blue-700 font-semibold", children: "Loading receipt..." }),
                 /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-blue-600 text-sm", children: "Please wait while we fetch your document" })
-              ] }) }) : fileData && fileInfo ? /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "border-2 border-gray-200 rounded-xl p-6 bg-white shadow-lg", children: [
-                /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mb-6 grid grid-cols-2 gap-4", children: [
+              ] }) }) : fileData && fileInfo ? /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "space-y-4", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "border-2 border-gray-200 rounded-xl p-6 bg-white shadow-lg", children: [
+                isImage2(fileInfo.mimeType) && !imageError ? /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "flex justify-center p-4 bg-gray-50 rounded-lg border-2 border-gray-200 overflow-auto mb-6", children: /* @__PURE__ */ jsxRuntimeExports.jsx(
+                  "img",
+                  {
+                    src: `data:${fileInfo.mimeType};base64,${fileData.fileData}`,
+                    alt: "Receipt",
+                    className: "rounded-lg shadow-lg border border-gray-300 hover:shadow-xl transition-shadow duration-300",
+                    style: {
+                      width: `${zoomLevel}%`,
+                      height: "auto",
+                      maxWidth: "100%",
+                      objectFit: "contain"
+                    },
+                    onError: () => setImageError(true)
+                  }
+                ) }) : isPdf(fileInfo.mimeType) ? /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "flex items-center justify-center h-64 border-2 border-dashed border-blue-300 rounded-xl bg-gradient-to-br from-blue-50 to-indigo-50 mb-6", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "text-center", children: [
+                  /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "p-4 bg-blue-100 rounded-full inline-block mb-4", children: /* @__PURE__ */ jsxRuntimeExports.jsx(FileText, { className: "h-12 w-12 text-blue-600" }) }),
+                  /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-blue-800 font-bold text-lg mb-2", children: "📄 PDF Document" }),
+                  /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-blue-600 text-sm mb-4", children: "This is a PDF file. Click the download button to view." }),
+                  /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "bg-white/50 rounded-lg px-4 py-2 inline-block", children: /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-blue-700 font-medium", children: fileInfo == null ? void 0 : fileInfo.originalName }) })
+                ] }) }) : /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "flex items-center justify-center h-64 border-2 border-dashed border-amber-300 rounded-xl bg-gradient-to-br from-amber-50 to-orange-50 mb-6", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "text-center", children: [
+                  /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "p-4 bg-amber-100 rounded-full inline-block mb-4", children: /* @__PURE__ */ jsxRuntimeExports.jsx(FileText, { className: "h-12 w-12 text-amber-600" }) }),
+                  /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-amber-800 font-bold text-lg mb-2", children: "📋 Document File" }),
+                  /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-amber-600 text-sm mb-4", children: "This file type is not previewable. Click download to view." }),
+                  /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "bg-white/50 rounded-lg px-4 py-2 inline-block", children: /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-amber-700 font-medium", children: fileInfo == null ? void 0 : fileInfo.originalName }) })
+                ] }) }),
+                /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "grid grid-cols-2 gap-4", children: [
                   /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "bg-gray-50 p-3 rounded-lg", children: [
                     /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-xs text-gray-500 block mb-1", children: "Filename" }),
                     /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "font-semibold text-gray-800", children: fileInfo.originalName })
@@ -38270,25 +40010,8 @@ function ReceiptViewer({ isOpen, onClose, transaction }) {
                     /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-xs text-gray-500 block mb-1", children: "Uploaded" }),
                     /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "font-semibold text-gray-800", children: new Date(fileInfo.uploadedAt).toLocaleDateString() })
                   ] })
-                ] }),
-                isImage2(fileInfo.mimeType) && !imageError ? /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "flex justify-center p-4 bg-gray-50 rounded-lg border-2 border-gray-200", children: /* @__PURE__ */ jsxRuntimeExports.jsx(
-                  "img",
-                  {
-                    src: `data:${fileInfo.mimeType};base64,${fileData.fileData}`,
-                    alt: "Receipt",
-                    className: "max-w-full max-h-96 object-contain rounded-lg shadow-lg border border-gray-300 hover:shadow-xl transition-shadow duration-300",
-                    onError: () => setImageError(true)
-                  }
-                ) }) : isPdf(fileInfo.mimeType) ? /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "flex items-center justify-center h-64 border-2 border-dashed border-red-300 rounded-xl bg-gradient-to-br from-red-50 to-pink-50", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "text-center", children: [
-                  /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "p-4 bg-red-100 rounded-full inline-block mb-4", children: /* @__PURE__ */ jsxRuntimeExports.jsx(FileText, { className: "h-12 w-12 text-red-600" }) }),
-                  /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-red-700 font-semibold text-lg", children: "📄 PDF Receipt" }),
-                  /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-red-600 text-sm mt-1", children: "Click the download button above to view this PDF" })
-                ] }) }) : /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "flex items-center justify-center h-64 border-2 border-dashed border-yellow-300 rounded-xl bg-gradient-to-br from-yellow-50 to-orange-50", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "text-center", children: [
-                  /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "p-4 bg-yellow-100 rounded-full inline-block mb-4", children: /* @__PURE__ */ jsxRuntimeExports.jsx(FileText, { className: "h-12 w-12 text-yellow-600" }) }),
-                  /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-yellow-700 font-semibold text-lg", children: "📋 Receipt File" }),
-                  /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-yellow-600 text-sm mt-1", children: "Click the download button above to view this file" })
-                ] }) })
-              ] }) : transaction.receiptUrl ? /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "flex items-center justify-center h-64 border-2 border-dashed border-blue-300 rounded-xl bg-gradient-to-br from-blue-50 to-cyan-50", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "text-center", children: [
+                ] })
+              ] }) }) : transaction.receiptUrl ? /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "flex items-center justify-center h-64 border-2 border-dashed border-blue-300 rounded-xl bg-gradient-to-br from-blue-50 to-cyan-50", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "text-center", children: [
                 /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "p-4 bg-blue-100 rounded-full inline-block mb-4", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Image, { className: "h-12 w-12 text-blue-600" }) }),
                 transaction.receiptUrl.startsWith("file://") ? /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
                   /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-orange-700 font-semibold text-lg", children: "📁 Local File Receipt" }),
@@ -38317,646 +40040,591 @@ function ReceiptViewer({ isOpen, onClose, transaction }) {
                     }
                   )
                 ] })
-              ] }) }) : /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "flex items-center justify-center h-64 border-2 border-dashed border-gray-400 rounded-xl bg-gradient-to-br from-gray-100 to-gray-200", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "text-center", children: [
-                /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "p-4 bg-gray-200 rounded-full inline-block mb-4", children: /* @__PURE__ */ jsxRuntimeExports.jsx(FileText, { className: "h-12 w-12 text-gray-500" }) }),
-                /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-gray-700 font-semibold text-lg", children: "📝 No Receipt Available" }),
-                /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-gray-600 text-sm", children: "No receipt was uploaded for this transaction" })
-              ] }) })
+              ] }) }) : null
             ] })
-          ] })
+          ] }),
+          " "
         ] }),
         " "
       ]
     }
   ) }) });
 }
-function DailyApprovalManager() {
-  var _a2;
-  const { user } = useAuth();
+var CHECKBOX_NAME = "Checkbox";
+var [createCheckboxContext, createCheckboxScope] = createContextScope(CHECKBOX_NAME);
+var [CheckboxProviderImpl, useCheckboxContext] = createCheckboxContext(CHECKBOX_NAME);
+function CheckboxProvider(props) {
+  const {
+    __scopeCheckbox,
+    checked: checkedProp,
+    children,
+    defaultChecked,
+    disabled,
+    form,
+    name,
+    onCheckedChange,
+    required,
+    value = "on",
+    // @ts-expect-error
+    internal_do_not_use_render
+  } = props;
+  const [checked, setChecked] = useControllableState({
+    prop: checkedProp,
+    defaultProp: defaultChecked ?? false,
+    onChange: onCheckedChange,
+    caller: CHECKBOX_NAME
+  });
+  const [control, setControl] = reactExports.useState(null);
+  const [bubbleInput, setBubbleInput] = reactExports.useState(null);
+  const hasConsumerStoppedPropagationRef = reactExports.useRef(false);
+  const isFormControl = control ? !!form || !!control.closest("form") : (
+    // We set this to true by default so that events bubble to forms without JS (SSR)
+    true
+  );
+  const context = {
+    checked,
+    disabled,
+    setChecked,
+    control,
+    setControl,
+    name,
+    form,
+    value,
+    hasConsumerStoppedPropagationRef,
+    required,
+    defaultChecked: isIndeterminate(defaultChecked) ? false : defaultChecked,
+    isFormControl,
+    bubbleInput,
+    setBubbleInput
+  };
+  return /* @__PURE__ */ jsxRuntimeExports.jsx(
+    CheckboxProviderImpl,
+    {
+      scope: __scopeCheckbox,
+      ...context,
+      children: isFunction(internal_do_not_use_render) ? internal_do_not_use_render(context) : children
+    }
+  );
+}
+var TRIGGER_NAME = "CheckboxTrigger";
+var CheckboxTrigger = reactExports.forwardRef(
+  ({ __scopeCheckbox, onKeyDown, onClick, ...checkboxProps }, forwardedRef) => {
+    const {
+      control,
+      value,
+      disabled,
+      checked,
+      required,
+      setControl,
+      setChecked,
+      hasConsumerStoppedPropagationRef,
+      isFormControl,
+      bubbleInput
+    } = useCheckboxContext(TRIGGER_NAME, __scopeCheckbox);
+    const composedRefs = useComposedRefs(forwardedRef, setControl);
+    const initialCheckedStateRef = reactExports.useRef(checked);
+    reactExports.useEffect(() => {
+      const form = control == null ? void 0 : control.form;
+      if (form) {
+        const reset = () => setChecked(initialCheckedStateRef.current);
+        form.addEventListener("reset", reset);
+        return () => form.removeEventListener("reset", reset);
+      }
+    }, [control, setChecked]);
+    return /* @__PURE__ */ jsxRuntimeExports.jsx(
+      Primitive.button,
+      {
+        type: "button",
+        role: "checkbox",
+        "aria-checked": isIndeterminate(checked) ? "mixed" : checked,
+        "aria-required": required,
+        "data-state": getState(checked),
+        "data-disabled": disabled ? "" : void 0,
+        disabled,
+        value,
+        ...checkboxProps,
+        ref: composedRefs,
+        onKeyDown: composeEventHandlers$1(onKeyDown, (event) => {
+          if (event.key === "Enter") event.preventDefault();
+        }),
+        onClick: composeEventHandlers$1(onClick, (event) => {
+          setChecked((prevChecked) => isIndeterminate(prevChecked) ? true : !prevChecked);
+          if (bubbleInput && isFormControl) {
+            hasConsumerStoppedPropagationRef.current = event.isPropagationStopped();
+            if (!hasConsumerStoppedPropagationRef.current) event.stopPropagation();
+          }
+        })
+      }
+    );
+  }
+);
+CheckboxTrigger.displayName = TRIGGER_NAME;
+var Checkbox$1 = reactExports.forwardRef(
+  (props, forwardedRef) => {
+    const {
+      __scopeCheckbox,
+      name,
+      checked,
+      defaultChecked,
+      required,
+      disabled,
+      value,
+      onCheckedChange,
+      form,
+      ...checkboxProps
+    } = props;
+    return /* @__PURE__ */ jsxRuntimeExports.jsx(
+      CheckboxProvider,
+      {
+        __scopeCheckbox,
+        checked,
+        defaultChecked,
+        disabled,
+        required,
+        onCheckedChange,
+        name,
+        form,
+        value,
+        internal_do_not_use_render: ({ isFormControl }) => /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx(
+            CheckboxTrigger,
+            {
+              ...checkboxProps,
+              ref: forwardedRef,
+              __scopeCheckbox
+            }
+          ),
+          isFormControl && /* @__PURE__ */ jsxRuntimeExports.jsx(
+            CheckboxBubbleInput,
+            {
+              __scopeCheckbox
+            }
+          )
+        ] })
+      }
+    );
+  }
+);
+Checkbox$1.displayName = CHECKBOX_NAME;
+var INDICATOR_NAME = "CheckboxIndicator";
+var CheckboxIndicator = reactExports.forwardRef(
+  (props, forwardedRef) => {
+    const { __scopeCheckbox, forceMount, ...indicatorProps } = props;
+    const context = useCheckboxContext(INDICATOR_NAME, __scopeCheckbox);
+    return /* @__PURE__ */ jsxRuntimeExports.jsx(
+      Presence,
+      {
+        present: forceMount || isIndeterminate(context.checked) || context.checked === true,
+        children: /* @__PURE__ */ jsxRuntimeExports.jsx(
+          Primitive.span,
+          {
+            "data-state": getState(context.checked),
+            "data-disabled": context.disabled ? "" : void 0,
+            ...indicatorProps,
+            ref: forwardedRef,
+            style: { pointerEvents: "none", ...props.style }
+          }
+        )
+      }
+    );
+  }
+);
+CheckboxIndicator.displayName = INDICATOR_NAME;
+var BUBBLE_INPUT_NAME = "CheckboxBubbleInput";
+var CheckboxBubbleInput = reactExports.forwardRef(
+  ({ __scopeCheckbox, ...props }, forwardedRef) => {
+    const {
+      control,
+      hasConsumerStoppedPropagationRef,
+      checked,
+      defaultChecked,
+      required,
+      disabled,
+      name,
+      value,
+      form,
+      bubbleInput,
+      setBubbleInput
+    } = useCheckboxContext(BUBBLE_INPUT_NAME, __scopeCheckbox);
+    const composedRefs = useComposedRefs(forwardedRef, setBubbleInput);
+    const prevChecked = usePrevious(checked);
+    const controlSize = useSize(control);
+    reactExports.useEffect(() => {
+      const input = bubbleInput;
+      if (!input) return;
+      const inputProto = window.HTMLInputElement.prototype;
+      const descriptor = Object.getOwnPropertyDescriptor(
+        inputProto,
+        "checked"
+      );
+      const setChecked = descriptor.set;
+      const bubbles = !hasConsumerStoppedPropagationRef.current;
+      if (prevChecked !== checked && setChecked) {
+        const event = new Event("click", { bubbles });
+        input.indeterminate = isIndeterminate(checked);
+        setChecked.call(input, isIndeterminate(checked) ? false : checked);
+        input.dispatchEvent(event);
+      }
+    }, [bubbleInput, prevChecked, checked, hasConsumerStoppedPropagationRef]);
+    const defaultCheckedRef = reactExports.useRef(isIndeterminate(checked) ? false : checked);
+    return /* @__PURE__ */ jsxRuntimeExports.jsx(
+      Primitive.input,
+      {
+        type: "checkbox",
+        "aria-hidden": true,
+        defaultChecked: defaultChecked ?? defaultCheckedRef.current,
+        required,
+        disabled,
+        name,
+        value,
+        form,
+        ...props,
+        tabIndex: -1,
+        ref: composedRefs,
+        style: {
+          ...props.style,
+          ...controlSize,
+          position: "absolute",
+          pointerEvents: "none",
+          opacity: 0,
+          margin: 0,
+          // We transform because the input is absolutely positioned but we have
+          // rendered it **after** the button. This pulls it back to sit on top
+          // of the button.
+          transform: "translateX(-100%)"
+        }
+      }
+    );
+  }
+);
+CheckboxBubbleInput.displayName = BUBBLE_INPUT_NAME;
+function isFunction(value) {
+  return typeof value === "function";
+}
+function isIndeterminate(checked) {
+  return checked === "indeterminate";
+}
+function getState(checked) {
+  return isIndeterminate(checked) ? "indeterminate" : checked ? "checked" : "unchecked";
+}
+const Checkbox = reactExports.forwardRef(({ className, ...props }, ref) => /* @__PURE__ */ jsxRuntimeExports.jsx(
+  Checkbox$1,
+  {
+    ref,
+    className: cn(
+      "peer h-4 w-4 shrink-0 rounded-sm border border-primary ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 data-[state=checked]:bg-primary data-[state=checked]:text-primary-foreground",
+      className
+    ),
+    ...props,
+    children: /* @__PURE__ */ jsxRuntimeExports.jsx(
+      CheckboxIndicator,
+      {
+        className: cn("flex items-center justify-center text-current"),
+        children: /* @__PURE__ */ jsxRuntimeExports.jsx(Check, { className: "h-4 w-4" })
+      }
+    )
+  }
+));
+Checkbox.displayName = Checkbox$1.displayName;
+function DailyApprovalManager({ className, propertyId, startDate, endDate }) {
+  var _a2, _b2;
+  const { getAuthenticatedBackend: getAuthenticatedBackend2, user } = useAuth();
   const { toast: toast2 } = useToast();
   const queryClient2 = useQueryClient();
-  const [selectedManager, setSelectedManager] = reactExports.useState(null);
-  const [approvalDate, setApprovalDate] = reactExports.useState((/* @__PURE__ */ new Date()).toISOString().split("T")[0]);
-  const [notes, setNotes] = reactExports.useState("");
-  const [isApprovalDialogOpen, setIsApprovalDialogOpen] = reactExports.useState(false);
-  const [isReviewDialogOpen, setIsReviewDialogOpen] = reactExports.useState(false);
-  const [reviewingManager, setReviewingManager] = reactExports.useState(null);
-  const [managerTransactions, setManagerTransactions] = reactExports.useState({ revenues: [], expenses: [] });
-  const [selectedReceipt, setSelectedReceipt] = reactExports.useState(null);
-  if ((user == null ? void 0 : user.role) !== "ADMIN") {
-    return null;
-  }
-  const { data: pendingApprovals, isLoading } = useQuery({
-    queryKey: ["pending-approvals"],
+  const [selectedTransactions, setSelectedTransactions] = reactExports.useState(/* @__PURE__ */ new Set());
+  const { data: pendingTransactions, isLoading: transactionsLoading, error: transactionsError } = useQuery({
+    queryKey: ["today-pending-transactions", propertyId, startDate, endDate],
     queryFn: async () => {
-      const response = await fetch(`${API_CONFIG.BASE_URL}/finance/pending-approvals`, {
+      const params = new URLSearchParams();
+      if (propertyId && propertyId !== "all") {
+        params.append("propertyId", propertyId);
+      }
+      if (startDate) {
+        params.append("startDate", startDate);
+      }
+      if (endDate) {
+        params.append("endDate", endDate);
+      }
+      const url = `${API_CONFIG.BASE_URL}/finance/today-pending-transactions${params.toString() ? `?${params.toString()}` : ""}`;
+      const response = await fetch(url, {
+        method: "GET",
         headers: {
           "Authorization": `Bearer ${localStorage.getItem("accessToken")}`
         }
       });
       if (!response.ok) {
-        throw new Error(`Failed to fetch pending approvals: ${response.statusText}`);
+        throw new Error(`Failed to fetch pending transactions: ${response.statusText}`);
       }
       return response.json();
     },
-    refetchInterval: 5e3,
-    // Refresh every 5 seconds for testing
+    refetchInterval: 3e3,
+    // Refresh every 3 seconds for live updates
     staleTime: 0,
-    // Always consider data stale
     gcTime: 0
-    // Don't cache results
   });
-  const grantApprovalMutation = useMutation({
-    mutationFn: async ({ managerUserId, approvalDate: approvalDate2, notes: notes2 }) => {
-      const response = await fetch(`${API_CONFIG.BASE_URL}/finance/grant-daily-approval`, {
+  const bulkApproveMutation = useMutation({
+    mutationFn: async ({ transactionIds, action }) => {
+      const response = await fetch(`${API_CONFIG.BASE_URL}/finance/bulk-approve`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           "Authorization": `Bearer ${localStorage.getItem("accessToken")}`
         },
         body: JSON.stringify({
-          managerUserId,
-          approvalDate: approvalDate2,
-          notes: notes2
+          transactionIds,
+          transactionType: "all",
+          action
         })
       });
       if (!response.ok) {
         const error = await response.json();
-        throw new Error(error.message || `Failed to grant approval: ${response.statusText}`);
+        throw new Error(error.message || `Failed to ${action} transactions`);
       }
       return response.json();
     },
-    onSuccess: () => {
-      queryClient2.invalidateQueries({ queryKey: ["pending-approvals"] });
-      queryClient2.invalidateQueries({ queryKey: ["daily-approval-check"] });
-      setIsApprovalDialogOpen(false);
-      setSelectedManager(null);
-      setNotes("");
+    onSuccess: (data, variables) => {
+      const action = variables.action === "approve" ? "approved" : "rejected";
       toast2({
-        title: "Approval granted",
-        description: "Daily approval has been granted successfully."
+        title: `Transactions ${action}`,
+        description: `${data.results[variables.action]} transactions have been ${action} successfully.`
       });
-    },
-    onError: (error) => {
-      toast2({
-        variant: "destructive",
-        title: "Failed to grant approval",
-        description: error.message || "Please try again."
-      });
-    }
-  });
-  const quickApproveAllMutation = useMutation({
-    mutationFn: async ({ managerId }) => {
-      var _a3, _b2;
-      const [revenuesResponse, expensesResponse] = await Promise.all([
-        // Get pending revenues for this manager
-        fetch(`${API_CONFIG.BASE_URL}/finance/revenues`, {
-          headers: { "Authorization": `Bearer ${localStorage.getItem("accessToken")}` }
-        }),
-        // Get pending expenses for this manager  
-        fetch(`${API_CONFIG.BASE_URL}/finance/expenses`, {
-          headers: { "Authorization": `Bearer ${localStorage.getItem("accessToken")}` }
-        })
-      ]);
-      const revenues = await revenuesResponse.json();
-      const expenses = await expensesResponse.json();
-      const pendingRevenues = ((_a3 = revenues.revenues) == null ? void 0 : _a3.filter(
-        (r2) => r2.createdByUserId === managerId && r2.status === "pending"
-      )) || [];
-      const pendingExpenses = ((_b2 = expenses.expenses) == null ? void 0 : _b2.filter(
-        (e) => e.createdByUserId === managerId && e.status === "pending"
-      )) || [];
-      const revenueApprovals = pendingRevenues.map(
-        (revenue) => fetch(`${API_CONFIG.BASE_URL}/finance/revenues/${revenue.id}/approve`, {
-          method: "PATCH",
-          headers: {
-            "Content-Type": "application/json",
-            "Authorization": `Bearer ${localStorage.getItem("accessToken")}`
-          },
-          body: JSON.stringify({
-            id: revenue.id,
-            approved: true,
-            notes: ""
-          })
-        })
-      );
-      const expenseApprovals = pendingExpenses.map(
-        (expense) => fetch(`${API_CONFIG.BASE_URL}/finance/expenses/${expense.id}/approve`, {
-          method: "PATCH",
-          headers: {
-            "Content-Type": "application/json",
-            "Authorization": `Bearer ${localStorage.getItem("accessToken")}`
-          },
-          body: JSON.stringify({
-            id: expense.id,
-            approved: true,
-            notes: ""
-          })
-        })
-      );
-      await Promise.all([...revenueApprovals, ...expenseApprovals]);
-      return {
-        approvedRevenues: pendingRevenues.length,
-        approvedExpenses: pendingExpenses.length
-      };
-    },
-    onSuccess: (data) => {
-      queryClient2.invalidateQueries({ queryKey: ["pending-approvals"] });
-      queryClient2.invalidateQueries({ queryKey: ["revenues"] });
+      setSelectedTransactions(/* @__PURE__ */ new Set());
+      queryClient2.invalidateQueries({ queryKey: ["today-pending-transactions"] });
       queryClient2.invalidateQueries({ queryKey: ["expenses"] });
+      queryClient2.invalidateQueries({ queryKey: ["revenues"] });
       queryClient2.invalidateQueries({ queryKey: ["profit-loss"] });
-      toast2({
-        title: "Quick approval completed",
-        description: `Approved ${data.approvedRevenues} revenues and ${data.approvedExpenses} expenses.`
-      });
     },
     onError: (error) => {
       toast2({
         variant: "destructive",
-        title: "Quick approval failed",
-        description: error.message || "Please try again."
+        title: "Error",
+        description: error.message || "Failed to process transactions"
       });
     }
   });
-  const handleApprovalSubmit = () => {
-    if (!selectedManager || !approvalDate) {
+  const handleSelectAll = () => {
+    if (!(pendingTransactions == null ? void 0 : pendingTransactions.transactions)) return;
+    const allIds = pendingTransactions.transactions.map((t) => t.id);
+    setSelectedTransactions(new Set(allIds));
+  };
+  const handleClearSelection = () => {
+    setSelectedTransactions(/* @__PURE__ */ new Set());
+  };
+  const handleTransactionSelect = (transactionId, checked) => {
+    const newSelection = new Set(selectedTransactions);
+    if (checked) {
+      newSelection.add(transactionId);
+    } else {
+      newSelection.delete(transactionId);
+    }
+    setSelectedTransactions(newSelection);
+  };
+  const handleBulkAction = (action) => {
+    if (selectedTransactions.size === 0) {
       toast2({
         variant: "destructive",
-        title: "Missing information",
-        description: "Please select a date for approval."
+        title: "No transactions selected",
+        description: "Please select transactions to approve or reject."
       });
       return;
     }
-    grantApprovalMutation.mutate({
-      managerUserId: selectedManager.managerId,
-      approvalDate,
-      notes
+    bulkApproveMutation.mutate({
+      transactionIds: Array.from(selectedTransactions),
+      action
     });
   };
-  const openApprovalDialog = (manager) => {
-    setSelectedManager(manager);
-    const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1e3).toISOString().split("T")[0];
-    setApprovalDate(yesterday);
-    setNotes("");
-    setIsApprovalDialogOpen(true);
+  const formatCurrency2 = (amountCents) => {
+    return formatCurrency$1(amountCents, "USD");
   };
-  const openReviewDialog = async (manager) => {
-    var _a3, _b2;
-    setReviewingManager(manager);
-    setIsReviewDialogOpen(true);
-    try {
-      const [revenuesResponse, expensesResponse] = await Promise.all([
-        fetch(`${API_CONFIG.BASE_URL}/finance/revenues`, {
-          headers: { "Authorization": `Bearer ${localStorage.getItem("accessToken")}` }
-        }),
-        fetch(`${API_CONFIG.BASE_URL}/finance/expenses`, {
-          headers: { "Authorization": `Bearer ${localStorage.getItem("accessToken")}` }
-        })
-      ]);
-      const revenues = await revenuesResponse.json();
-      const expenses = await expensesResponse.json();
-      const pendingRevenues = ((_a3 = revenues.revenues) == null ? void 0 : _a3.filter(
-        (r2) => r2.createdByUserId === manager.managerId && r2.status === "pending"
-      )) || [];
-      const pendingExpenses = ((_b2 = expenses.expenses) == null ? void 0 : _b2.filter(
-        (e) => e.createdByUserId === manager.managerId && e.status === "pending"
-      )) || [];
-      setManagerTransactions({
-        revenues: pendingRevenues,
-        expenses: pendingExpenses
-      });
-    } catch (error) {
-      console.error("Failed to fetch manager transactions:", error);
-      toast2({
-        variant: "destructive",
-        title: "Failed to load transactions",
-        description: "Could not fetch transaction details."
-      });
+  const getStatusColor = (status) => {
+    switch (status) {
+      case "approved":
+        return "bg-green-100 text-green-800";
+      case "pending":
+        return "bg-yellow-100 text-yellow-800";
+      case "rejected":
+        return "bg-red-100 text-red-800";
+      default:
+        return "bg-gray-100 text-gray-800";
     }
   };
-  if (isLoading) {
-    return /* @__PURE__ */ jsxRuntimeExports.jsxs(Card, { children: [
-      /* @__PURE__ */ jsxRuntimeExports.jsxs(CardHeader, { children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsxs(CardTitle, { className: "flex items-center gap-2", children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsx(Users, { className: "h-5 w-5" }),
-          "Daily Approvals"
-        ] }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx(CardDescription, { children: "Manage daily approvals for managers" })
-      ] }),
-      /* @__PURE__ */ jsxRuntimeExports.jsx(CardContent, { children: /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "space-y-4", children: [...Array(3)].map((_, i) => /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "animate-pulse", children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "h-4 bg-gray-200 rounded w-3/4 mb-2" }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "h-3 bg-gray-200 rounded w-1/2" })
-      ] }, i)) }) })
-    ] });
+  const getTypeIcon = (type) => {
+    return type === "revenue" ? /* @__PURE__ */ jsxRuntimeExports.jsx(TrendingUp, { className: "h-4 w-4 text-green-600" }) : /* @__PURE__ */ jsxRuntimeExports.jsx(TrendingDown, { className: "h-4 w-4 text-red-600" });
+  };
+  const getTypeColor = (type) => {
+    return type === "revenue" ? "text-green-600" : "text-red-600";
+  };
+  if (transactionsError) {
+    return /* @__PURE__ */ jsxRuntimeExports.jsx(Card, { className: `border-l-4 border-l-red-500 ${className}`, children: /* @__PURE__ */ jsxRuntimeExports.jsx(CardContent, { className: "flex items-center justify-center p-12", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "text-center", children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "w-12 h-12 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4", children: /* @__PURE__ */ jsxRuntimeExports.jsx(CircleAlert, { className: "h-6 w-6 text-red-600" }) }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-lg font-medium text-red-900 mb-2", children: "Error loading pending transactions" }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-sm text-gray-600 mb-4", children: transactionsError.message }),
+      /* @__PURE__ */ jsxRuntimeExports.jsxs(
+        Button,
+        {
+          variant: "outline",
+          onClick: () => window.location.reload(),
+          className: "border-red-300 text-red-700 hover:bg-red-50",
+          children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx(RefreshCw, { className: "h-4 w-4 mr-2" }),
+            "Try Again"
+          ]
+        }
+      )
+    ] }) }) });
   }
-  return /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
-    /* @__PURE__ */ jsxRuntimeExports.jsxs(Card, { children: [
-      /* @__PURE__ */ jsxRuntimeExports.jsxs(CardHeader, { children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsxs(CardTitle, { className: "flex items-center gap-2", children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsx(Users, { className: "h-5 w-5" }),
-          "Daily Approvals"
-        ] }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx(CardDescription, { children: "Manage daily approvals for managers" })
+  return /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className, children: /* @__PURE__ */ jsxRuntimeExports.jsxs(Card, { className: "border-l-4 border-l-blue-500 shadow-sm", children: [
+    /* @__PURE__ */ jsxRuntimeExports.jsxs(CardHeader, { className: "pb-4", children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsxs(CardTitle, { className: "text-lg flex items-center gap-2", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "w-3 h-3 bg-blue-500 rounded-full animate-pulse" }),
+        "Daily Approval Manager",
+        /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded-full font-medium", children: "Admin Only" })
       ] }),
-      /* @__PURE__ */ jsxRuntimeExports.jsx(CardContent, { children: !(pendingApprovals == null ? void 0 : pendingApprovals.pendingManagers) || pendingApprovals.pendingManagers.length === 0 ? /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "text-center py-8", children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsx(Check, { className: "h-12 w-12 text-green-500 mx-auto mb-4" }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx("h3", { className: "text-lg font-medium text-gray-900 mb-2", children: "All approvals up to date" }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-gray-500", children: isLoading ? "Loading approvals..." : "No pending transactions or daily approvals needed" }),
-        !isLoading && /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-xs text-gray-400 mt-2", children: "Managers with pending transactions or yesterday's unapproved transactions will appear here" })
-      ] }) : /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "space-y-4", children: (_a2 = pendingApprovals.pendingManagers) == null ? void 0 : _a2.map((manager) => /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: `p-4 border rounded-lg ${manager.needsDailyApproval ? "border-red-200 bg-red-50" : "border-orange-200 bg-orange-50"}`, children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center justify-between", children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex-1", children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center gap-2 mb-2", children: [
-            /* @__PURE__ */ jsxRuntimeExports.jsx("h4", { className: "font-medium", children: manager.managerName }),
-            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex gap-1", children: [
-              manager.needsDailyApproval && /* @__PURE__ */ jsxRuntimeExports.jsxs(Badge, { variant: "destructive", className: "text-xs", children: [
-                /* @__PURE__ */ jsxRuntimeExports.jsx(TriangleAlert, { className: "h-3 w-3 mr-1" }),
-                "Daily Approval Needed"
-              ] }),
-              manager.hasPendingTransactions && /* @__PURE__ */ jsxRuntimeExports.jsxs(Badge, { variant: "secondary", className: "text-xs bg-orange-100 text-orange-700 border-orange-200", children: [
-                /* @__PURE__ */ jsxRuntimeExports.jsx(Clock, { className: "h-3 w-3 mr-1" }),
-                manager.pendingExpenses + manager.pendingRevenues,
-                " Pending"
-              ] })
-            ] })
-          ] }),
-          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "text-sm text-gray-600 space-y-1", children: [
-            manager.needsDailyApproval && /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { className: "text-red-600 font-medium", children: [
-              "⚠️ ",
-              manager.unapprovedTransactionsCount,
-              " transactions from yesterday need daily approval"
-            ] }),
-            manager.hasPendingTransactions && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex gap-4 text-orange-600", children: [
-              manager.pendingExpenses > 0 && /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { children: [
-                "📋 ",
-                manager.pendingExpenses,
-                " pending expenses"
-              ] }),
-              manager.pendingRevenues > 0 && /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { children: [
-                "💰 ",
-                manager.pendingRevenues,
-                " pending revenues"
-              ] })
-            ] }),
-            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center gap-4 text-gray-500", children: [
-              /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: "flex items-center", children: [
-                /* @__PURE__ */ jsxRuntimeExports.jsx(Clock, { className: "h-3 w-3 mr-1" }),
-                "Last transaction: ",
-                formatCardDateTime(manager.lastTransactionDate)
-              ] }),
-              manager.lastApprovalDate && /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: "flex items-center", children: [
-                /* @__PURE__ */ jsxRuntimeExports.jsx(Calendar, { className: "h-3 w-3 mr-1" }),
-                "Last daily approval: ",
-                formatCardDateTime(manager.lastApprovalDate)
-              ] })
-            ] })
-          ] })
-        ] }),
-        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "ml-4 flex flex-col gap-2", children: [
-          manager.needsDailyApproval && /* @__PURE__ */ jsxRuntimeExports.jsxs(
-            Button,
-            {
-              size: "sm",
-              variant: "destructive",
-              onClick: () => openApprovalDialog(manager),
-              disabled: grantApprovalMutation.isPending,
-              children: [
-                /* @__PURE__ */ jsxRuntimeExports.jsx(Check, { className: "h-3 w-3 mr-1" }),
-                "Grant Daily Approval"
-              ]
-            }
-          ),
-          manager.hasPendingTransactions && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex gap-2", children: [
-            /* @__PURE__ */ jsxRuntimeExports.jsxs(
-              Button,
-              {
-                size: "sm",
-                variant: "outline",
-                onClick: () => openReviewDialog(manager),
-                children: [
-                  /* @__PURE__ */ jsxRuntimeExports.jsx(Eye, { className: "h-3 w-3 mr-1" }),
-                  "Review"
-                ]
-              }
-            ),
-            /* @__PURE__ */ jsxRuntimeExports.jsxs(
-              Button,
-              {
-                size: "sm",
-                variant: "default",
-                className: "bg-green-600 hover:bg-green-700",
-                onClick: () => quickApproveAllMutation.mutate({ managerId: manager.managerId }),
-                disabled: quickApproveAllMutation.isPending,
-                children: [
-                  /* @__PURE__ */ jsxRuntimeExports.jsx(Zap, { className: "h-3 w-3 mr-1" }),
-                  quickApproveAllMutation.isPending ? "Approving..." : "Quick Approve"
-                ]
-              }
-            )
-          ] })
-        ] })
-      ] }) }, manager.managerId)) }) })
-    ] }),
-    /* @__PURE__ */ jsxRuntimeExports.jsx(Dialog, { open: isApprovalDialogOpen, onOpenChange: setIsApprovalDialogOpen, children: /* @__PURE__ */ jsxRuntimeExports.jsxs(DialogContent, { children: [
-      /* @__PURE__ */ jsxRuntimeExports.jsxs(DialogHeader, { children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsx(DialogTitle, { children: "Grant Daily Approval" }),
-        /* @__PURE__ */ jsxRuntimeExports.jsxs(DialogDescription, { children: [
-          "Grant daily approval for ",
-          selectedManager == null ? void 0 : selectedManager.managerName
-        ] })
-      ] }),
-      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "space-y-4", children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "space-y-2", children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsx(Label, { children: "Approval Date *" }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx(
-            Input,
-            {
-              type: "date",
-              value: approvalDate,
-              onChange: (e) => setApprovalDate(e.target.value)
-            }
-          )
-        ] }),
-        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "space-y-2", children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsx(Label, { children: "Notes (Optional)" }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx(
-            Textarea,
-            {
-              value: notes,
-              onChange: (e) => setNotes(e.target.value),
-              placeholder: "Add any notes about this approval...",
-              rows: 3
-            }
-          )
-        ] }),
-        selectedManager && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "bg-gray-50 p-3 rounded-lg", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "text-sm space-y-1", children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { children: [
-            /* @__PURE__ */ jsxRuntimeExports.jsx("strong", { children: "Manager:" }),
-            " ",
-            selectedManager.managerName
-          ] }),
-          selectedManager.needsDailyApproval && /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { className: "text-red-600", children: [
-            /* @__PURE__ */ jsxRuntimeExports.jsx("strong", { children: "Yesterday's Unapproved:" }),
-            " ",
-            selectedManager.unapprovedTransactionsCount,
-            " transactions"
-          ] }),
-          selectedManager.hasPendingTransactions && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "text-orange-600", children: [
-            /* @__PURE__ */ jsxRuntimeExports.jsx("p", { children: /* @__PURE__ */ jsxRuntimeExports.jsx("strong", { children: "Current Pending:" }) }),
-            /* @__PURE__ */ jsxRuntimeExports.jsxs("ul", { className: "ml-4 text-xs", children: [
-              selectedManager.pendingExpenses > 0 && /* @__PURE__ */ jsxRuntimeExports.jsxs("li", { children: [
-                "• ",
-                selectedManager.pendingExpenses,
-                " expenses"
-              ] }),
-              selectedManager.pendingRevenues > 0 && /* @__PURE__ */ jsxRuntimeExports.jsxs("li", { children: [
-                "• ",
-                selectedManager.pendingRevenues,
-                " revenues"
-              ] })
-            ] })
-          ] }),
-          /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { children: [
-            /* @__PURE__ */ jsxRuntimeExports.jsx("strong", { children: "Last Transaction:" }),
-            " ",
-            new Date(selectedManager.lastTransactionDate).toLocaleDateString()
-          ] }),
-          selectedManager.lastApprovalDate && /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { children: [
-            /* @__PURE__ */ jsxRuntimeExports.jsx("strong", { children: "Last Daily Approval:" }),
-            " ",
-            new Date(selectedManager.lastApprovalDate).toLocaleDateString()
-          ] })
-        ] }) })
-      ] }),
-      /* @__PURE__ */ jsxRuntimeExports.jsxs(DialogFooter, { children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { variant: "outline", onClick: () => setIsApprovalDialogOpen(false), children: "Cancel" }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { onClick: handleApprovalSubmit, disabled: grantApprovalMutation.isPending, children: grantApprovalMutation.isPending ? "Granting..." : "Grant Approval" })
+      /* @__PURE__ */ jsxRuntimeExports.jsxs(CardDescription, { className: "text-sm text-gray-600", children: [
+        "Review and approve pending transactions from managers and staff",
+        propertyId && propertyId !== "all" || startDate || endDate ? /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: "block mt-1 text-xs text-blue-600", children: [
+          "Filtered by: ",
+          propertyId && propertyId !== "all" ? `Property ${propertyId}` : "",
+          startDate && endDate ? ` • ${startDate} to ${endDate}` : "",
+          startDate && !endDate ? ` • From ${startDate}` : "",
+          !startDate && endDate ? ` • Until ${endDate}` : ""
+        ] }) : null
       ] })
-    ] }) }),
-    /* @__PURE__ */ jsxRuntimeExports.jsx(Dialog, { open: isReviewDialogOpen, onOpenChange: setIsReviewDialogOpen, children: /* @__PURE__ */ jsxRuntimeExports.jsxs(DialogContent, { className: "max-w-4xl max-h-[90vh] overflow-hidden", children: [
-      /* @__PURE__ */ jsxRuntimeExports.jsxs(DialogHeader, { children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsxs(DialogTitle, { className: "flex items-center gap-2", children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsx(Eye, { className: "h-5 w-5" }),
-          "Review Transactions - ",
-          reviewingManager == null ? void 0 : reviewingManager.managerName
-        ] }),
-        /* @__PURE__ */ jsxRuntimeExports.jsxs(DialogDescription, { children: [
-          "Review all pending transactions for ",
-          reviewingManager == null ? void 0 : reviewingManager.managerName
-        ] })
-      ] }),
-      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex flex-col h-[70vh] overflow-auto", children: [
-        managerTransactions.revenues.length > 0 && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mb-6", children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsxs("h3", { className: "text-lg font-semibold mb-3 flex items-center gap-2", children: [
-            "💰 Pending Revenues (",
-            managerTransactions.revenues.length,
-            ")"
-          ] }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "space-y-3", children: managerTransactions.revenues.map((revenue) => /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "border rounded-lg p-4 bg-green-50", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex justify-between items-start", children: [
-            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex-1", children: [
-              /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center gap-2 mb-2", children: [
-                /* @__PURE__ */ jsxRuntimeExports.jsx(Badge, { variant: "secondary", className: "bg-blue-100 text-blue-700", children: revenue.source }),
-                /* @__PURE__ */ jsxRuntimeExports.jsx(Badge, { variant: "secondary", className: "bg-orange-100 text-orange-700", children: revenue.status })
-              ] }),
-              /* @__PURE__ */ jsxRuntimeExports.jsxs("h4", { className: "font-medium text-lg", children: [
-                "₹",
-                (revenue.amountCents / 100).toFixed(2)
-              ] }),
-              /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-sm text-gray-600", children: revenue.propertyName }),
-              revenue.description && /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-sm text-gray-500 mt-1", children: revenue.description }),
-              /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { className: "text-xs text-gray-400 mt-2", children: [
-                "📅 ",
-                formatCardDateTime(revenue.occurredAt)
-              ] })
-            ] }),
-            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex gap-2", children: [
-              revenue.receiptFileId && /* @__PURE__ */ jsxRuntimeExports.jsx(
-                Button,
-                {
-                  size: "sm",
-                  variant: "outline",
-                  onClick: () => setSelectedReceipt({
-                    id: revenue.id,
-                    type: "revenue",
-                    source: revenue.source,
-                    propertyName: revenue.propertyName,
-                    amountCents: revenue.amountCents,
-                    description: revenue.description,
-                    receiptFileId: revenue.receiptFileId,
-                    status: revenue.status,
-                    date: new Date(revenue.occurredAt),
-                    createdByName: (reviewingManager == null ? void 0 : reviewingManager.managerName) || "Unknown"
-                  }),
-                  children: "📄 View Receipt"
-                }
-              ),
-              /* @__PURE__ */ jsxRuntimeExports.jsx(
-                Button,
-                {
-                  size: "sm",
-                  className: "bg-green-600 hover:bg-green-700",
-                  onClick: async () => {
-                    try {
-                      const response = await fetch(`${API_CONFIG.BASE_URL}/finance/revenues/${revenue.id}/approve`, {
-                        method: "PATCH",
-                        headers: {
-                          "Content-Type": "application/json",
-                          "Authorization": `Bearer ${localStorage.getItem("accessToken")}`
-                        },
-                        body: JSON.stringify({
-                          id: revenue.id,
-                          approved: true,
-                          notes: ""
-                        })
-                      });
-                      if (response.ok) {
-                        toast2({
-                          title: "Revenue approved",
-                          description: "Revenue has been approved successfully."
-                        });
-                        openReviewDialog(reviewingManager);
-                        queryClient2.invalidateQueries({ queryKey: ["pending-approvals"] });
-                        queryClient2.invalidateQueries({ queryKey: ["revenues"] });
-                        queryClient2.invalidateQueries({ queryKey: ["profit-loss"] });
-                      }
-                    } catch (error) {
-                      toast2({
-                        variant: "destructive",
-                        title: "Failed to approve",
-                        description: "Could not approve the revenue."
-                      });
-                    }
-                  },
-                  children: "✅ Approve"
-                }
-              )
-            ] })
-          ] }) }, revenue.id)) })
-        ] }),
-        managerTransactions.expenses.length > 0 && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mb-6", children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsxs("h3", { className: "text-lg font-semibold mb-3 flex items-center gap-2", children: [
-            "📋 Pending Expenses (",
-            managerTransactions.expenses.length,
-            ")"
-          ] }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "space-y-3", children: managerTransactions.expenses.map((expense) => /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "border rounded-lg p-4 bg-red-50", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex justify-between items-start", children: [
-            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex-1", children: [
-              /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center gap-2 mb-2", children: [
-                /* @__PURE__ */ jsxRuntimeExports.jsx(Badge, { variant: "secondary", className: "bg-purple-100 text-purple-700", children: expense.category }),
-                /* @__PURE__ */ jsxRuntimeExports.jsx(Badge, { variant: "secondary", className: "bg-orange-100 text-orange-700", children: expense.status })
-              ] }),
-              /* @__PURE__ */ jsxRuntimeExports.jsxs("h4", { className: "font-medium text-lg", children: [
-                "₹",
-                (expense.amountCents / 100).toFixed(2)
-              ] }),
-              /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-sm text-gray-600", children: expense.propertyName }),
-              expense.description && /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-sm text-gray-500 mt-1", children: expense.description }),
-              /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { className: "text-xs text-gray-400 mt-2", children: [
-                "📅 ",
-                formatCardDateTime(expense.expenseDate)
-              ] })
-            ] }),
-            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex gap-2", children: [
-              expense.receiptFileId && /* @__PURE__ */ jsxRuntimeExports.jsx(
-                Button,
-                {
-                  size: "sm",
-                  variant: "outline",
-                  onClick: () => setSelectedReceipt({
-                    id: expense.id,
-                    type: "expense",
-                    category: expense.category,
-                    propertyName: expense.propertyName,
-                    amountCents: expense.amountCents,
-                    description: expense.description,
-                    receiptFileId: expense.receiptFileId,
-                    status: expense.status,
-                    date: new Date(expense.expenseDate),
-                    createdByName: (reviewingManager == null ? void 0 : reviewingManager.managerName) || "Unknown"
-                  }),
-                  children: "📄 View Receipt"
-                }
-              ),
-              /* @__PURE__ */ jsxRuntimeExports.jsx(
-                Button,
-                {
-                  size: "sm",
-                  className: "bg-green-600 hover:bg-green-700",
-                  onClick: async () => {
-                    try {
-                      const response = await fetch(`${API_CONFIG.BASE_URL}/finance/expenses/${expense.id}/approve`, {
-                        method: "PATCH",
-                        headers: {
-                          "Content-Type": "application/json",
-                          "Authorization": `Bearer ${localStorage.getItem("accessToken")}`
-                        },
-                        body: JSON.stringify({
-                          id: expense.id,
-                          approved: true,
-                          notes: ""
-                        })
-                      });
-                      if (response.ok) {
-                        toast2({
-                          title: "Expense approved",
-                          description: "Expense has been approved successfully."
-                        });
-                        openReviewDialog(reviewingManager);
-                        queryClient2.invalidateQueries({ queryKey: ["pending-approvals"] });
-                        queryClient2.invalidateQueries({ queryKey: ["expenses"] });
-                        queryClient2.invalidateQueries({ queryKey: ["profit-loss"] });
-                      }
-                    } catch (error) {
-                      toast2({
-                        variant: "destructive",
-                        title: "Failed to approve",
-                        description: "Could not approve the expense."
-                      });
-                    }
-                  },
-                  children: "✅ Approve"
-                }
-              )
-            ] })
-          ] }) }, expense.id)) })
-        ] }),
-        managerTransactions.revenues.length === 0 && managerTransactions.expenses.length === 0 && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "text-center py-8 text-gray-500", children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsx(Clock, { className: "h-12 w-12 mx-auto mb-4 text-gray-300" }),
-          /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { children: [
-            "No pending transactions found for ",
-            reviewingManager == null ? void 0 : reviewingManager.managerName
-          ] })
-        ] })
-      ] }),
-      /* @__PURE__ */ jsxRuntimeExports.jsxs(DialogFooter, { children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { variant: "outline", onClick: () => setIsReviewDialogOpen(false), children: "Close" }),
-        (managerTransactions.revenues.length > 0 || managerTransactions.expenses.length > 0) && /* @__PURE__ */ jsxRuntimeExports.jsxs(
+    ] }),
+    /* @__PURE__ */ jsxRuntimeExports.jsxs(CardContent, { className: "space-y-6", children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex flex-wrap items-center gap-3", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsxs(
           Button,
           {
-            className: "bg-green-600 hover:bg-green-700",
-            onClick: () => {
-              if (reviewingManager) {
-                quickApproveAllMutation.mutate({ managerId: reviewingManager.managerId });
-                setIsReviewDialogOpen(false);
-              }
-            },
-            disabled: quickApproveAllMutation.isPending,
+            variant: "outline",
+            size: "sm",
+            onClick: handleSelectAll,
+            disabled: transactionsLoading || !((_a2 = pendingTransactions == null ? void 0 : pendingTransactions.transactions) == null ? void 0 : _a2.length),
+            className: "transition-all duration-200 hover:scale-105 hover:shadow-md",
             children: [
-              /* @__PURE__ */ jsxRuntimeExports.jsx(Zap, { className: "h-4 w-4 mr-2" }),
-              quickApproveAllMutation.isPending ? "Approving All..." : "Quick Approve All"
+              /* @__PURE__ */ jsxRuntimeExports.jsx(CircleCheck, { className: "h-4 w-4 mr-2" }),
+              "Select All Pending"
+            ]
+          }
+        ),
+        /* @__PURE__ */ jsxRuntimeExports.jsxs(
+          Button,
+          {
+            variant: "outline",
+            size: "sm",
+            onClick: handleClearSelection,
+            disabled: selectedTransactions.size === 0,
+            className: "transition-all duration-200 hover:scale-105 hover:shadow-md",
+            children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsx(X, { className: "h-4 w-4 mr-2" }),
+              "Clear Selection"
+            ]
+          }
+        ),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "flex-1" }),
+        /* @__PURE__ */ jsxRuntimeExports.jsxs(
+          Button,
+          {
+            onClick: () => handleBulkAction("approve"),
+            disabled: selectedTransactions.size === 0 || bulkApproveMutation.isPending,
+            className: "bg-green-600 hover:bg-green-700 transition-all duration-200 hover:scale-105 hover:shadow-md",
+            children: [
+              bulkApproveMutation.isPending ? /* @__PURE__ */ jsxRuntimeExports.jsx(RefreshCw, { className: "h-4 w-4 mr-2 animate-spin" }) : /* @__PURE__ */ jsxRuntimeExports.jsx(Check, { className: "h-4 w-4 mr-2" }),
+              "Approve Selected (",
+              selectedTransactions.size,
+              ")"
+            ]
+          }
+        ),
+        /* @__PURE__ */ jsxRuntimeExports.jsxs(
+          Button,
+          {
+            onClick: () => handleBulkAction("reject"),
+            disabled: selectedTransactions.size === 0 || bulkApproveMutation.isPending,
+            variant: "destructive",
+            className: "transition-all duration-200 hover:scale-105 hover:shadow-md",
+            children: [
+              bulkApproveMutation.isPending ? /* @__PURE__ */ jsxRuntimeExports.jsx(RefreshCw, { className: "h-4 w-4 mr-2 animate-spin" }) : /* @__PURE__ */ jsxRuntimeExports.jsx(X, { className: "h-4 w-4 mr-2" }),
+              "Reject Selected (",
+              selectedTransactions.size,
+              ")"
             ]
           }
         )
+      ] }),
+      transactionsLoading ? /* @__PURE__ */ jsxRuntimeExports.jsx(Card, { className: "border-l-4 border-l-blue-500", children: /* @__PURE__ */ jsxRuntimeExports.jsx(CardContent, { className: "flex items-center justify-center p-12", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "text-center", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx(RefreshCw, { className: "h-8 w-8 animate-spin text-blue-600 mx-auto mb-4" }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-lg font-medium text-gray-900", children: "Loading pending transactions..." }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-sm text-gray-600 mt-2", children: "Please wait while we fetch the data" })
+      ] }) }) }) : !((_b2 = pendingTransactions == null ? void 0 : pendingTransactions.transactions) == null ? void 0 : _b2.length) ? /* @__PURE__ */ jsxRuntimeExports.jsx(Card, { className: "border-l-4 border-l-green-500", children: /* @__PURE__ */ jsxRuntimeExports.jsxs(CardContent, { className: "flex flex-col items-center justify-center py-12", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4", children: /* @__PURE__ */ jsxRuntimeExports.jsx(CircleCheck, { className: "h-8 w-8 text-green-600" }) }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("h3", { className: "text-lg font-medium text-gray-900 mb-2", children: "No pending transactions" }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-gray-500 text-center", children: propertyId && propertyId !== "all" || startDate || endDate ? "No pending transactions match the current filters" : "All transactions for today have been approved" })
+      ] }) }) : /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "space-y-3", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center justify-between", children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("h3", { className: "text-sm font-medium text-gray-700", children: [
+            "Pending Transactions (",
+            pendingTransactions.transactions.length,
+            ")"
+          ] }),
+          /* @__PURE__ */ jsxRuntimeExports.jsxs(Badge, { variant: "outline", className: "border-yellow-500 text-yellow-700", children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx(Clock, { className: "h-3 w-3 mr-1" }),
+            "Live Updates"
+          ] })
+        ] }),
+        pendingTransactions.transactions.map((transaction) => /* @__PURE__ */ jsxRuntimeExports.jsx(
+          Card,
+          {
+            className: "border-l-4 border-l-yellow-500 shadow-sm hover:shadow-md transition-all duration-200",
+            children: /* @__PURE__ */ jsxRuntimeExports.jsx(CardContent, { className: "p-4", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-start gap-4", children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsx(
+                Checkbox,
+                {
+                  checked: selectedTransactions.has(transaction.id),
+                  onCheckedChange: (checked) => handleTransactionSelect(transaction.id, checked),
+                  className: "mt-1"
+                }
+              ),
+              /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex-1 min-w-0", children: [
+                /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center gap-2 mb-2", children: [
+                  getTypeIcon(transaction.type),
+                  /* @__PURE__ */ jsxRuntimeExports.jsxs("h4", { className: "font-medium capitalize truncate", children: [
+                    transaction.type,
+                    " - ",
+                    transaction.category || transaction.source
+                  ] }),
+                  /* @__PURE__ */ jsxRuntimeExports.jsx(Badge, { className: `${getStatusColor(transaction.status)} flex-shrink-0`, children: transaction.status }),
+                  /* @__PURE__ */ jsxRuntimeExports.jsx(Badge, { variant: "outline", className: "text-xs flex-shrink-0", children: transaction.paymentMode })
+                ] }),
+                /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-sm text-gray-600 mb-1 truncate", children: transaction.propertyName }),
+                transaction.description && /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-sm text-gray-500 line-clamp-2 leading-relaxed mb-2", children: transaction.description }),
+                /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4 text-xs text-gray-500", children: [
+                  /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: "flex items-center", children: [
+                    /* @__PURE__ */ jsxRuntimeExports.jsx(User, { className: "h-3 w-3 mr-1 flex-shrink-0" }),
+                    "By ",
+                    transaction.createdByName
+                  ] }),
+                  /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: "flex items-center", children: [
+                    /* @__PURE__ */ jsxRuntimeExports.jsx(Clock, { className: "h-3 w-3 mr-1 flex-shrink-0" }),
+                    formatCardDateTime(transaction.createdAt)
+                  ] }),
+                  transaction.receiptUrl && /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: "flex items-center text-blue-600", children: [
+                    /* @__PURE__ */ jsxRuntimeExports.jsx(Receipt, { className: "h-3 w-3 mr-1 flex-shrink-0" }),
+                    "Has Receipt"
+                  ] })
+                ] })
+              ] }),
+              /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex flex-col items-end", children: [
+                /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: `text-lg font-semibold ${getTypeColor(transaction.type)}`, children: formatCurrency2(transaction.amountCents) }),
+                /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "text-xs text-gray-500 mt-1", children: transaction.type === "revenue" ? "Revenue" : "Expense" })
+              ] })
+            ] }) })
+          },
+          `${transaction.type}-${transaction.id}`
+        ))
       ] })
-    ] }) }),
-    /* @__PURE__ */ jsxRuntimeExports.jsx(
-      ReceiptViewer,
-      {
-        isOpen: !!selectedReceipt,
-        onClose: () => setSelectedReceipt(null),
-        transaction: selectedReceipt
-      }
-    )
-  ] });
+    ] })
+  ] }) });
 }
 function FinancePage() {
   var _a2, _b2, _c2, _d2, _e2, _f2, _g2, _h2;
@@ -39064,11 +40732,21 @@ function FinancePage() {
         endDate: dateRange.endDate
       });
       const backend2 = getAuthenticatedBackend2();
-      return backend2.finance.listExpenses({
+      const result = await backend2.finance.listExpenses({
         propertyId: selectedPropertyId && selectedPropertyId !== "all" ? parseInt(selectedPropertyId) : void 0,
         startDate: dateRange.startDate || void 0,
         endDate: dateRange.endDate || void 0
       });
+      if (result == null ? void 0 : result.expenses) {
+        console.log("Expenses with approval info:", result.expenses.map((expense) => ({
+          id: expense.id,
+          status: expense.status,
+          approvedByName: expense.approvedByName,
+          approvedAt: expense.approvedAt,
+          createdByName: expense.createdByName
+        })));
+      }
+      return result;
     },
     refetchInterval: 3e3,
     // Refresh every 3 seconds for real-time updates (increased frequency)
@@ -39095,11 +40773,21 @@ function FinancePage() {
         endDate: dateRange.endDate || void 0
       });
       const backend2 = getAuthenticatedBackend2();
-      return backend2.finance.listRevenues({
+      const result = await backend2.finance.listRevenues({
         propertyId: selectedPropertyId && selectedPropertyId !== "all" ? parseInt(selectedPropertyId) : void 0,
         startDate: dateRange.startDate || void 0,
         endDate: dateRange.endDate || void 0
       });
+      if (result == null ? void 0 : result.revenues) {
+        console.log("Revenues with approval info:", result.revenues.map((revenue) => ({
+          id: revenue.id,
+          status: revenue.status,
+          approvedByName: revenue.approvedByName,
+          approvedAt: revenue.approvedAt,
+          createdByName: revenue.createdByName
+        })));
+      }
+      return result;
     },
     refetchInterval: 3e3,
     // Refresh every 3 seconds for real-time updates (increased frequency)
@@ -39177,10 +40865,34 @@ function FinancePage() {
         propertyId: parseInt(data.propertyId),
         amountCents: parseInt(data.amountCents),
         receiptFileId: ((_a3 = data.receiptFile) == null ? void 0 : _a3.fileId) || void 0,
-        expenseDate: formatDateForAPI(data.expenseDate)
+        expenseDate: formatDateForAPI(data.expenseDate),
+        paymentMode: data.paymentMode || "cash",
+        bankReference: data.bankReference || void 0
       });
       console.log("Add expense result:", result);
       return result;
+    },
+    onMutate: async (newExpense) => {
+      await queryClient2.cancelQueries({ queryKey: ["expenses"] });
+      const previousExpenses = queryClient2.getQueryData(["expenses"]);
+      queryClient2.setQueryData(["expenses"], (old) => {
+        if (!(old == null ? void 0 : old.expenses)) return old;
+        const optimisticExpense = {
+          id: Date.now(),
+          // Temporary ID
+          ...newExpense,
+          amountCents: parseInt(newExpense.amountCents),
+          propertyId: parseInt(newExpense.propertyId),
+          status: "pending",
+          createdAt: (/* @__PURE__ */ new Date()).toISOString(),
+          updatedAt: (/* @__PURE__ */ new Date()).toISOString()
+        };
+        return {
+          ...old,
+          expenses: [optimisticExpense, ...old.expenses]
+        };
+      });
+      return { previousExpenses };
     },
     onSuccess: () => {
       console.log("Expense added successfully");
@@ -39212,8 +40924,11 @@ function FinancePage() {
         description: "The expense has been recorded successfully."
       });
     },
-    onError: (error) => {
+    onError: (error, newExpense, context) => {
       var _a3, _b3, _c3;
+      if (context == null ? void 0 : context.previousExpenses) {
+        queryClient2.setQueryData(["expenses"], context.previousExpenses);
+      }
       console.error("Add expense error:", error);
       if (((_a3 = error.message) == null ? void 0 : _a3.includes("Invalid token")) || ((_b3 = error.message) == null ? void 0 : _b3.includes("Unauthorized")) || ((_c3 = error.message) == null ? void 0 : _c3.includes("401"))) {
         toast2({
@@ -39244,10 +40959,34 @@ function FinancePage() {
         propertyId: parseInt(data.propertyId),
         amountCents: parseInt(data.amountCents),
         receiptFileId: ((_a3 = data.receiptFile) == null ? void 0 : _a3.fileId) || void 0,
-        occurredAt: formatDateForAPI(data.occurredAt)
+        occurredAt: formatDateForAPI(data.occurredAt),
+        paymentMode: data.paymentMode || "cash",
+        bankReference: data.bankReference || void 0
       });
       console.log("Add revenue result:", result);
       return result;
+    },
+    onMutate: async (newRevenue) => {
+      await queryClient2.cancelQueries({ queryKey: ["revenues"] });
+      const previousRevenues = queryClient2.getQueryData(["revenues"]);
+      queryClient2.setQueryData(["revenues"], (old) => {
+        if (!(old == null ? void 0 : old.revenues)) return old;
+        const optimisticRevenue = {
+          id: Date.now(),
+          // Temporary ID
+          ...newRevenue,
+          amountCents: parseInt(newRevenue.amountCents),
+          propertyId: parseInt(newRevenue.propertyId),
+          status: "approved",
+          createdAt: (/* @__PURE__ */ new Date()).toISOString(),
+          updatedAt: (/* @__PURE__ */ new Date()).toISOString()
+        };
+        return {
+          ...old,
+          revenues: [optimisticRevenue, ...old.revenues]
+        };
+      });
+      return { previousRevenues };
     },
     onSuccess: () => {
       console.log("Revenue added successfully");
@@ -39279,7 +41018,10 @@ function FinancePage() {
         description: "The revenue has been recorded successfully."
       });
     },
-    onError: (error) => {
+    onError: (error, newRevenue, context) => {
+      if (context == null ? void 0 : context.previousRevenues) {
+        queryClient2.setQueryData(["revenues"], context.previousRevenues);
+      }
       console.error("Add revenue error:", error);
       toast2({
         variant: "destructive",
@@ -39304,6 +41046,20 @@ function FinancePage() {
       }
       return response.json();
     },
+    onMutate: async ({ id: id2, approved }) => {
+      await queryClient2.cancelQueries({ queryKey: ["expenses"] });
+      const previousExpenses = queryClient2.getQueryData(["expenses"]);
+      queryClient2.setQueryData(["expenses"], (old) => {
+        if (!(old == null ? void 0 : old.expenses)) return old;
+        return {
+          ...old,
+          expenses: old.expenses.map(
+            (expense) => expense.id === id2 ? { ...expense, status: approved ? "approved" : "rejected" } : expense
+          )
+        };
+      });
+      return { previousExpenses };
+    },
     onSuccess: () => {
       console.log("Expense approval successful");
       queryClient2.invalidateQueries({ queryKey: ["expenses"] });
@@ -39322,7 +41078,10 @@ function FinancePage() {
         description: "The expense status has been updated."
       });
     },
-    onError: (error) => {
+    onError: (error, { id: id2, approved }, context) => {
+      if (context == null ? void 0 : context.previousExpenses) {
+        queryClient2.setQueryData(["expenses"], context.previousExpenses);
+      }
       console.error("Approve expense error:", error);
       toast2({
         variant: "destructive",
@@ -39347,6 +41106,20 @@ function FinancePage() {
       }
       return response.json();
     },
+    onMutate: async ({ id: id2, approved }) => {
+      await queryClient2.cancelQueries({ queryKey: ["revenues"] });
+      const previousRevenues = queryClient2.getQueryData(["revenues"]);
+      queryClient2.setQueryData(["revenues"], (old) => {
+        if (!(old == null ? void 0 : old.revenues)) return old;
+        return {
+          ...old,
+          revenues: old.revenues.map(
+            (revenue) => revenue.id === id2 ? { ...revenue, status: approved ? "approved" : "rejected" } : revenue
+          )
+        };
+      });
+      return { previousRevenues };
+    },
     onSuccess: () => {
       console.log("Revenue approval successful");
       queryClient2.invalidateQueries({ queryKey: ["revenues"] });
@@ -39365,7 +41138,10 @@ function FinancePage() {
         description: "The revenue status has been updated."
       });
     },
-    onError: (error) => {
+    onError: (error, { id: id2, approved }, context) => {
+      if (context == null ? void 0 : context.previousRevenues) {
+        queryClient2.setQueryData(["revenues"], context.previousRevenues);
+      }
       console.error("Approve revenue error:", error);
       toast2({
         variant: "destructive",
@@ -39388,7 +41164,9 @@ function FinancePage() {
           propertyId: parseInt(data.propertyId),
           amountCents: parseInt(data.amountCents),
           receiptFileId: ((_a3 = data.receiptFile) == null ? void 0 : _a3.fileId) || void 0,
-          expenseDate: formatDateForAPI(data.expenseDate)
+          expenseDate: formatDateForAPI(data.expenseDate),
+          paymentMode: data.paymentMode || "cash",
+          bankReference: data.bankReference || void 0
         })
       });
       if (!response.ok) {
@@ -39431,7 +41209,9 @@ function FinancePage() {
           propertyId: parseInt(data.propertyId),
           amountCents: parseInt(data.amountCents),
           receiptFileId: ((_a3 = data.receiptFile) == null ? void 0 : _a3.fileId) || void 0,
-          occurredAt: formatDateForAPI(data.occurredAt)
+          occurredAt: formatDateForAPI(data.occurredAt),
+          paymentMode: data.paymentMode || "cash",
+          bankReference: data.bankReference || void 0
         })
       });
       if (!response.ok) {
@@ -39462,17 +41242,17 @@ function FinancePage() {
   });
   const deleteExpenseMutation = useMutation({
     mutationFn: async (id2) => {
-      const response = await fetch(`${API_CONFIG.BASE_URL}/finance/expenses/${id2}`, {
-        method: "DELETE",
-        headers: {
-          "Authorization": `Bearer ${localStorage.getItem("accessToken")}`
-        }
-      });
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.message || `Failed to delete expense: ${response.statusText}`);
+      const backend2 = getAuthenticatedBackend2();
+      if (!backend2) {
+        throw new Error("Not authenticated");
       }
-      return response.json();
+      try {
+        const response = await backend2.finance.deleteExpense(id2);
+        return response;
+      } catch (error) {
+        console.error("Delete expense error:", error);
+        throw new Error(error.message || "Failed to delete expense");
+      }
     },
     onSuccess: (data) => {
       queryClient2.invalidateQueries({ queryKey: ["expenses"] });
@@ -39494,17 +41274,17 @@ function FinancePage() {
   });
   const deleteRevenueMutation = useMutation({
     mutationFn: async (id2) => {
-      const response = await fetch(`${API_CONFIG.BASE_URL}/finance/revenues/${id2}`, {
-        method: "DELETE",
-        headers: {
-          "Authorization": `Bearer ${localStorage.getItem("accessToken")}`
-        }
-      });
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.message || `Failed to delete revenue: ${response.statusText}`);
+      const backend2 = getAuthenticatedBackend2();
+      if (!backend2) {
+        throw new Error("Not authenticated");
       }
-      return response.json();
+      try {
+        const response = await backend2.finance.deleteRevenue(id2);
+        return response;
+      } catch (error) {
+        console.error("Delete revenue error:", error);
+        throw new Error(error.message || "Failed to delete revenue");
+      }
     },
     onSuccess: (data) => {
       queryClient2.invalidateQueries({ queryKey: ["revenues"] });
@@ -40397,7 +42177,15 @@ function FinancePage() {
         ] }) })
       ] }) })
     ] }) }) }),
-    (user == null ? void 0 : user.role) === "ADMIN" && /* @__PURE__ */ jsxRuntimeExports.jsx(DailyApprovalManager, {}),
+    (user == null ? void 0 : user.role) === "ADMIN" && /* @__PURE__ */ jsxRuntimeExports.jsx(
+      DailyApprovalManager,
+      {
+        className: "mt-6",
+        propertyId: selectedPropertyId,
+        startDate: dateRange.startDate,
+        endDate: dateRange.endDate
+      }
+    ),
     profitLoss && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6", children: [
       /* @__PURE__ */ jsxRuntimeExports.jsxs(Card, { className: "border-l-4 border-l-green-500 shadow-sm hover:shadow-md transition-shadow duration-200", children: [
         /* @__PURE__ */ jsxRuntimeExports.jsx(CardHeader, { className: "pb-4", children: /* @__PURE__ */ jsxRuntimeExports.jsxs(CardTitle, { className: "text-sm font-medium flex items-center gap-2", children: [
@@ -40494,24 +42282,30 @@ function FinancePage() {
       ] })
     ] }),
     /* @__PURE__ */ jsxRuntimeExports.jsxs(Tabs, { defaultValue: "expenses", className: "space-y-0", children: [
-      /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "sticky top-20 z-30 bg-white border-b border-gray-200 -mx-6 px-4 sm:px-6 py-3 shadow-sm", children: /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "overflow-x-auto", children: /* @__PURE__ */ jsxRuntimeExports.jsxs(TabsList, { className: "grid w-full grid-cols-2 min-w-max bg-gray-100", children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsx(
+      /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "sticky top-20 z-30 bg-gradient-to-br from-orange-500 via-orange-600 to-orange-700 border-b-2 border-orange-400 -mx-6 px-4 py-3 shadow-2xl rounded-b-xl", children: /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "overflow-x-auto", children: /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "bg-white/10 backdrop-blur-sm rounded-lg p-1 border border-white/20 shadow-inner", children: /* @__PURE__ */ jsxRuntimeExports.jsxs(TabsList, { className: "grid w-full grid-cols-2 min-w-max bg-transparent h-auto p-0 gap-2", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsxs(
           TabsTrigger,
           {
             value: "expenses",
-            className: "text-xs sm:text-sm px-3 sm:px-6 py-2 data-[state=active]:bg-white data-[state=active]:shadow-sm transition-all duration-200",
-            children: "Expenses"
+            className: "text-xs sm:text-sm px-4 sm:px-8 py-4 data-[state=active]:bg-white data-[state=active]:text-orange-600 data-[state=active]:shadow-xl data-[state=active]:border-2 data-[state=active]:border-orange-300 data-[state=inactive]:text-white data-[state=inactive]:bg-gradient-to-r data-[state=inactive]:from-orange-500/30 data-[state=inactive]:to-orange-600/30 data-[state=inactive]:hover:from-orange-500/50 data-[state=inactive]:hover:to-orange-600/50 data-[state=inactive]:hover:shadow-lg data-[state=inactive]:border data-[state=inactive]:border-white/30 transition-all duration-500 flex items-center gap-2 rounded-xl font-semibold relative overflow-hidden group",
+            children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "absolute inset-0 bg-gradient-to-r from-white/0 via-white/10 to-white/0 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700" }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "relative z-10", children: "Expenses" })
+            ]
           }
         ),
-        /* @__PURE__ */ jsxRuntimeExports.jsx(
+        /* @__PURE__ */ jsxRuntimeExports.jsxs(
           TabsTrigger,
           {
             value: "revenues",
-            className: "text-xs sm:text-sm px-3 sm:px-6 py-2 data-[state=active]:bg-white data-[state=active]:shadow-sm transition-all duration-200",
-            children: "Revenues"
+            className: "text-xs sm:text-sm px-4 sm:px-8 py-4 data-[state=active]:bg-white data-[state=active]:text-orange-600 data-[state=active]:shadow-xl data-[state=active]:border-2 data-[state=active]:border-orange-300 data-[state=inactive]:text-white data-[state=inactive]:bg-gradient-to-r data-[state=inactive]:from-orange-500/30 data-[state=inactive]:to-orange-600/30 data-[state=inactive]:hover:from-orange-500/50 data-[state=inactive]:hover:to-orange-600/50 data-[state=inactive]:hover:shadow-lg data-[state=inactive]:border data-[state=inactive]:border-white/30 transition-all duration-500 flex items-center gap-2 rounded-xl font-semibold relative overflow-hidden group",
+            children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "absolute inset-0 bg-gradient-to-r from-white/0 via-white/10 to-white/0 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700" }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "relative z-10", children: "Revenues" })
+            ]
           }
         )
-      ] }) }) }),
+      ] }) }) }) }),
       /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "px-6 py-6", children: [
         /* @__PURE__ */ jsxRuntimeExports.jsx(TabsContent, { value: "expenses", className: "space-y-6 mt-0", children: /* @__PURE__ */ jsxRuntimeExports.jsxs(Card, { className: "border-l-4 border-l-red-500 shadow-sm", children: [
           /* @__PURE__ */ jsxRuntimeExports.jsxs(CardHeader, { className: "pb-4", children: [
@@ -40581,8 +42375,13 @@ function FinancePage() {
                       receiptUrl: expense.receiptUrl,
                       receiptFileId: expense.receiptFileId,
                       date: expense.expenseDate,
+                      createdAt: expense.createdAt,
                       createdByName: expense.createdByName,
-                      status: expense.status
+                      status: expense.status,
+                      paymentMode: expense.paymentMode,
+                      bankReference: expense.bankReference,
+                      approvedByName: expense.approvedByName,
+                      approvedAt: expense.approvedAt
                     }),
                     children: [
                       /* @__PURE__ */ jsxRuntimeExports.jsx(Eye, { className: "h-3 w-3 mr-1" }),
@@ -40719,7 +42518,13 @@ function FinancePage() {
                       receiptUrl: revenue.receiptUrl,
                       receiptFileId: revenue.receiptFileId,
                       date: revenue.occurredAt,
-                      createdByName: revenue.createdByName
+                      createdAt: revenue.createdAt,
+                      createdByName: revenue.createdByName,
+                      status: revenue.status,
+                      paymentMode: revenue.paymentMode,
+                      bankReference: revenue.bankReference,
+                      approvedByName: revenue.approvedByName,
+                      approvedAt: revenue.approvedAt
                     }),
                     children: [
                       /* @__PURE__ */ jsxRuntimeExports.jsx(Eye, { className: "h-3 w-3 mr-1" }),
@@ -42567,32 +44372,41 @@ function ReportsPage() {
   const [endDate, setEndDate] = reactExports.useState(getCurrentDateString());
   const [isPopupOpen, setIsPopupOpen] = reactExports.useState(false);
   return /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "min-h-screen bg-gray-50", children: /* @__PURE__ */ jsxRuntimeExports.jsxs(Tabs, { defaultValue: "daily-manager", className: "space-y-0", children: [
-    /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "sticky top-20 z-30 bg-white border-b border-gray-200 -mx-6 px-4 sm:px-6 py-3 shadow-sm", children: /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "overflow-x-auto", children: /* @__PURE__ */ jsxRuntimeExports.jsxs(TabsList, { className: "grid w-full grid-cols-3 min-w-max bg-gray-100", children: [
-      /* @__PURE__ */ jsxRuntimeExports.jsx(
+    /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "sticky top-20 z-30 bg-gradient-to-br from-orange-500 via-orange-600 to-orange-700 border-b-2 border-orange-400 -mx-6 px-4 py-3 shadow-2xl rounded-b-xl", children: /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "overflow-x-auto", children: /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "bg-white/10 backdrop-blur-sm rounded-lg p-1 border border-white/20 shadow-inner", children: /* @__PURE__ */ jsxRuntimeExports.jsxs(TabsList, { className: "grid w-full grid-cols-3 min-w-max bg-transparent h-auto p-0 gap-2", children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsxs(
         TabsTrigger,
         {
           value: "daily-manager",
-          className: "text-xs sm:text-sm px-3 sm:px-6 py-2 data-[state=active]:bg-white data-[state=active]:shadow-sm transition-all duration-200",
-          children: "Daily Report Manager"
+          className: "text-xs sm:text-sm px-4 sm:px-8 py-4 data-[state=active]:bg-white data-[state=active]:text-orange-600 data-[state=active]:shadow-xl data-[state=active]:border-2 data-[state=active]:border-orange-300 data-[state=inactive]:text-white data-[state=inactive]:bg-gradient-to-r data-[state=inactive]:from-orange-500/30 data-[state=inactive]:to-orange-600/30 data-[state=inactive]:hover:from-orange-500/50 data-[state=inactive]:hover:to-orange-600/50 data-[state=inactive]:hover:shadow-lg data-[state=inactive]:border data-[state=inactive]:border-white/30 transition-all duration-500 flex items-center gap-2 rounded-xl font-semibold relative overflow-hidden group",
+          children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "absolute inset-0 bg-gradient-to-r from-white/0 via-white/10 to-white/0 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700" }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "relative z-10", children: "Daily Report Manager" })
+          ]
         }
       ),
-      /* @__PURE__ */ jsxRuntimeExports.jsx(
+      /* @__PURE__ */ jsxRuntimeExports.jsxs(
         TabsTrigger,
         {
           value: "daily-spreadsheet",
-          className: "text-xs sm:text-sm px-3 sm:px-6 py-2 data-[state=active]:bg-white data-[state=active]:shadow-sm transition-all duration-200",
-          children: "Daily Report Spreadsheet"
+          className: "text-xs sm:text-sm px-4 sm:px-8 py-4 data-[state=active]:bg-white data-[state=active]:text-orange-600 data-[state=active]:shadow-xl data-[state=active]:border-2 data-[state=active]:border-orange-300 data-[state=inactive]:text-white data-[state=inactive]:bg-gradient-to-r data-[state=inactive]:from-orange-500/30 data-[state=inactive]:to-orange-600/30 data-[state=inactive]:hover:from-orange-500/50 data-[state=inactive]:hover:to-orange-600/50 data-[state=inactive]:hover:shadow-lg data-[state=inactive]:border data-[state=inactive]:border-white/30 transition-all duration-500 flex items-center gap-2 rounded-xl font-semibold relative overflow-hidden group",
+          children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "absolute inset-0 bg-gradient-to-r from-white/0 via-white/10 to-white/0 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700" }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "relative z-10", children: "Daily Report Spreadsheet" })
+          ]
         }
       ),
-      /* @__PURE__ */ jsxRuntimeExports.jsx(
+      /* @__PURE__ */ jsxRuntimeExports.jsxs(
         TabsTrigger,
         {
           value: "monthly-yearly",
-          className: "text-xs sm:text-sm px-3 sm:px-6 py-2 data-[state=active]:bg-white data-[state=active]:shadow-sm transition-all duration-200",
-          children: "Monthly & Yearly"
+          className: "text-xs sm:text-sm px-4 sm:px-8 py-4 data-[state=active]:bg-white data-[state=active]:text-orange-600 data-[state=active]:shadow-xl data-[state=active]:border-2 data-[state=active]:border-orange-300 data-[state=inactive]:text-white data-[state=inactive]:bg-gradient-to-r data-[state=inactive]:from-orange-500/30 data-[state=inactive]:to-orange-600/30 data-[state=inactive]:hover:from-orange-500/50 data-[state=inactive]:hover:to-orange-600/50 data-[state=inactive]:hover:shadow-lg data-[state=inactive]:border data-[state=inactive]:border-white/30 transition-all duration-500 flex items-center gap-2 rounded-xl font-semibold relative overflow-hidden group",
+          children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "absolute inset-0 bg-gradient-to-r from-white/0 via-white/10 to-white/0 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700" }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "relative z-10", children: "Monthly & Yearly" })
+          ]
         }
       )
-    ] }) }) }),
+    ] }) }) }) }),
     /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "px-6 py-6", children: [
       /* @__PURE__ */ jsxRuntimeExports.jsx(TabsContent, { value: "daily-manager", className: "space-y-6 mt-0", children: /* @__PURE__ */ jsxRuntimeExports.jsx(
         DailyReportManagerContent,
@@ -42632,6 +44446,8 @@ function StaffPage() {
   const [isAttendanceDialogOpen, setIsAttendanceDialogOpen] = reactExports.useState(false);
   const [isSalaryDialogOpen, setIsSalaryDialogOpen] = reactExports.useState(false);
   const [isReportDialogOpen, setIsReportDialogOpen] = reactExports.useState(false);
+  const [isEditStaffDialogOpen, setIsEditStaffDialogOpen] = reactExports.useState(false);
+  const [editingStaff, setEditingStaff] = reactExports.useState(null);
   const [activeTab, setActiveTab] = reactExports.useState("staff");
   const [searchTerm, setSearchTerm] = reactExports.useState("");
   const [filterStatus, setFilterStatus] = reactExports.useState("all");
@@ -42644,6 +44460,22 @@ function StaffPage() {
     hourlyRateCents: "",
     hireDate: "",
     notes: ""
+  });
+  const [editStaffForm, setEditStaffForm] = reactExports.useState({
+    id: "",
+    propertyId: "none",
+    department: "",
+    hourlyRateCents: "",
+    performanceRating: "",
+    hireDate: "",
+    notes: "",
+    status: "active",
+    salaryType: "hourly",
+    baseSalaryCents: "",
+    overtimeRateCents: "",
+    attendanceTrackingEnabled: true,
+    maxOvertimeHours: "",
+    leaveBalance: ""
   });
   const [scheduleForm, setScheduleForm] = reactExports.useState({
     staffId: "",
@@ -42825,6 +44657,29 @@ function StaffPage() {
         hireDate: data.hireDate ? new Date(data.hireDate) : void 0
       });
     },
+    onMutate: async (newStaff) => {
+      await queryClient2.cancelQueries({ queryKey: ["staff"] });
+      const previousStaff = queryClient2.getQueryData(["staff"]);
+      queryClient2.setQueryData(["staff"], (old) => {
+        if (!(old == null ? void 0 : old.staff)) return old;
+        const optimisticStaff = {
+          id: Date.now(),
+          // Temporary ID
+          ...newStaff,
+          userId: parseInt(newStaff.userId),
+          propertyId: newStaff.propertyId === "none" ? void 0 : parseInt(newStaff.propertyId),
+          hourlyRateCents: newStaff.hourlyRateCents ? parseInt(newStaff.hourlyRateCents) : 0,
+          status: "active",
+          createdAt: (/* @__PURE__ */ new Date()).toISOString(),
+          updatedAt: (/* @__PURE__ */ new Date()).toISOString()
+        };
+        return {
+          ...old,
+          staff: [optimisticStaff, ...old.staff]
+        };
+      });
+      return { previousStaff };
+    },
     onSuccess: () => {
       queryClient2.invalidateQueries({ queryKey: ["staff"] });
       setIsStaffDialogOpen(false);
@@ -42841,7 +44696,10 @@ function StaffPage() {
         description: "The staff member has been created successfully."
       });
     },
-    onError: (error) => {
+    onError: (error, newStaff, context) => {
+      if (context == null ? void 0 : context.previousStaff) {
+        queryClient2.setQueryData(["staff"], context.previousStaff);
+      }
       toast2({
         variant: "destructive",
         title: "Failed to add staff member",
@@ -43073,6 +44931,121 @@ function StaffPage() {
       });
     }
   });
+  const updateStaffMutation = useMutation({
+    mutationFn: async (data) => {
+      const backend2 = getAuthenticatedBackend2();
+      return backend2.staff.update({
+        id: parseInt(data.id),
+        propertyId: data.propertyId,
+        department: data.department,
+        hourlyRateCents: data.hourlyRateCents,
+        performanceRating: data.performanceRating,
+        hireDate: data.hireDate,
+        notes: data.notes,
+        status: data.status,
+        salaryType: data.salaryType,
+        baseSalaryCents: data.baseSalaryCents,
+        overtimeRateCents: data.overtimeRateCents,
+        attendanceTrackingEnabled: data.attendanceTrackingEnabled,
+        maxOvertimeHours: data.maxOvertimeHours,
+        leaveBalance: data.leaveBalance
+      });
+    },
+    onMutate: async (updatedStaff) => {
+      await queryClient2.cancelQueries({ queryKey: ["staff"] });
+      const previousStaff = queryClient2.getQueryData(["staff"]);
+      queryClient2.setQueryData(["staff"], (old) => {
+        if (!(old == null ? void 0 : old.staff)) return old;
+        return {
+          ...old,
+          staff: old.staff.map(
+            (member) => member.id === parseInt(updatedStaff.id) ? { ...member, ...updatedStaff } : member
+          )
+        };
+      });
+      return { previousStaff };
+    },
+    onSuccess: () => {
+      queryClient2.invalidateQueries({ queryKey: ["staff"] });
+      queryClient2.invalidateQueries({ queryKey: ["staff-statistics"] });
+      queryClient2.invalidateQueries({ queryKey: ["analytics"] });
+      queryClient2.invalidateQueries({ queryKey: ["dashboard"] });
+      queryClient2.refetchQueries({ queryKey: ["staff"] });
+      queryClient2.refetchQueries({ queryKey: ["staff-statistics"] });
+      setIsEditStaffDialogOpen(false);
+      setEditingStaff(null);
+      setEditStaffForm({
+        id: "",
+        propertyId: "none",
+        department: "",
+        hourlyRateCents: "",
+        performanceRating: "",
+        hireDate: "",
+        notes: "",
+        status: "active",
+        salaryType: "hourly",
+        baseSalaryCents: "",
+        overtimeRateCents: "",
+        attendanceTrackingEnabled: true,
+        maxOvertimeHours: "",
+        leaveBalance: ""
+      });
+      toast2({
+        title: "Staff member updated",
+        description: "The staff member has been updated successfully."
+      });
+    },
+    onError: (error, updatedStaff, context) => {
+      if (context == null ? void 0 : context.previousStaff) {
+        queryClient2.setQueryData(["staff"], context.previousStaff);
+      }
+      toast2({
+        variant: "destructive",
+        title: "Failed to update staff member",
+        description: error.message || "Please try again."
+      });
+    }
+  });
+  const deleteStaffMutation = useMutation({
+    mutationFn: async (id2) => {
+      const backend2 = getAuthenticatedBackend2();
+      return backend2.staff.deleteStaff(id2);
+    },
+    onMutate: async (staffId) => {
+      await queryClient2.cancelQueries({ queryKey: ["staff"] });
+      const previousStaff = queryClient2.getQueryData(["staff"]);
+      queryClient2.setQueryData(["staff"], (old) => {
+        if (!(old == null ? void 0 : old.staff)) return old;
+        return {
+          ...old,
+          staff: old.staff.filter((member) => member.id !== staffId)
+        };
+      });
+      return { previousStaff };
+    },
+    onSuccess: (result) => {
+      queryClient2.invalidateQueries({ queryKey: ["staff"] });
+      queryClient2.invalidateQueries({ queryKey: ["staff-statistics"] });
+      queryClient2.invalidateQueries({ queryKey: ["analytics"] });
+      queryClient2.invalidateQueries({ queryKey: ["dashboard"] });
+      queryClient2.refetchQueries({ queryKey: ["staff"] });
+      queryClient2.refetchQueries({ queryKey: ["staff-statistics"] });
+      toast2({
+        title: "Staff member deleted",
+        description: result.message || "The staff member has been deleted successfully."
+      });
+    },
+    onError: (error, staffId, context) => {
+      if (context == null ? void 0 : context.previousStaff) {
+        queryClient2.setQueryData(["staff"], context.previousStaff);
+      }
+      toast2({
+        variant: "destructive",
+        title: "Failed to delete staff member",
+        description: error.message || "Please try again."
+      });
+    }
+  });
   const getDepartmentColor = (department) => {
     switch (department) {
       case "frontdesk":
@@ -43129,6 +45102,31 @@ function StaffPage() {
       currency: "USD"
     }).format(amountCents / 100);
   };
+  const handleEditStaff = (member) => {
+    setEditingStaff(member);
+    setEditStaffForm({
+      id: member.id.toString(),
+      propertyId: member.propertyId ? member.propertyId.toString() : "none",
+      department: member.department || "",
+      hourlyRateCents: member.hourlyRateCents ? member.hourlyRateCents.toString() : "",
+      performanceRating: member.performanceRating ? member.performanceRating.toString() : "",
+      hireDate: member.hireDate ? new Date(member.hireDate).toISOString().split("T")[0] : "",
+      notes: member.notes || "",
+      status: member.status || "active",
+      salaryType: member.salaryType || "hourly",
+      baseSalaryCents: member.baseSalaryCents ? member.baseSalaryCents.toString() : "",
+      overtimeRateCents: member.overtimeRateCents ? member.overtimeRateCents.toString() : "",
+      attendanceTrackingEnabled: member.attendanceTrackingEnabled !== false,
+      maxOvertimeHours: member.maxOvertimeHours ? member.maxOvertimeHours.toString() : "",
+      leaveBalance: member.leaveBalance ? member.leaveBalance.toString() : ""
+    });
+    setIsEditStaffDialogOpen(true);
+  };
+  const handleDeleteStaff = (member) => {
+    if (window.confirm(`Are you sure you want to delete ${member.userName}? This action cannot be undone and will remove all related data including attendance, schedules, and salary records.`)) {
+      deleteStaffMutation.mutate(member.id);
+    }
+  };
   return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "min-h-screen bg-gray-50", children: [
     /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "space-y-6", children: [
       /* @__PURE__ */ jsxRuntimeExports.jsx(Card, { className: "border-l-4 border-l-green-500 shadow-sm hover:shadow-md transition-shadow duration-200", children: /* @__PURE__ */ jsxRuntimeExports.jsx(CardContent, { className: "p-4", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4", children: [
@@ -43149,15 +45147,16 @@ function StaffPage() {
         ] })
       ] }) }) }),
       /* @__PURE__ */ jsxRuntimeExports.jsxs(Tabs, { defaultValue: "staff", className: "space-y-0", value: activeTab, onValueChange: setActiveTab, children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "sticky top-20 z-30 bg-white border-b border-gray-200 -mx-6 px-4 sm:px-6 py-3 shadow-sm", children: /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "overflow-x-auto", children: /* @__PURE__ */ jsxRuntimeExports.jsxs(TabsList, { className: "grid w-full grid-cols-5 min-w-max bg-gray-100", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "sticky top-20 z-30 bg-gradient-to-br from-orange-500 via-orange-600 to-orange-700 border-b-2 border-orange-400 -mx-6 px-4 py-3 shadow-2xl rounded-b-xl", children: /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "overflow-x-auto", children: /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "bg-white/10 backdrop-blur-sm rounded-lg p-1 border border-white/20 shadow-inner", children: /* @__PURE__ */ jsxRuntimeExports.jsxs(TabsList, { className: "grid w-full grid-cols-5 min-w-max bg-transparent h-auto p-0 gap-2", children: [
           /* @__PURE__ */ jsxRuntimeExports.jsxs(
             TabsTrigger,
             {
               value: "staff",
-              className: "text-xs sm:text-sm px-2 sm:px-4 py-2 data-[state=active]:bg-white data-[state=active]:shadow-sm transition-all duration-200 flex items-center gap-2",
+              className: "text-xs sm:text-sm px-4 sm:px-8 py-4 data-[state=active]:bg-white data-[state=active]:text-orange-600 data-[state=active]:shadow-xl data-[state=active]:border-2 data-[state=active]:border-orange-300 data-[state=inactive]:text-white data-[state=inactive]:bg-gradient-to-r data-[state=inactive]:from-orange-500/30 data-[state=inactive]:to-orange-600/30 data-[state=inactive]:hover:from-orange-500/50 data-[state=inactive]:hover:to-orange-600/50 data-[state=inactive]:hover:shadow-lg data-[state=inactive]:border data-[state=inactive]:border-white/30 transition-all duration-500 flex items-center gap-2 rounded-xl font-semibold relative overflow-hidden group",
               children: [
-                /* @__PURE__ */ jsxRuntimeExports.jsx(Users, { className: "h-4 w-4" }),
-                /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "hidden sm:inline", children: "Staff" })
+                /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "absolute inset-0 bg-gradient-to-r from-white/0 via-white/10 to-white/0 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700" }),
+                /* @__PURE__ */ jsxRuntimeExports.jsx(Users, { className: "h-4 w-4 relative z-10" }),
+                /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "hidden sm:inline relative z-10", children: "Staff" })
               ]
             }
           ),
@@ -43165,10 +45164,11 @@ function StaffPage() {
             TabsTrigger,
             {
               value: "schedules",
-              className: "text-xs sm:text-sm px-2 sm:px-4 py-2 data-[state=active]:bg-white data-[state=active]:shadow-sm transition-all duration-200 flex items-center gap-2",
+              className: "text-xs sm:text-sm px-4 sm:px-8 py-4 data-[state=active]:bg-white data-[state=active]:text-orange-600 data-[state=active]:shadow-xl data-[state=active]:border-2 data-[state=active]:border-orange-300 data-[state=inactive]:text-white data-[state=inactive]:bg-gradient-to-r data-[state=inactive]:from-orange-500/30 data-[state=inactive]:to-orange-600/30 data-[state=inactive]:hover:from-orange-500/50 data-[state=inactive]:hover:to-orange-600/50 data-[state=inactive]:hover:shadow-lg data-[state=inactive]:border data-[state=inactive]:border-white/30 transition-all duration-500 flex items-center gap-2 rounded-xl font-semibold relative overflow-hidden group",
               children: [
-                /* @__PURE__ */ jsxRuntimeExports.jsx(Calendar, { className: "h-4 w-4" }),
-                /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "hidden sm:inline", children: "Schedules" })
+                /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "absolute inset-0 bg-gradient-to-r from-white/0 via-white/10 to-white/0 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700" }),
+                /* @__PURE__ */ jsxRuntimeExports.jsx(CalendarCheck, { className: "h-4 w-4 relative z-10" }),
+                /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "hidden sm:inline relative z-10", children: "Schedules" })
               ]
             }
           ),
@@ -43176,10 +45176,11 @@ function StaffPage() {
             TabsTrigger,
             {
               value: "attendance",
-              className: "text-xs sm:text-sm px-2 sm:px-4 py-2 data-[state=active]:bg-white data-[state=active]:shadow-sm transition-all duration-200 flex items-center gap-2",
+              className: "text-xs sm:text-sm px-4 sm:px-8 py-4 data-[state=active]:bg-white data-[state=active]:text-orange-600 data-[state=active]:shadow-xl data-[state=active]:border-2 data-[state=active]:border-orange-300 data-[state=inactive]:text-white data-[state=inactive]:bg-gradient-to-r data-[state=inactive]:from-orange-500/30 data-[state=inactive]:to-orange-600/30 data-[state=inactive]:hover:from-orange-500/50 data-[state=inactive]:hover:to-orange-600/50 data-[state=inactive]:hover:shadow-lg data-[state=inactive]:border data-[state=inactive]:border-white/30 transition-all duration-500 flex items-center gap-2 rounded-xl font-semibold relative overflow-hidden group",
               children: [
-                /* @__PURE__ */ jsxRuntimeExports.jsx(LogIn, { className: "h-4 w-4" }),
-                /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "hidden sm:inline", children: "Attendance" })
+                /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "absolute inset-0 bg-gradient-to-r from-white/0 via-white/10 to-white/0 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700" }),
+                /* @__PURE__ */ jsxRuntimeExports.jsx(Clock4, { className: "h-4 w-4 relative z-10" }),
+                /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "hidden sm:inline relative z-10", children: "Attendance" })
               ]
             }
           ),
@@ -43187,10 +45188,11 @@ function StaffPage() {
             TabsTrigger,
             {
               value: "salary",
-              className: "text-xs sm:text-sm px-2 sm:px-4 py-2 data-[state=active]:bg-white data-[state=active]:shadow-sm transition-all duration-200 flex items-center gap-2",
+              className: "text-xs sm:text-sm px-4 sm:px-8 py-4 data-[state=active]:bg-white data-[state=active]:text-orange-600 data-[state=active]:shadow-xl data-[state=active]:border-2 data-[state=active]:border-orange-300 data-[state=inactive]:text-white data-[state=inactive]:bg-gradient-to-r data-[state=inactive]:from-orange-500/30 data-[state=inactive]:to-orange-600/30 data-[state=inactive]:hover:from-orange-500/50 data-[state=inactive]:hover:to-orange-600/50 data-[state=inactive]:hover:shadow-lg data-[state=inactive]:border data-[state=inactive]:border-white/30 transition-all duration-500 flex items-center gap-2 rounded-xl font-semibold relative overflow-hidden group",
               children: [
-                /* @__PURE__ */ jsxRuntimeExports.jsx(DollarSign, { className: "h-4 w-4" }),
-                /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "hidden sm:inline", children: "Salary" })
+                /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "absolute inset-0 bg-gradient-to-r from-white/0 via-white/10 to-white/0 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700" }),
+                /* @__PURE__ */ jsxRuntimeExports.jsx(Banknote, { className: "h-4 w-4 relative z-10" }),
+                /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "hidden sm:inline relative z-10", children: "Salary" })
               ]
             }
           ),
@@ -43198,14 +45200,15 @@ function StaffPage() {
             TabsTrigger,
             {
               value: "reports",
-              className: "text-xs sm:text-sm px-2 sm:px-4 py-2 data-[state=active]:bg-white data-[state=active]:shadow-sm transition-all duration-200 flex items-center gap-2",
+              className: "text-xs sm:text-sm px-4 sm:px-8 py-4 data-[state=active]:bg-white data-[state=active]:text-orange-600 data-[state=active]:shadow-xl data-[state=active]:border-2 data-[state=active]:border-orange-300 data-[state=inactive]:text-white data-[state=inactive]:bg-gradient-to-r data-[state=inactive]:from-orange-500/30 data-[state=inactive]:to-orange-600/30 data-[state=inactive]:hover:from-orange-500/50 data-[state=inactive]:hover:to-orange-600/50 data-[state=inactive]:hover:shadow-lg data-[state=inactive]:border data-[state=inactive]:border-white/30 transition-all duration-500 flex items-center gap-2 rounded-xl font-semibold relative overflow-hidden group",
               children: [
-                /* @__PURE__ */ jsxRuntimeExports.jsx(ChartColumn, { className: "h-4 w-4" }),
-                /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "hidden sm:inline", children: "Reports" })
+                /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "absolute inset-0 bg-gradient-to-r from-white/0 via-white/10 to-white/0 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700" }),
+                /* @__PURE__ */ jsxRuntimeExports.jsx(ChartColumn, { className: "h-4 w-4 relative z-10" }),
+                /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "hidden sm:inline relative z-10", children: "Reports" })
               ]
             }
           )
-        ] }) }) }),
+        ] }) }) }) }),
         /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "px-6 py-6", children: [
           /* @__PURE__ */ jsxRuntimeExports.jsx(TabsContent, { value: "staff", className: "space-y-6 mt-0", children: /* @__PURE__ */ jsxRuntimeExports.jsxs(Card, { className: "border-l-4 border-l-blue-500 shadow-sm hover:shadow-md transition-shadow duration-200", children: [
             /* @__PURE__ */ jsxRuntimeExports.jsx(CardHeader, { className: "pb-4", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4", children: [
@@ -43265,7 +45268,7 @@ function StaffPage() {
                   /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "truncate", children: member.propertyName })
                 ] }),
                 member.hourlyRateCents > 0 && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center text-sm", children: [
-                  /* @__PURE__ */ jsxRuntimeExports.jsx(DollarSign, { className: "h-4 w-4 mr-2 text-green-500 flex-shrink-0" }),
+                  /* @__PURE__ */ jsxRuntimeExports.jsx(Banknote, { className: "h-4 w-4 mr-2 text-green-500 flex-shrink-0" }),
                   /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: "font-medium", children: [
                     "Rate: ",
                     formatCurrency2(member.hourlyRateCents),
@@ -43286,7 +45289,32 @@ function StaffPage() {
                     new Date(member.hireDate).toLocaleDateString()
                   ] })
                 ] }),
-                /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "flex items-center justify-between pt-2", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Badge, { variant: member.status === "active" ? "default" : "secondary", className: "border-green-500 text-green-700", children: member.status }) })
+                /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center justify-between pt-2", children: [
+                  /* @__PURE__ */ jsxRuntimeExports.jsx(Badge, { variant: member.status === "active" ? "default" : "secondary", className: "border-green-500 text-green-700", children: member.status }),
+                  (user == null ? void 0 : user.role) === "ADMIN" && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex gap-2", children: [
+                    /* @__PURE__ */ jsxRuntimeExports.jsx(
+                      Button,
+                      {
+                        size: "sm",
+                        variant: "outline",
+                        onClick: () => handleEditStaff(member),
+                        className: "transition-all duration-200 hover:scale-105 hover:shadow-md",
+                        children: /* @__PURE__ */ jsxRuntimeExports.jsx(SquarePen, { className: "h-4 w-4" })
+                      }
+                    ),
+                    /* @__PURE__ */ jsxRuntimeExports.jsx(
+                      Button,
+                      {
+                        size: "sm",
+                        variant: "outline",
+                        onClick: () => handleDeleteStaff(member),
+                        disabled: deleteStaffMutation.isPending,
+                        className: "transition-all duration-200 hover:scale-105 hover:shadow-md text-red-600 hover:text-red-700 hover:bg-red-50",
+                        children: deleteStaffMutation.isPending ? /* @__PURE__ */ jsxRuntimeExports.jsx(RefreshCw, { className: "h-4 w-4 animate-spin" }) : /* @__PURE__ */ jsxRuntimeExports.jsx(Trash2, { className: "h-4 w-4" })
+                      }
+                    )
+                  ] })
+                ] })
               ] })
             ] }, member.id)) }) })
           ] }) }),
@@ -43539,7 +45567,7 @@ function StaffPage() {
           /* @__PURE__ */ jsxRuntimeExports.jsx(TabsContent, { value: "salary", className: "space-y-6 mt-0", children: /* @__PURE__ */ jsxRuntimeExports.jsxs(Card, { className: "border-l-4 border-l-green-500 shadow-sm hover:shadow-md transition-shadow duration-200", children: [
             /* @__PURE__ */ jsxRuntimeExports.jsx(CardHeader, { className: "pb-4", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4", children: [
               /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center gap-3", children: [
-                /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "p-2 bg-green-100 rounded-lg shadow-sm", children: /* @__PURE__ */ jsxRuntimeExports.jsx(DollarSign, { className: "h-5 w-5 text-green-600" }) }),
+                /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "p-2 bg-green-100 rounded-lg shadow-sm", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Banknote, { className: "h-5 w-5 text-green-600" }) }),
                 /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
                   /* @__PURE__ */ jsxRuntimeExports.jsx(CardTitle, { className: "text-lg font-bold text-gray-900", children: "Salary Management" }),
                   /* @__PURE__ */ jsxRuntimeExports.jsx(CardDescription, { className: "text-sm text-gray-600", children: "Manage staff salary components and payslips" })
@@ -43552,7 +45580,7 @@ function StaffPage() {
                     onClick: () => setIsSalaryDialogOpen(true),
                     className: "bg-green-600 hover:bg-green-700 transition-all duration-200 hover:scale-105 hover:shadow-md",
                     children: [
-                      /* @__PURE__ */ jsxRuntimeExports.jsx(DollarSign, { className: "mr-2 h-4 w-4" }),
+                      /* @__PURE__ */ jsxRuntimeExports.jsx(Banknote, { className: "mr-2 h-4 w-4" }),
                       /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "hidden sm:inline", children: "Add Salary Component" }),
                       /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "sm:hidden", children: "Add Component" })
                     ]
@@ -43579,11 +45607,11 @@ function StaffPage() {
               ] })
             ] }) }),
             /* @__PURE__ */ jsxRuntimeExports.jsx(CardContent, { children: salaryLoading ? /* @__PURE__ */ jsxRuntimeExports.jsx(Card, { className: "border-l-4 border-l-blue-500", children: /* @__PURE__ */ jsxRuntimeExports.jsx(CardContent, { className: "flex items-center justify-center p-12", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "text-center", children: [
-              /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4", children: /* @__PURE__ */ jsxRuntimeExports.jsx(DollarSign, { className: "h-5 w-5 text-blue-600 animate-pulse" }) }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Banknote, { className: "h-5 w-5 text-blue-600 animate-pulse" }) }),
               /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-lg font-medium text-gray-900", children: "Loading salary data..." }),
               /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-sm text-gray-600 mt-2", children: "Please wait while we fetch your salary information" })
             ] }) }) }) : (salaryComponents == null ? void 0 : salaryComponents.salaryComponents.length) === 0 ? /* @__PURE__ */ jsxRuntimeExports.jsx(Card, { className: "border-l-4 border-l-blue-500", children: /* @__PURE__ */ jsxRuntimeExports.jsxs(CardContent, { className: "flex flex-col items-center justify-center py-12", children: [
-              /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4", children: /* @__PURE__ */ jsxRuntimeExports.jsx(DollarSign, { className: "h-8 w-8 text-blue-600" }) }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Banknote, { className: "h-8 w-8 text-blue-600" }) }),
               /* @__PURE__ */ jsxRuntimeExports.jsx("h3", { className: "text-lg font-medium text-gray-900 mb-2", children: "No salary components" }),
               /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-gray-500 text-center mb-4", children: "No salary components have been configured yet" }),
               (user == null ? void 0 : user.role) === "ADMIN" && /* @__PURE__ */ jsxRuntimeExports.jsxs(
@@ -43592,7 +45620,7 @@ function StaffPage() {
                   onClick: () => setIsSalaryDialogOpen(true),
                   className: "bg-green-600 hover:bg-green-700",
                   children: [
-                    /* @__PURE__ */ jsxRuntimeExports.jsx(DollarSign, { className: "mr-2 h-4 w-4" }),
+                    /* @__PURE__ */ jsxRuntimeExports.jsx(Banknote, { className: "mr-2 h-4 w-4" }),
                     "Add First Salary Component"
                   ]
                 }
@@ -43683,7 +45711,7 @@ function StaffPage() {
               ] }),
               /* @__PURE__ */ jsxRuntimeExports.jsxs(Card, { className: "border-l-4 border-l-orange-500 shadow-sm hover:shadow-md transition-shadow duration-200", children: [
                 /* @__PURE__ */ jsxRuntimeExports.jsx(CardHeader, { className: "pb-4", children: /* @__PURE__ */ jsxRuntimeExports.jsxs(CardTitle, { className: "text-sm font-medium flex items-center gap-2", children: [
-                  /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "p-2 bg-orange-100 rounded-lg shadow-sm", children: /* @__PURE__ */ jsxRuntimeExports.jsx(DollarSign, { className: "h-4 w-4 text-orange-600" }) }),
+                  /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "p-2 bg-orange-100 rounded-lg shadow-sm", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Banknote, { className: "h-4 w-4 text-orange-600" }) }),
                   "Total Payroll"
                 ] }) }),
                 /* @__PURE__ */ jsxRuntimeExports.jsxs(CardContent, { children: [
@@ -44123,7 +46151,7 @@ function StaffPage() {
     /* @__PURE__ */ jsxRuntimeExports.jsx(Dialog, { open: isSalaryDialogOpen, onOpenChange: setIsSalaryDialogOpen, children: /* @__PURE__ */ jsxRuntimeExports.jsxs(DialogContent, { className: "max-w-2xl max-h-[95vh] overflow-hidden flex flex-col", children: [
       /* @__PURE__ */ jsxRuntimeExports.jsxs(DialogHeader, { className: "pb-4", children: [
         /* @__PURE__ */ jsxRuntimeExports.jsxs(DialogTitle, { className: "text-xl font-bold text-gray-900 flex items-center gap-2", children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "p-2 bg-green-100 rounded-lg shadow-sm", children: /* @__PURE__ */ jsxRuntimeExports.jsx(DollarSign, { className: "h-5 w-5 text-green-600" }) }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "p-2 bg-green-100 rounded-lg shadow-sm", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Banknote, { className: "h-5 w-5 text-green-600" }) }),
           "Add Salary Component"
         ] }),
         /* @__PURE__ */ jsxRuntimeExports.jsx(DialogDescription, { className: "text-sm text-gray-600", children: "Add a new salary component for a staff member" })
@@ -44212,7 +46240,7 @@ function StaffPage() {
               /* @__PURE__ */ jsxRuntimeExports.jsx(RefreshCw, { className: "mr-2 h-4 w-4 animate-spin" }),
               "Adding..."
             ] }) : /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
-              /* @__PURE__ */ jsxRuntimeExports.jsx(DollarSign, { className: "mr-2 h-4 w-4" }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx(Banknote, { className: "mr-2 h-4 w-4" }),
               "Add Salary Component"
             ] })
           }
@@ -44302,6 +46330,238 @@ function StaffPage() {
             ] }) : /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
               /* @__PURE__ */ jsxRuntimeExports.jsx(FileText, { className: "mr-2 h-4 w-4" }),
               "Generate Report"
+            ] })
+          }
+        )
+      ] }) })
+    ] }) }),
+    /* @__PURE__ */ jsxRuntimeExports.jsx(Dialog, { open: isEditStaffDialogOpen, onOpenChange: setIsEditStaffDialogOpen, children: /* @__PURE__ */ jsxRuntimeExports.jsxs(DialogContent, { className: "max-w-4xl max-h-[95vh] overflow-hidden flex flex-col", children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsxs(DialogHeader, { className: "pb-4", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsxs(DialogTitle, { className: "text-xl font-bold text-gray-900 flex items-center gap-2", children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "p-2 bg-blue-100 rounded-lg shadow-sm", children: /* @__PURE__ */ jsxRuntimeExports.jsx(SquarePen, { className: "h-5 w-5 text-blue-600" }) }),
+          "Edit Staff Member"
+        ] }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(DialogDescription, { className: "text-sm text-gray-600", children: "Update staff member information and settings" })
+      ] }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "flex-1 overflow-y-auto px-1", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "space-y-6", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "space-y-4", children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx("h3", { className: "text-lg font-semibold text-gray-900 border-b pb-2", children: "Basic Information" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "grid grid-cols-1 sm:grid-cols-2 gap-4", children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "space-y-2", children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsx(Label, { htmlFor: "editPropertyId", className: "text-sm font-medium text-gray-700", children: "Property" }),
+              /* @__PURE__ */ jsxRuntimeExports.jsxs(Select, { value: editStaffForm.propertyId, onValueChange: (value) => setEditStaffForm((prev) => ({ ...prev, propertyId: value })), children: [
+                /* @__PURE__ */ jsxRuntimeExports.jsx(SelectTrigger, { className: "h-11 border-gray-300 focus:border-blue-500 focus:ring-blue-500", children: /* @__PURE__ */ jsxRuntimeExports.jsx(SelectValue, { placeholder: "Select property" }) }),
+                /* @__PURE__ */ jsxRuntimeExports.jsxs(SelectContent, { children: [
+                  /* @__PURE__ */ jsxRuntimeExports.jsx(SelectItem, { value: "none", children: "No property assigned" }),
+                  properties2 == null ? void 0 : properties2.properties.map((p) => /* @__PURE__ */ jsxRuntimeExports.jsx(SelectItem, { value: p.id.toString(), children: p.name }, p.id))
+                ] })
+              ] })
+            ] }),
+            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "space-y-2", children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsx(Label, { htmlFor: "editDepartment", className: "text-sm font-medium text-gray-700", children: "Department" }),
+              /* @__PURE__ */ jsxRuntimeExports.jsxs(Select, { value: editStaffForm.department, onValueChange: (value) => setEditStaffForm((prev) => ({ ...prev, department: value })), children: [
+                /* @__PURE__ */ jsxRuntimeExports.jsx(SelectTrigger, { className: "h-11 border-gray-300 focus:border-blue-500 focus:ring-blue-500", children: /* @__PURE__ */ jsxRuntimeExports.jsx(SelectValue, { placeholder: "Select department" }) }),
+                /* @__PURE__ */ jsxRuntimeExports.jsxs(SelectContent, { children: [
+                  /* @__PURE__ */ jsxRuntimeExports.jsx(SelectItem, { value: "frontdesk", children: "Front Desk" }),
+                  /* @__PURE__ */ jsxRuntimeExports.jsx(SelectItem, { value: "housekeeping", children: "Housekeeping" }),
+                  /* @__PURE__ */ jsxRuntimeExports.jsx(SelectItem, { value: "maintenance", children: "Maintenance" }),
+                  /* @__PURE__ */ jsxRuntimeExports.jsx(SelectItem, { value: "fnb", children: "Food & Beverage" }),
+                  /* @__PURE__ */ jsxRuntimeExports.jsx(SelectItem, { value: "admin", children: "Administration" })
+                ] })
+              ] })
+            ] })
+          ] }),
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "grid grid-cols-1 sm:grid-cols-2 gap-4", children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "space-y-2", children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsx(Label, { htmlFor: "editHireDate", className: "text-sm font-medium text-gray-700", children: "Hire Date" }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx(
+                Input,
+                {
+                  id: "editHireDate",
+                  type: "date",
+                  value: editStaffForm.hireDate,
+                  onChange: (e) => setEditStaffForm((prev) => ({ ...prev, hireDate: e.target.value })),
+                  className: "h-11 border-gray-300 focus:border-blue-500 focus:ring-blue-500"
+                }
+              )
+            ] }),
+            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "space-y-2", children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsx(Label, { htmlFor: "editStatus", className: "text-sm font-medium text-gray-700", children: "Status" }),
+              /* @__PURE__ */ jsxRuntimeExports.jsxs(Select, { value: editStaffForm.status, onValueChange: (value) => setEditStaffForm((prev) => ({ ...prev, status: value })), children: [
+                /* @__PURE__ */ jsxRuntimeExports.jsx(SelectTrigger, { className: "h-11 border-gray-300 focus:border-blue-500 focus:ring-blue-500", children: /* @__PURE__ */ jsxRuntimeExports.jsx(SelectValue, { placeholder: "Select status" }) }),
+                /* @__PURE__ */ jsxRuntimeExports.jsxs(SelectContent, { children: [
+                  /* @__PURE__ */ jsxRuntimeExports.jsx(SelectItem, { value: "active", children: "Active" }),
+                  /* @__PURE__ */ jsxRuntimeExports.jsx(SelectItem, { value: "inactive", children: "Inactive" })
+                ] })
+              ] })
+            ] })
+          ] })
+        ] }),
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "space-y-4", children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx("h3", { className: "text-lg font-semibold text-gray-900 border-b pb-2", children: "Salary Information" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "grid grid-cols-1 sm:grid-cols-2 gap-4", children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "space-y-2", children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsx(Label, { htmlFor: "editSalaryType", className: "text-sm font-medium text-gray-700", children: "Salary Type" }),
+              /* @__PURE__ */ jsxRuntimeExports.jsxs(Select, { value: editStaffForm.salaryType, onValueChange: (value) => setEditStaffForm((prev) => ({ ...prev, salaryType: value })), children: [
+                /* @__PURE__ */ jsxRuntimeExports.jsx(SelectTrigger, { className: "h-11 border-gray-300 focus:border-blue-500 focus:ring-blue-500", children: /* @__PURE__ */ jsxRuntimeExports.jsx(SelectValue, { placeholder: "Select salary type" }) }),
+                /* @__PURE__ */ jsxRuntimeExports.jsxs(SelectContent, { children: [
+                  /* @__PURE__ */ jsxRuntimeExports.jsx(SelectItem, { value: "hourly", children: "Hourly" }),
+                  /* @__PURE__ */ jsxRuntimeExports.jsx(SelectItem, { value: "monthly", children: "Monthly" }),
+                  /* @__PURE__ */ jsxRuntimeExports.jsx(SelectItem, { value: "daily", children: "Daily" })
+                ] })
+              ] })
+            ] }),
+            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "space-y-2", children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsx(Label, { htmlFor: "editHourlyRateCents", className: "text-sm font-medium text-gray-700", children: "Hourly Rate (cents)" }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx(
+                Input,
+                {
+                  id: "editHourlyRateCents",
+                  type: "number",
+                  value: editStaffForm.hourlyRateCents,
+                  onChange: (e) => setEditStaffForm((prev) => ({ ...prev, hourlyRateCents: e.target.value })),
+                  placeholder: "1500 for $15.00",
+                  className: "h-11 border-gray-300 focus:border-blue-500 focus:ring-blue-500"
+                }
+              )
+            ] })
+          ] }),
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "grid grid-cols-1 sm:grid-cols-2 gap-4", children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "space-y-2", children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsx(Label, { htmlFor: "editBaseSalaryCents", className: "text-sm font-medium text-gray-700", children: "Base Salary (cents)" }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx(
+                Input,
+                {
+                  id: "editBaseSalaryCents",
+                  type: "number",
+                  value: editStaffForm.baseSalaryCents,
+                  onChange: (e) => setEditStaffForm((prev) => ({ ...prev, baseSalaryCents: e.target.value })),
+                  placeholder: "500000 for $5000.00",
+                  className: "h-11 border-gray-300 focus:border-blue-500 focus:ring-blue-500"
+                }
+              )
+            ] }),
+            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "space-y-2", children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsx(Label, { htmlFor: "editOvertimeRateCents", className: "text-sm font-medium text-gray-700", children: "Overtime Rate (cents)" }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx(
+                Input,
+                {
+                  id: "editOvertimeRateCents",
+                  type: "number",
+                  value: editStaffForm.overtimeRateCents,
+                  onChange: (e) => setEditStaffForm((prev) => ({ ...prev, overtimeRateCents: e.target.value })),
+                  placeholder: "2250 for $22.50",
+                  className: "h-11 border-gray-300 focus:border-blue-500 focus:ring-blue-500"
+                }
+              )
+            ] })
+          ] })
+        ] }),
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "space-y-4", children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx("h3", { className: "text-lg font-semibold text-gray-900 border-b pb-2", children: "Performance & Settings" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "grid grid-cols-1 sm:grid-cols-2 gap-4", children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "space-y-2", children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsx(Label, { htmlFor: "editPerformanceRating", className: "text-sm font-medium text-gray-700", children: "Performance Rating (0-5)" }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx(
+                Input,
+                {
+                  id: "editPerformanceRating",
+                  type: "number",
+                  min: "0",
+                  max: "5",
+                  step: "0.1",
+                  value: editStaffForm.performanceRating,
+                  onChange: (e) => setEditStaffForm((prev) => ({ ...prev, performanceRating: e.target.value })),
+                  placeholder: "4.5",
+                  className: "h-11 border-gray-300 focus:border-blue-500 focus:ring-blue-500"
+                }
+              )
+            ] }),
+            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "space-y-2", children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsx(Label, { htmlFor: "editMaxOvertimeHours", className: "text-sm font-medium text-gray-700", children: "Max Overtime Hours" }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx(
+                Input,
+                {
+                  id: "editMaxOvertimeHours",
+                  type: "number",
+                  min: "0",
+                  step: "0.5",
+                  value: editStaffForm.maxOvertimeHours,
+                  onChange: (e) => setEditStaffForm((prev) => ({ ...prev, maxOvertimeHours: e.target.value })),
+                  placeholder: "10",
+                  className: "h-11 border-gray-300 focus:border-blue-500 focus:ring-blue-500"
+                }
+              )
+            ] })
+          ] }),
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "grid grid-cols-1 sm:grid-cols-2 gap-4", children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "space-y-2", children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsx(Label, { htmlFor: "editLeaveBalance", className: "text-sm font-medium text-gray-700", children: "Leave Balance (days)" }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx(
+                Input,
+                {
+                  id: "editLeaveBalance",
+                  type: "number",
+                  min: "0",
+                  value: editStaffForm.leaveBalance,
+                  onChange: (e) => setEditStaffForm((prev) => ({ ...prev, leaveBalance: e.target.value })),
+                  placeholder: "20",
+                  className: "h-11 border-gray-300 focus:border-blue-500 focus:ring-blue-500"
+                }
+              )
+            ] }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "space-y-2", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center space-x-2 pt-8", children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsx(
+                "input",
+                {
+                  type: "checkbox",
+                  id: "editAttendanceTracking",
+                  checked: editStaffForm.attendanceTrackingEnabled,
+                  onChange: (e) => setEditStaffForm((prev) => ({ ...prev, attendanceTrackingEnabled: e.target.checked })),
+                  className: "h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                }
+              ),
+              /* @__PURE__ */ jsxRuntimeExports.jsx(Label, { htmlFor: "editAttendanceTracking", className: "text-sm font-medium text-gray-700", children: "Enable Attendance Tracking" })
+            ] }) })
+          ] })
+        ] }),
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "space-y-2", children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx(Label, { htmlFor: "editNotes", className: "text-sm font-medium text-gray-700", children: "Notes" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(
+            Textarea,
+            {
+              id: "editNotes",
+              value: editStaffForm.notes,
+              onChange: (e) => setEditStaffForm((prev) => ({ ...prev, notes: e.target.value })),
+              placeholder: "Additional notes about this staff member",
+              className: "border-gray-300 focus:border-blue-500 focus:ring-blue-500",
+              rows: 3
+            }
+          )
+        ] })
+      ] }) }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx(DialogFooter, { className: "border-t pt-4 mt-6 bg-gray-50 -mx-6 -mb-6 px-6 py-4", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center justify-between w-full", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx(
+          Button,
+          {
+            variant: "outline",
+            onClick: () => setIsEditStaffDialogOpen(false),
+            className: "transition-all duration-200 hover:scale-105 hover:shadow-md",
+            children: "Cancel"
+          }
+        ),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(
+          Button,
+          {
+            onClick: () => updateStaffMutation.mutate(editStaffForm),
+            disabled: updateStaffMutation.isPending || !editStaffForm.department,
+            className: "bg-blue-600 hover:bg-blue-700 transition-all duration-200 hover:scale-105 hover:shadow-md",
+            children: updateStaffMutation.isPending ? /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsx(RefreshCw, { className: "mr-2 h-4 w-4 animate-spin" }),
+              "Updating..."
+            ] }) : /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsx(SquarePen, { className: "mr-2 h-4 w-4" }),
+              "Update Staff Member"
             ] })
           }
         )
@@ -44529,7 +46789,7 @@ function AvatarFallback({
   );
 }
 function UsersPage() {
-  const { user, getAuthenticatedBackend: getAuthenticatedBackend2 } = useAuth();
+  const { user, getAuthenticatedBackend: getAuthenticatedBackend2, refreshUser } = useAuth();
   const { setPageTitle } = usePageTitle();
   const { toast: toast2 } = useToast();
   const queryClient2 = useQueryClient();
@@ -44544,6 +46804,8 @@ function UsersPage() {
   const [userToPromote, setUserToPromote] = reactExports.useState(null);
   const [isDemoteDialogOpen, setIsDemoteDialogOpen] = reactExports.useState(false);
   const [userToDemote, setUserToDemote] = reactExports.useState(null);
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = reactExports.useState(false);
+  const [userToDelete, setUserToDelete] = reactExports.useState(null);
   const [newUser, setNewUser] = reactExports.useState({
     email: "",
     password: "",
@@ -44717,8 +46979,18 @@ function UsersPage() {
         description: errorMessage
       });
     },
-    onSuccess: () => {
-      console.log("User updated successfully");
+    onSuccess: (data, variables) => {
+      console.log("✅ User updated successfully");
+      console.log("🔍 Checking if current user updated their own profile...");
+      console.log("Current user ID:", user == null ? void 0 : user.userID, "Updated user ID:", variables.id);
+      if (user && parseInt(user.userID) === variables.id) {
+        console.log("🎯 Current user updated their own profile, refreshing AuthContext...");
+        refreshUser().catch((error) => {
+          console.warn("❌ Failed to refresh current user data:", error);
+        });
+      } else {
+        console.log("ℹ️ Different user updated, no need to refresh AuthContext");
+      }
       toast2({
         title: "User updated",
         description: "Manager details have been updated."
@@ -44810,6 +47082,55 @@ function UsersPage() {
     },
     onSettled: () => {
       console.log("Role demotion mutation settled, invalidating queries...");
+      refetchUsers();
+    }
+  });
+  const deleteUserMutation = useMutation({
+    mutationFn: async (userId) => {
+      console.log("Deleting user:", userId);
+      if (typeof userId !== "number" || isNaN(userId)) {
+        throw new Error(`Invalid user ID: ${userId} (type: ${typeof userId})`);
+      }
+      const token = localStorage.getItem("accessToken");
+      if (!token) {
+        throw new Error("No access token found");
+      }
+      const response = await fetch(`http://localhost:4000/users/${userId}`, {
+        method: "DELETE",
+        headers: {
+          "Authorization": `Bearer ${token}`,
+          "Content-Type": "application/json"
+        }
+      });
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.message || `Failed to delete user: ${response.statusText}`);
+      }
+      return await response.json();
+    },
+    onError: (error) => {
+      console.error("User deletion failed:", error);
+      let errorMessage = "Please try again.";
+      if (error.message && error.message.includes("Cannot delete your own account")) {
+        errorMessage = "You cannot delete your own account.";
+      } else if (error.message) {
+        errorMessage = error.message;
+      }
+      toast2({
+        variant: "destructive",
+        title: "Failed to delete user",
+        description: errorMessage
+      });
+    },
+    onSuccess: (result) => {
+      console.log("User deleted successfully:", result);
+      toast2({
+        title: "User deleted",
+        description: result.message || "User has been successfully deleted."
+      });
+    },
+    onSettled: () => {
+      console.log("User deletion mutation settled, invalidating queries...");
       refetchUsers();
     }
   });
@@ -44958,6 +47279,39 @@ function UsersPage() {
       setUserToDemote(null);
     }
   };
+  const handleDeleteUser = (user2) => {
+    console.log("Handling deletion for user:", user2);
+    console.log("User ID type:", typeof user2.id, "Value:", user2.id);
+    if (!user2 || typeof user2.id !== "number" || isNaN(user2.id)) {
+      console.error("Invalid user object for deletion:", user2);
+      toast2({
+        variant: "destructive",
+        title: "Invalid User Data",
+        description: "Cannot delete user with invalid data. Please refresh and try again."
+      });
+      return;
+    }
+    setUserToDelete(user2);
+    setIsDeleteDialogOpen(true);
+  };
+  const confirmDeleteUser = () => {
+    if (userToDelete) {
+      console.log("Confirming deletion for user:", userToDelete);
+      console.log("User ID type:", typeof userToDelete.id, "Value:", userToDelete.id);
+      if (typeof userToDelete.id !== "number" || isNaN(userToDelete.id)) {
+        console.error("Invalid user ID for deletion:", userToDelete.id);
+        toast2({
+          variant: "destructive",
+          title: "Invalid User ID",
+          description: "Cannot delete user with invalid ID. Please refresh and try again."
+        });
+        return;
+      }
+      deleteUserMutation.mutate(userToDelete.id);
+      setIsDeleteDialogOpen(false);
+      setUserToDelete(null);
+    }
+  };
   if ((user == null ? void 0 : user.role) !== "ADMIN") {
     return /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "min-h-screen bg-gray-50", children: /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "px-6 py-6", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Card, { className: "border-l-4 border-l-red-500 shadow-sm", children: /* @__PURE__ */ jsxRuntimeExports.jsx(CardContent, { className: "flex items-center justify-center p-12", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "text-center", children: [
       /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "w-12 h-12 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Shield, { className: "h-6 w-6 text-red-600" }) }),
@@ -44982,7 +47336,25 @@ function UsersPage() {
             /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded-full font-medium", children: "Live" })
           ] }),
           /* @__PURE__ */ jsxRuntimeExports.jsx(CardDescription, { className: "text-sm text-gray-600", children: "Manage team members and their roles" })
-        ] })
+        ] }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "ml-auto", children: /* @__PURE__ */ jsxRuntimeExports.jsxs(
+          Button,
+          {
+            variant: "outline",
+            size: "sm",
+            onClick: () => {
+              console.log("🔄 Manual refresh triggered...");
+              refreshUser().catch((error) => {
+                console.warn("❌ Manual refresh failed:", error);
+              });
+            },
+            className: "transition-all duration-200 hover:scale-105 hover:shadow-md",
+            children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsx(RefreshCw, { className: "h-4 w-4 mr-2" }),
+              "Refresh User Data"
+            ]
+          }
+        ) })
       ] }) }),
       /* @__PURE__ */ jsxRuntimeExports.jsxs(CardContent, { className: "space-y-6", children: [
         /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "grid grid-cols-1 sm:grid-cols-2 gap-4", children: [
@@ -45297,7 +47669,23 @@ function UsersPage() {
                   /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "sm:hidden", children: "Edit" })
                 ]
               }
-            )
+            ),
+            u.id !== parseInt((user == null ? void 0 : user.userID) || "0") && /* @__PURE__ */ jsxRuntimeExports.jsxs(
+              Button,
+              {
+                variant: "outline",
+                size: "sm",
+                onClick: () => handleDeleteUser(u),
+                disabled: deleteUserMutation.isPending,
+                className: "bg-red-50 text-red-700 border-red-200 hover:bg-red-100 transition-all duration-200 hover:scale-105 hover:shadow-md flex-shrink-0",
+                children: [
+                  /* @__PURE__ */ jsxRuntimeExports.jsx(Trash2, { className: "mr-2 h-4 w-4" }),
+                  /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "hidden sm:inline", children: "Delete" }),
+                  /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "sm:hidden", children: "Delete" })
+                ]
+              }
+            ),
+            u.id === parseInt((user == null ? void 0 : user.userID) || "0") && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "text-xs text-gray-500 italic px-2 py-1 bg-gray-100 rounded", children: "Current user (cannot delete)" })
           ] })
         ] })
       ] }, u.id);
@@ -45564,6 +47952,69 @@ function UsersPage() {
           }
         )
       ] }) })
+    ] }) }),
+    /* @__PURE__ */ jsxRuntimeExports.jsx(Dialog, { open: isDeleteDialogOpen, onOpenChange: setIsDeleteDialogOpen, children: /* @__PURE__ */ jsxRuntimeExports.jsxs(DialogContent, { className: "max-w-2xl max-h-[95vh] overflow-hidden flex flex-col", children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsxs(DialogHeader, { className: "pb-4", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsxs(DialogTitle, { className: "text-xl font-bold text-gray-900 flex items-center gap-2", children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "p-2 bg-red-100 rounded-lg shadow-sm", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Trash2, { className: "h-5 w-5 text-red-600" }) }),
+          "Delete User"
+        ] }),
+        /* @__PURE__ */ jsxRuntimeExports.jsxs(DialogDescription, { className: "text-sm text-gray-600", children: [
+          "Are you sure you want to delete ",
+          /* @__PURE__ */ jsxRuntimeExports.jsx("strong", { children: userToDelete == null ? void 0 : userToDelete.displayName }),
+          "? This action cannot be undone."
+        ] })
+      ] }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "flex-1 overflow-y-auto px-1", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "space-y-4", children: [
+        userToDelete && parseInt((user == null ? void 0 : user.userID) || "0") === userToDelete.id && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "p-4 bg-red-50 border border-red-200 rounded-lg", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-start gap-3", children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx(CircleAlert, { className: "h-5 w-5 text-red-600 mt-0.5" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "text-sm text-red-800", children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "font-medium", children: "⚠️ Warning: This is your own account" }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx("p", { children: "You cannot delete your own account. Ask another admin to do this for you." })
+          ] })
+        ] }) }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "p-4 bg-red-50 border border-red-200 rounded-lg", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-start gap-3", children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx(Trash2, { className: "h-5 w-5 text-red-600 mt-0.5" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "text-sm text-red-800", children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "font-medium mb-1", children: "⚠️ This will permanently delete:" }),
+            /* @__PURE__ */ jsxRuntimeExports.jsxs("ul", { className: "list-disc list-inside space-y-1", children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsx("li", { children: "User account and all login sessions" }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx("li", { children: "All tasks created by this user" }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx("li", { children: "All expenses and revenues created by this user" }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx("li", { children: "All staff records associated with this user" }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx("li", { children: "All property assignments for this user" }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx("li", { children: "All related data and history" })
+            ] }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "font-medium mt-2 text-red-900", children: "This action cannot be undone!" })
+          ] })
+        ] }) })
+      ] }) }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx(DialogFooter, { className: "border-t pt-4 mt-6 bg-gray-50 -mx-6 -mb-6 px-6 py-4", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center justify-between w-full", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx(
+          Button,
+          {
+            variant: "outline",
+            onClick: () => setIsDeleteDialogOpen(false),
+            className: "transition-all duration-200 hover:scale-105 hover:shadow-md",
+            children: "Cancel"
+          }
+        ),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(
+          Button,
+          {
+            onClick: confirmDeleteUser,
+            disabled: deleteUserMutation.isPending,
+            className: "bg-red-600 hover:bg-red-700 transition-all duration-200 hover:scale-105 hover:shadow-md",
+            children: deleteUserMutation.isPending ? /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsx(RefreshCw, { className: "mr-2 h-4 w-4 animate-spin" }),
+              "Deleting..."
+            ] }) : /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsx(Trash2, { className: "mr-2 h-4 w-4" }),
+              "Delete User"
+            ] })
+          }
+        )
+      ] }) })
     ] }) })
   ] }) });
 }
@@ -45818,9 +48269,15 @@ function SettingsPage() {
   const { toast: toast2 } = useToast();
   const navigate = useNavigate();
   const fileInputRef = reactExports.useRef(null);
+  const { markEssentialStepCompleted } = useWelcomePopup();
   reactExports.useEffect(() => {
     setPageTitle("Settings", "Configure your application preferences and branding");
   }, [setPageTitle]);
+  reactExports.useEffect(() => {
+    if ((user == null ? void 0 : user.role) === "ADMIN") {
+      markEssentialStepCompleted("setup-organization");
+    }
+  }, [user == null ? void 0 : user.role, markEssentialStepCompleted]);
   const [themeForm, setThemeForm] = reactExports.useState({
     brandName: theme.brandName,
     logoUrl: theme.logoUrl || "",
@@ -46041,32 +48498,41 @@ function SettingsPage() {
       /* @__PURE__ */ jsxRuntimeExports.jsx(CardDescription, { className: "text-sm text-gray-600", children: "Manage your organization settings and branding" })
     ] }) }),
     /* @__PURE__ */ jsxRuntimeExports.jsxs(Tabs, { defaultValue: "branding", className: "space-y-6", children: [
-      /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "sticky top-20 z-30 bg-white border-b border-gray-200 -mx-6 px-4 sm:px-6 py-3 shadow-sm mb-6", children: /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "overflow-x-auto", children: /* @__PURE__ */ jsxRuntimeExports.jsxs(TabsList, { className: "grid w-full grid-cols-3 min-w-max bg-gray-100", children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsx(
+      /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "sticky top-20 z-30 bg-gradient-to-br from-orange-500 via-orange-600 to-orange-700 border-b-2 border-orange-400 -mx-6 px-4 py-3 shadow-2xl rounded-b-xl mb-6", children: /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "overflow-x-auto", children: /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "bg-white/10 backdrop-blur-sm rounded-lg p-1 border border-white/20 shadow-inner", children: /* @__PURE__ */ jsxRuntimeExports.jsxs(TabsList, { className: "grid w-full grid-cols-3 min-w-max bg-transparent h-auto p-0 gap-2", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsxs(
           TabsTrigger,
           {
             value: "branding",
-            className: "text-xs sm:text-sm px-3 sm:px-6 py-2 data-[state=active]:bg-white data-[state=active]:shadow-sm transition-all duration-200",
-            children: "Branding"
+            className: "text-xs sm:text-sm px-4 sm:px-8 py-4 data-[state=active]:bg-white data-[state=active]:text-orange-600 data-[state=active]:shadow-xl data-[state=active]:border-2 data-[state=active]:border-orange-300 data-[state=inactive]:text-white data-[state=inactive]:bg-gradient-to-r data-[state=inactive]:from-orange-500/30 data-[state=inactive]:to-orange-600/30 data-[state=inactive]:hover:from-orange-500/50 data-[state=inactive]:hover:to-orange-600/50 data-[state=inactive]:hover:shadow-lg data-[state=inactive]:border data-[state=inactive]:border-white/30 transition-all duration-500 flex items-center gap-2 rounded-xl font-semibold relative overflow-hidden group",
+            children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "absolute inset-0 bg-gradient-to-r from-white/0 via-white/10 to-white/0 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700" }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "relative z-10", children: "Branding" })
+            ]
           }
         ),
-        /* @__PURE__ */ jsxRuntimeExports.jsx(
+        /* @__PURE__ */ jsxRuntimeExports.jsxs(
           TabsTrigger,
           {
             value: "organization",
-            className: "text-xs sm:text-sm px-3 sm:px-6 py-2 data-[state=active]:bg-white data-[state=active]:shadow-sm transition-all duration-200",
-            children: "Organization"
+            className: "text-xs sm:text-sm px-4 sm:px-8 py-4 data-[state=active]:bg-white data-[state=active]:text-orange-600 data-[state=active]:shadow-xl data-[state=active]:border-2 data-[state=active]:border-orange-300 data-[state=inactive]:text-white data-[state=inactive]:bg-gradient-to-r data-[state=inactive]:from-orange-500/30 data-[state=inactive]:to-orange-600/30 data-[state=inactive]:hover:from-orange-500/50 data-[state=inactive]:hover:to-orange-600/50 data-[state=inactive]:hover:shadow-lg data-[state=inactive]:border data-[state=inactive]:border-white/30 transition-all duration-500 flex items-center gap-2 rounded-xl font-semibold relative overflow-hidden group",
+            children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "absolute inset-0 bg-gradient-to-r from-white/0 via-white/10 to-white/0 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700" }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "relative z-10", children: "Organization" })
+            ]
           }
         ),
-        /* @__PURE__ */ jsxRuntimeExports.jsx(
+        /* @__PURE__ */ jsxRuntimeExports.jsxs(
           TabsTrigger,
           {
             value: "integrations",
-            className: "text-xs sm:text-sm px-3 sm:px-6 py-2 data-[state=active]:bg-white data-[state=active]:shadow-sm transition-all duration-200",
-            children: "Integrations"
+            className: "text-xs sm:text-sm px-4 sm:px-8 py-4 data-[state=active]:bg-white data-[state=active]:text-orange-600 data-[state=active]:shadow-xl data-[state=active]:border-2 data-[state=active]:border-orange-300 data-[state=inactive]:text-white data-[state=inactive]:bg-gradient-to-r data-[state=inactive]:from-orange-500/30 data-[state=inactive]:to-orange-600/30 data-[state=inactive]:hover:from-orange-500/50 data-[state=inactive]:hover:to-orange-600/50 data-[state=inactive]:hover:shadow-lg data-[state=inactive]:border data-[state=inactive]:border-white/30 transition-all duration-500 flex items-center gap-2 rounded-xl font-semibold relative overflow-hidden group",
+            children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "absolute inset-0 bg-gradient-to-r from-white/0 via-white/10 to-white/0 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700" }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "relative z-10", children: "Integrations" })
+            ]
           }
         )
-      ] }) }) }),
+      ] }) }) }) }),
       /* @__PURE__ */ jsxRuntimeExports.jsx(TabsContent, { value: "branding", className: "space-y-6 mt-0", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("form", { onSubmit: handleThemeSubmit, className: "space-y-6", children: [
         /* @__PURE__ */ jsxRuntimeExports.jsxs(Card, { className: "border-l-4 border-l-purple-500 shadow-sm hover:shadow-md transition-shadow duration-200", children: [
           /* @__PURE__ */ jsxRuntimeExports.jsxs(CardHeader, { className: "pb-4", children: [
@@ -46719,141 +49185,6 @@ function LogoutProgress({ isOpen, onComplete, onCancel }) {
       ] }) }) })
     ] })
   ] }) });
-}
-function useWelcomePopup() {
-  var _a2, _b2, _c2, _d2;
-  const { user, getAuthenticatedBackend: getAuthenticatedBackend2 } = useAuth();
-  const [showWelcomePopup, setShowWelcomePopup] = reactExports.useState(false);
-  const [hasShownWelcome, setHasShownWelcome] = reactExports.useState(false);
-  const { data: properties2 } = useQuery({
-    queryKey: ["properties"],
-    queryFn: async () => {
-      const backend2 = getAuthenticatedBackend2();
-      return backend2.properties.list({});
-    },
-    enabled: !!user
-  });
-  const { data: tasks2 } = useQuery({
-    queryKey: ["tasks"],
-    queryFn: async () => {
-      const backend2 = getAuthenticatedBackend2();
-      return backend2.tasks.list({});
-    },
-    enabled: !!user
-  });
-  const { data: expenses } = useQuery({
-    queryKey: ["expenses"],
-    queryFn: async () => {
-      const backend2 = getAuthenticatedBackend2();
-      const now2 = /* @__PURE__ */ new Date();
-      const startDate = new Date(now2.getFullYear(), now2.getMonth(), 1);
-      const endDate = new Date(now2.getFullYear(), now2.getMonth() + 1, 0);
-      return backend2.finance.listExpenses({
-        startDate: startDate.toISOString().split("T")[0],
-        endDate: endDate.toISOString().split("T")[0]
-      });
-    },
-    enabled: !!user && user.role === "ADMIN"
-  });
-  const { data: revenues } = useQuery({
-    queryKey: ["revenues"],
-    queryFn: async () => {
-      const backend2 = getAuthenticatedBackend2();
-      const now2 = /* @__PURE__ */ new Date();
-      const startDate = new Date(now2.getFullYear(), now2.getMonth(), 1);
-      const endDate = new Date(now2.getFullYear(), now2.getMonth() + 1, 0);
-      return backend2.finance.listRevenues({
-        startDate: startDate.toISOString().split("T")[0],
-        endDate: endDate.toISOString().split("T")[0]
-      });
-    },
-    enabled: !!user && user.role === "ADMIN"
-  });
-  const { data: leaveRequests } = useQuery({
-    queryKey: ["leave-requests"],
-    queryFn: async () => {
-      const backend2 = getAuthenticatedBackend2();
-      return backend2.staff.listLeaveRequests({});
-    },
-    enabled: !!user
-  });
-  const dashboardData = {
-    pendingApprovals: (() => {
-      var _a3, _b3, _c3;
-      const pendingExpenses = ((_a3 = expenses == null ? void 0 : expenses.expenses) == null ? void 0 : _a3.filter(
-        (expense) => expense.status === "pending"
-      )) || [];
-      const pendingRevenues = ((_b3 = revenues == null ? void 0 : revenues.revenues) == null ? void 0 : _b3.filter(
-        (revenue) => revenue.status === "pending"
-      )) || [];
-      const pendingLeaveRequests = ((_c3 = leaveRequests == null ? void 0 : leaveRequests.leaveRequests) == null ? void 0 : _c3.filter(
-        (leave) => leave.status === "pending"
-      )) || [];
-      return pendingExpenses.length + pendingRevenues.length + pendingLeaveRequests.length;
-    })(),
-    urgentTasks: ((_a2 = tasks2 == null ? void 0 : tasks2.tasks) == null ? void 0 : _a2.filter(
-      (task) => task.priority === "high" && task.status !== "done"
-    ).length) || 0,
-    overdueTasks: ((_b2 = tasks2 == null ? void 0 : tasks2.tasks) == null ? void 0 : _b2.filter(
-      (task) => task.dueAt && new Date(task.dueAt) < /* @__PURE__ */ new Date() && task.status !== "done"
-    ).length) || 0,
-    financialPending: (() => {
-      var _a3, _b3;
-      const pendingExpenses = ((_a3 = expenses == null ? void 0 : expenses.expenses) == null ? void 0 : _a3.filter(
-        (expense) => expense.status === "pending"
-      )) || [];
-      const pendingRevenues = ((_b3 = revenues == null ? void 0 : revenues.revenues) == null ? void 0 : _b3.filter(
-        (revenue) => revenue.status === "pending"
-      )) || [];
-      return pendingExpenses.length + pendingRevenues.length;
-    })(),
-    activeProperties: ((_c2 = properties2 == null ? void 0 : properties2.properties) == null ? void 0 : _c2.length) || 0,
-    activeTasks: ((_d2 = tasks2 == null ? void 0 : tasks2.tasks) == null ? void 0 : _d2.filter((task) => task.status !== "done").length) || 0
-  };
-  const userData = {
-    name: (user == null ? void 0 : user.displayName) || "User",
-    role: (user == null ? void 0 : user.role) || "USER",
-    hasProperties: ((properties2 == null ? void 0 : properties2.properties.length) || 0) > 0,
-    propertyCount: (properties2 == null ? void 0 : properties2.properties.length) || 0
-  };
-  reactExports.useEffect(() => {
-    console.log("Welcome popup effect:", { user: !!user, hasShownWelcome, showWelcomePopup });
-    if (user && !hasShownWelcome) {
-      console.log("Showing welcome popup...");
-      const timer = setTimeout(() => {
-        console.log("Setting welcome popup to true");
-        setShowWelcomePopup(true);
-        setHasShownWelcome(true);
-      }, 100);
-      return () => clearTimeout(timer);
-    }
-  }, [user, hasShownWelcome]);
-  reactExports.useEffect(() => {
-    if (!user) {
-      setShowWelcomePopup(false);
-      setHasShownWelcome(false);
-    }
-  }, [user]);
-  const closeWelcomePopup = reactExports.useCallback(() => {
-    setShowWelcomePopup(false);
-  }, []);
-  const resetWelcomePopup = reactExports.useCallback(() => {
-    setHasShownWelcome(false);
-    setShowWelcomePopup(false);
-    setTimeout(() => {
-      setShowWelcomePopup(true);
-      setHasShownWelcome(true);
-    }, 100);
-  }, []);
-  return {
-    showWelcomePopup,
-    closeWelcomePopup,
-    resetWelcomePopup,
-    dashboardData,
-    userData,
-    isLoading: false
-    // Don't block popup on data loading
-  };
 }
 const LayoutGroupContext = reactExports.createContext({});
 function useConstant(init) {
@@ -50334,10 +52665,10 @@ function makeLatestValues(props, context, presenceContext, scrapeMotionValues) {
   }
   return values;
 }
-const makeUseVisualState = (config) => (props, isStatic) => {
+const makeUseVisualState = (config2) => (props, isStatic) => {
   const context = reactExports.useContext(MotionContext);
   const presenceContext = reactExports.useContext(PresenceContext);
-  const make = () => makeState(config, props, context, presenceContext);
+  const make = () => makeState(config2, props, context, presenceContext);
   return isStatic ? make() : useConstant(make);
 };
 function scrapeMotionValuesFromProps$1(props, prevProps, visualElement) {
@@ -53679,10 +56010,10 @@ function createProjectionNode({ attachResizeListener, defaultParent, measureScro
       }
       const stack = this.sharedNodes.get(layoutId);
       stack.add(node);
-      const config = node.options.initialPromotionConfig;
+      const config2 = node.options.initialPromotionConfig;
       node.promote({
-        transition: config ? config.transition : void 0,
-        preserveFollowOpacity: config && config.shouldPreserveFollowOpacity ? config.shouldPreserveFollowOpacity(node) : void 0
+        transition: config2 ? config2.transition : void 0,
+        preserveFollowOpacity: config2 && config2.shouldPreserveFollowOpacity ? config2.shouldPreserveFollowOpacity(node) : void 0
       });
     }
     isLead() {
@@ -54218,7 +56549,7 @@ const featureBundle = {
   ...layout
 };
 const motion = /* @__PURE__ */ createMotionProxy(featureBundle, createDomVisualElement);
-function WelcomePopup({ isOpen, onClose, userData, dashboardData }) {
+function WelcomePopup({ isOpen, onClose, userData, dashboardData, onboardingSteps, markStepCompleted }) {
   const { user } = useAuth();
   const { theme } = useTheme();
   const navigate = useNavigate();
@@ -54379,14 +56710,14 @@ function WelcomePopup({ isOpen, onClose, userData, dashboardData }) {
     return actions;
   };
   const importantItems = getImportantItems();
-  const onboardingActions = getOnboardingActions();
+  getOnboardingActions();
   return /* @__PURE__ */ jsxRuntimeExports.jsx(AnimatePresence, { children: isOpen && /* @__PURE__ */ jsxRuntimeExports.jsx(
     motion.div,
     {
       initial: { opacity: 0 },
       animate: { opacity: 1 },
       exit: { opacity: 0 },
-      className: "fixed inset-0 bg-black bg-opacity-60 backdrop-blur-sm flex items-center justify-center z-50 p-4",
+      className: "fixed inset-0 bg-black bg-opacity-60 backdrop-blur-sm flex items-center justify-center z-50 p-2 sm:p-4",
       onClick: (e) => {
         if (e.target === e.currentTarget) {
           onClose();
@@ -54399,10 +56730,10 @@ function WelcomePopup({ isOpen, onClose, userData, dashboardData }) {
           animate: { scale: 1, opacity: 1, y: 0 },
           exit: { scale: 0.95, opacity: 0, y: 10 },
           transition: { type: "spring", duration: 0.3, bounce: 0.1 },
-          className: "bg-white rounded-3xl shadow-2xl max-w-lg w-full mx-4 ring-1 ring-black ring-opacity-5",
+          className: "bg-white rounded-2xl sm:rounded-3xl shadow-2xl max-w-lg w-full max-h-[95vh] sm:max-h-[90vh] overflow-hidden ring-1 ring-black ring-opacity-5",
           onClick: (e) => e.stopPropagation(),
           children: [
-            /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "relative p-6 pb-4", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-start justify-between", children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "relative p-4 sm:p-6 pb-3 sm:pb-4", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-start justify-between", children: [
               /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex-1", children: [
                 /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center gap-3 mb-3", children: [
                   /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "w-12 h-12 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white text-xl font-bold", children: ((userData == null ? void 0 : userData.name) || (user == null ? void 0 : user.displayName) || "U").charAt(0).toUpperCase() }),
@@ -54436,8 +56767,77 @@ function WelcomePopup({ isOpen, onClose, userData, dashboardData }) {
                 }
               )
             ] }) }),
-            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "px-6 pb-4", children: [
-              importantItems.length > 0 && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mb-6", children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "px-4 sm:px-6 pb-4 overflow-y-auto max-h-[calc(95vh-180px)] sm:max-h-[calc(90vh-200px)]", children: [
+              (userData == null ? void 0 : userData.isNewUser) && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "mb-4 sm:mb-6 p-3 sm:p-4 bg-gradient-to-r from-blue-50 to-purple-50 rounded-xl border border-blue-200", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-start gap-3", children: [
+                /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "text-2xl", children: "🎉" }),
+                /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex-1", children: [
+                  /* @__PURE__ */ jsxRuntimeExports.jsx("h3", { className: "text-lg font-bold text-gray-900 mb-1", children: "Welcome to Your Hospitality Management Platform!" }),
+                  /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-sm text-gray-600 mb-3", children: "Let's get you set up in just a few steps. This will help you manage your properties, staff, and operations efficiently." }),
+                  /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center gap-2 text-xs text-blue-600", children: [
+                    /* @__PURE__ */ jsxRuntimeExports.jsx(Clock, { className: "h-3 w-3" }),
+                    /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { children: [
+                      "Account created ",
+                      userData.accountAge === 0 ? "today" : `${userData.accountAge} day${userData.accountAge === 1 ? "" : "s"} ago`
+                    ] })
+                  ] })
+                ] })
+              ] }) }),
+              (userData == null ? void 0 : userData.isNewUser) && onboardingSteps && onboardingSteps.length > 0 && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mb-4 sm:mb-6", children: [
+                /* @__PURE__ */ jsxRuntimeExports.jsxs("h3", { className: "text-sm font-semibold text-gray-700 mb-2 sm:mb-3 flex items-center gap-2", children: [
+                  /* @__PURE__ */ jsxRuntimeExports.jsx(SquareCheckBig, { className: "h-4 w-4", style: { color: theme.primaryColor } }),
+                  "Getting Started Checklist"
+                ] }),
+                /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "space-y-2", children: onboardingSteps.map((step, index2) => /* @__PURE__ */ jsxRuntimeExports.jsxs(
+                  "div",
+                  {
+                    className: `flex items-center gap-2 sm:gap-3 p-2 sm:p-3 rounded-xl border transition-all duration-200 cursor-pointer hover:shadow-md ${step.completed ? "border-green-200 bg-green-50 hover:bg-green-100" : step.required ? "border-blue-200 bg-blue-50 hover:bg-blue-100" : "border-gray-200 bg-gray-50 hover:bg-gray-100"}`,
+                    onClick: () => {
+                      navigate(step.action.route);
+                      if (markStepCompleted && !step.completed) {
+                        markStepCompleted(step.id);
+                      }
+                      onClose();
+                    },
+                    children: [
+                      /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "flex-shrink-0", children: step.completed ? /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "w-6 h-6 bg-green-500 rounded-full flex items-center justify-center", children: /* @__PURE__ */ jsxRuntimeExports.jsx(CircleCheckBig, { className: "h-4 w-4 text-white" }) }) : /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: `w-6 h-6 rounded-full flex items-center justify-center text-sm ${step.required ? "bg-blue-500 text-white" : "bg-gray-300 text-gray-600"}`, children: index2 + 1 }) }),
+                      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex-1", children: [
+                        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center gap-2", children: [
+                          /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-lg", children: step.icon }),
+                          /* @__PURE__ */ jsxRuntimeExports.jsx("h4", { className: `font-medium text-sm ${step.completed ? "text-green-900" : "text-gray-900"}`, children: step.title }),
+                          step.required && !step.completed && /* @__PURE__ */ jsxRuntimeExports.jsx(Badge, { variant: "outline", className: "text-xs bg-orange-100 text-orange-700 border-orange-200", children: "Required" })
+                        ] }),
+                        /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: `text-xs ${step.completed ? "text-green-700" : "text-gray-600"}`, children: step.description })
+                      ] }),
+                      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center gap-1 text-xs font-medium", style: { color: theme.primaryColor }, children: [
+                        step.action.label,
+                        /* @__PURE__ */ jsxRuntimeExports.jsx(ArrowRight, { className: "h-3 w-3" })
+                      ] })
+                    ]
+                  },
+                  step.id
+                )) }),
+                /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mt-3 sm:mt-4", children: [
+                  /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center justify-between text-xs text-gray-600 mb-2", children: [
+                    /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: "Setup Progress" }),
+                    /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { children: [
+                      onboardingSteps.filter((s) => s.completed).length,
+                      " of ",
+                      onboardingSteps.length,
+                      " completed"
+                    ] })
+                  ] }),
+                  /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "w-full bg-gray-200 rounded-full h-2", children: /* @__PURE__ */ jsxRuntimeExports.jsx(
+                    "div",
+                    {
+                      className: "bg-gradient-to-r from-blue-500 to-purple-500 h-2 rounded-full transition-all duration-300",
+                      style: {
+                        width: `${onboardingSteps.filter((s) => s.completed).length / onboardingSteps.length * 100}%`
+                      }
+                    }
+                  ) })
+                ] })
+              ] }),
+              !(userData == null ? void 0 : userData.isNewUser) && importantItems.length > 0 && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mb-6", children: [
                 /* @__PURE__ */ jsxRuntimeExports.jsxs("h3", { className: "text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2", children: [
                   /* @__PURE__ */ jsxRuntimeExports.jsx(TrendingUp, { className: "h-4 w-4", style: { color: theme.primaryColor } }),
                   "Today's Priorities"
@@ -54470,71 +56870,7 @@ function WelcomePopup({ isOpen, onClose, userData, dashboardData }) {
                   );
                 }) })
               ] }),
-              onboardingActions && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mb-6", children: [
-                /* @__PURE__ */ jsxRuntimeExports.jsxs("h3", { className: "text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2", children: [
-                  /* @__PURE__ */ jsxRuntimeExports.jsx(Building2, { className: "h-4 w-4", style: { color: theme.primaryColor } }),
-                  "Quick Start"
-                ] }),
-                /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "grid grid-cols-1 gap-2", children: onboardingActions.slice(0, 2).map((action) => /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center gap-3 p-3 rounded-xl border border-gray-200 hover:border-gray-300 hover:bg-gray-50 transition-colors cursor-pointer", onClick: action.action, children: [
-                  /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "flex-shrink-0", children: action.icon }),
-                  /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex-1", children: [
-                    /* @__PURE__ */ jsxRuntimeExports.jsx("h4", { className: "font-medium text-sm text-gray-900", children: action.title }),
-                    /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-xs text-gray-600", children: action.description })
-                  ] }),
-                  /* @__PURE__ */ jsxRuntimeExports.jsx(ArrowRight, { className: "h-4 w-4 text-gray-400" })
-                ] }, action.id)) })
-              ] }),
-              !onboardingActions && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mb-6", children: [
-                /* @__PURE__ */ jsxRuntimeExports.jsxs("h3", { className: "text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2", children: [
-                  /* @__PURE__ */ jsxRuntimeExports.jsx(SquareCheckBig, { className: "h-4 w-4", style: { color: theme.primaryColor } }),
-                  "Quick Actions"
-                ] }),
-                /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "grid grid-cols-2 gap-2", children: [
-                  /* @__PURE__ */ jsxRuntimeExports.jsxs(
-                    "div",
-                    {
-                      className: "flex items-center gap-2 p-3 rounded-xl border border-gray-200 hover:border-gray-300 hover:bg-gray-50 transition-colors cursor-pointer",
-                      onClick: () => {
-                        navigate("/tasks");
-                        onClose();
-                      },
-                      children: [
-                        /* @__PURE__ */ jsxRuntimeExports.jsx(SquareCheckBig, { className: "h-4 w-4 text-blue-500" }),
-                        /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-sm font-medium text-gray-900", children: "Tasks" })
-                      ]
-                    }
-                  ),
-                  /* @__PURE__ */ jsxRuntimeExports.jsxs(
-                    "div",
-                    {
-                      className: "flex items-center gap-2 p-3 rounded-xl border border-gray-200 hover:border-gray-300 hover:bg-gray-50 transition-colors cursor-pointer",
-                      onClick: () => {
-                        navigate("/finance");
-                        onClose();
-                      },
-                      children: [
-                        /* @__PURE__ */ jsxRuntimeExports.jsx(TrendingUp, { className: "h-4 w-4 text-green-500" }),
-                        /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-sm font-medium text-gray-900", children: "Finance" })
-                      ]
-                    }
-                  ),
-                  /* @__PURE__ */ jsxRuntimeExports.jsxs(
-                    "div",
-                    {
-                      className: "flex items-center gap-2 p-3 rounded-xl border border-gray-200 hover:border-gray-300 hover:bg-gray-50 transition-colors cursor-pointer",
-                      onClick: () => {
-                        navigate("/reports");
-                        onClose();
-                      },
-                      children: [
-                        /* @__PURE__ */ jsxRuntimeExports.jsx(FileText, { className: "h-4 w-4 text-orange-500" }),
-                        /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-sm font-medium text-gray-900", children: "Reports" })
-                      ]
-                    }
-                  )
-                ] })
-              ] }),
-              /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "grid grid-cols-3 gap-3", children: [
+              !(userData == null ? void 0 : userData.isNewUser) && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "grid grid-cols-3 gap-3", children: [
                 /* @__PURE__ */ jsxRuntimeExports.jsxs(
                   "div",
                   {
@@ -54579,24 +56915,33 @@ function WelcomePopup({ isOpen, onClose, userData, dashboardData }) {
                 )
               ] })
             ] }),
-            /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "px-6 py-4 border-t border-gray-100", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center justify-between", children: [
-              /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-sm text-gray-500", children: "Ready to manage your operations?" }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "px-4 sm:px-6 py-3 sm:py-4 border-t border-gray-100", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center justify-between", children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-sm text-gray-500", children: (userData == null ? void 0 : userData.isNewUser) ? "Ready to get started with your hospitality management?" : "Ready to manage your operations?" }),
               /* @__PURE__ */ jsxRuntimeExports.jsx(
                 Button,
                 {
                   onClick: () => {
-                    if ((dashboardData == null ? void 0 : dashboardData.pendingApprovals) && dashboardData.pendingApprovals > 0) {
-                      navigate("/finance");
-                    } else if ((dashboardData == null ? void 0 : dashboardData.urgentTasks) && dashboardData.urgentTasks > 0) {
-                      navigate("/tasks");
+                    if (userData == null ? void 0 : userData.isNewUser) {
+                      const firstIncompleteStep = onboardingSteps == null ? void 0 : onboardingSteps.find((step) => step.required && !step.completed);
+                      if (firstIncompleteStep) {
+                        navigate(firstIncompleteStep.action.route);
+                      } else {
+                        navigate("/dashboard");
+                      }
                     } else {
-                      navigate("/dashboard");
+                      if ((dashboardData == null ? void 0 : dashboardData.pendingApprovals) && dashboardData.pendingApprovals > 0) {
+                        navigate("/finance");
+                      } else if ((dashboardData == null ? void 0 : dashboardData.urgentTasks) && dashboardData.urgentTasks > 0) {
+                        navigate("/tasks");
+                      } else {
+                        navigate("/dashboard");
+                      }
                     }
                     onClose();
                   },
                   className: "h-8 px-4 text-sm font-medium",
                   style: { backgroundColor: theme.primaryColor },
-                  children: "Let's Go!"
+                  children: (userData == null ? void 0 : userData.isNewUser) ? "Start Setup" : "Let's Go!"
                 }
               )
             ] }) })
@@ -54629,7 +56974,7 @@ function Layout({ children }) {
   const { toast: toast2 } = useToast();
   const location = useLocation();
   const navigate = useNavigate();
-  const { showWelcomePopup, closeWelcomePopup, dashboardData, userData } = useWelcomePopup();
+  const { showWelcomePopup, closeWelcomePopup, dashboardData, userData, onboardingSteps, markStepCompleted } = useWelcomePopup();
   reactExports.useEffect(() => {
   }, [showLogoutProgress, isLoggingOut, user]);
   reactExports.useEffect(() => {
@@ -55086,14 +57431,16 @@ function Layout({ children }) {
         isOpen: showWelcomePopup,
         onClose: closeWelcomePopup,
         userData,
-        dashboardData
+        dashboardData,
+        onboardingSteps,
+        markStepCompleted
       }
     )
   ] });
 }
 if (isDevelopment()) {
-  __vitePreload(() => import("./test-env-Bv9zjKN-.js"), true ? [] : void 0);
-  __vitePreload(() => import("./test-uploads-CWrCa1aa.js"), true ? [] : void 0);
+  __vitePreload(() => import("./test-env-DmTduKuK.js"), true ? [] : void 0);
+  __vitePreload(() => import("./test-uploads-BLbvLspc.js"), true ? [] : void 0);
 }
 const queryClient = new QueryClient({
   defaultOptions: {

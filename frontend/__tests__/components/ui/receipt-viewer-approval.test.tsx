@@ -37,8 +37,8 @@ const createWrapper = () => {
 
   return ({ children }: { children: React.ReactNode }) => (
     <QueryClientProvider client={queryClient}>
-      <AuthProvider value={mockAuthContext}>
-        <ThemeProvider value={mockThemeContext}>
+      <AuthProvider>
+        <ThemeProvider>
           {children}
         </ThemeProvider>
       </AuthProvider>

@@ -65,6 +65,7 @@ describe('Real-Time Updates Integration Tests', () => {
       logout: jest.fn(),
       isLoading: false,
       trackActivity: jest.fn(),
+      refreshUser: jest.fn(),
       showLogoutProgress: false,
       setShowLogoutProgress: jest.fn(),
       setIsTestingLogoutDialog: jest.fn(),

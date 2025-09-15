@@ -101,30 +101,6 @@ export default function PropertiesPage() {
       refetchQueries: [QUERY_KEYS.PROPERTIES],
       successMessage: "The property has been updated successfully.",
       errorMessage: "Failed to update property. Please try again.",
-      onMutate: async (variables) => {
-        await queryClient.cancelQueries({ queryKey: [QUERY_KEYS.PROPERTIES] });
-        const previousProperties = queryClient.getQueryData([QUERY_KEYS.PROPERTIES]);
-        
-        queryClient.setQueryData([QUERY_KEYS.PROPERTIES], (old: any) => {
-          if (!old?.properties) return old;
-          
-          return {
-            ...old,
-            properties: old.properties.map((property: any) => 
-              property.id === variables.id 
-                ? { ...property, ...variables }
-                : property
-            )
-          };
-        });
-        
-        return { previousProperties };
-      },
-      onError: (err, variables, context) => {
-        if (context?.previousProperties) {
-          queryClient.setQueryData([QUERY_KEYS.PROPERTIES], context.previousProperties);
-        }
-      },
       onSuccess: () => {
         setIsEditDialogOpen(false);
         setEditingProperty(null);
@@ -142,26 +118,6 @@ export default function PropertiesPage() {
       refetchQueries: [QUERY_KEYS.PROPERTIES],
       successMessage: "The property has been deleted successfully.",
       errorMessage: "Failed to delete property. Please try again.",
-      onMutate: async (variables) => {
-        await queryClient.cancelQueries({ queryKey: [QUERY_KEYS.PROPERTIES] });
-        const previousProperties = queryClient.getQueryData([QUERY_KEYS.PROPERTIES]);
-        
-        queryClient.setQueryData([QUERY_KEYS.PROPERTIES], (old: any) => {
-          if (!old?.properties) return old;
-          
-          return {
-            ...old,
-            properties: old.properties.filter((property: any) => property.id !== variables.id)
-          };
-        });
-        
-        return { previousProperties };
-      },
-      onError: (err, variables, context) => {
-        if (context?.previousProperties) {
-          queryClient.setQueryData([QUERY_KEYS.PROPERTIES], context.previousProperties);
-        }
-      },
       onSuccess: () => {
         setIsDeleteDialogOpen(false);
         setDeletingProperty(null);

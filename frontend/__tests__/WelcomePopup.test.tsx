@@ -26,7 +26,10 @@ const mockUserData = {
   name: 'John Doe',
   role: 'ADMIN',
   hasProperties: true,
-  propertyCount: 2
+  propertyCount: 2,
+  isNewUser: false,
+  accountAge: 30,
+  completedOnboardingSteps: ['welcome', 'properties', 'staff']
 };
 
 const createTestQueryClient = () => new QueryClient({

@@ -64,7 +64,7 @@ const developmentConfig: BackendEnvironmentConfig = {
     enableCaching: false,
     cacheTimeout: 0,
     enableCompression: false,
-    maxFileSize: 10 * 1024 * 1024, // 10MB
+    maxFileSize: 200 * 1024 * 1024, // 200MB - Updated to match image processor limits
   },
   features: {
     enableDevTools: true,
@@ -101,7 +101,7 @@ const productionConfig: BackendEnvironmentConfig = {
     enableCaching: true,
     cacheTimeout: 5 * 60 * 1000, // 5 minutes
     enableCompression: true,
-    maxFileSize: 5 * 1024 * 1024, // 5MB
+    maxFileSize: 200 * 1024 * 1024, // 200MB - Updated for document uploads
   },
   features: {
     enableDevTools: false,

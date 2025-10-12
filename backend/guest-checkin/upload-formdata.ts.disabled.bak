@@ -1,0 +1,269 @@
+/**
+ * Guest Document Upload with FormData
+ * More efficient file upload using FormData instead of base64 JSON
+ */
+
+import { api, APIError } from "encore.dev/api";
+import { getAuthData } from "~encore/auth";
+import { requireRole } from "../auth/middleware";
+import { guestCheckinDB } from "./db";
+import { extractFromDocument, detectDocumentType } from "./llm-service";
+import {
+  processImage,
+  generateThumbnail,
+  validateImage,
+  saveImageToDisk,
+  deleteImageFromDisk,
+  fileExists,
+} from "./image-processor";
+import log from "encore.dev/log";
+import * as path from "path";
+import * as fs from "fs";
+
+export interface UploadFormDataRequest {
+  guestCheckInId?: number;
+  documentType: string;
+  performExtraction?: boolean;
+}
+
+export interface UploadFormDataResponse {
+  success: boolean;
+  document: {
+    id: number;
+    documentType: string;
+    filename: string;
+    fileSize: number;
+    thumbnailUrl: string;
+    uploadedAt: string;
+  };
+  extraction: {
+    status: "completed" | "failed" | "skipped";
+    data: Record<string, any>;
+    overallConfidence: number;
+    processingTime: number;
+  };
+  message: string;
+}
+
+/**
+ * Upload a guest document using FormData (more efficient for large files)
+ * NOTE: Temporarily disabled - needs refactoring to use Encore's raw request handler
+ * Use the base64 upload endpoint in documents.ts instead
+ */
+/* 
+export const uploadDocumentFormData = api(
+  { expose: true, method: "POST", path: "/guest-checkin/documents/upload-formdata", auth: true },
+  async (req: UploadFormDataRequest & { file: any }): Promise<UploadFormDataResponse> => {
+    const authData = getAuthData()!;
+    
+    // Only admin and manager can upload documents
+    requireRole("ADMIN", "MANAGER")(authData);
+
+    log.info("Uploading guest document with FormData", {
+      userId: authData.userID,
+      documentType: req.documentType,
+      guestCheckInId: req.guestCheckInId,
+      fileName: req.file.name,
+      fileSize: req.file.size,
+    });
+
+    // Convert File to Buffer
+    const arrayBuffer = await req.file.arrayBuffer();
+    const fileBuffer = Buffer.from(arrayBuffer);
+
+    // Validate image
+    const validation = validateImage(req.file.type, fileBuffer.length);
+    if (!validation.valid) {
+      throw APIError.invalidArgument(validation.error!);
+    }
+
+    // If guestCheckInId provided, verify it exists and belongs to org
+    if (req.guestCheckInId) {
+      const checkIn = await guestCheckinDB.queryRow`
+        SELECT id FROM guest_checkins 
+        WHERE id = ${req.guestCheckInId} AND org_id = ${authData.orgId}
+      `;
+      if (!checkIn) {
+        throw APIError.notFound("Guest check-in not found");
+      }
+    }
+
+    try {
+      // Generate unique filename
+      const fileExtension = path.extname(req.file.name) || ".jpg";
+      const filename = `${req.documentType}_${Date.now()}${fileExtension}`;
+      
+      // Create uploads directory
+      const uploadsDir = path.join(process.cwd(), "uploads", authData.orgId.toString(), "documents");
+      if (!fs.existsSync(uploadsDir)) {
+        fs.mkdirSync(uploadsDir, { recursive: true });
+      }
+      
+      const filePath = path.join(uploadsDir, filename);
+      
+      // Save file to disk
+      fs.writeFileSync(filePath, fileBuffer);
+      
+      const storageInfo = {
+        filename,
+        filePath,
+        thumbnailPath: filePath, // Use same path for thumbnail temporarily
+        width: 100,
+        height: 100,
+        fileSize: fileBuffer.length,
+        thumbnailSize: fileBuffer.length,
+      };
+
+      // Insert document record (guestCheckInId can be null for form creation uploads)
+      const documentRecord = await guestCheckinDB.queryRow`
+        INSERT INTO guest_documents (
+          org_id,
+          guest_checkin_id,
+          document_type,
+          filename,
+          original_filename,
+          file_path,
+          file_size,
+          mime_type,
+          thumbnail_path,
+          image_width,
+          image_height,
+          extraction_status,
+          uploaded_by_user_id
+        ) VALUES (
+          ${authData.orgId},
+          ${req.guestCheckInId || null},
+          ${req.documentType},
+          ${storageInfo.filename},
+          ${req.file.name},
+          ${storageInfo.filePath},
+          ${storageInfo.fileSize},
+          ${req.file.type},
+          ${storageInfo.thumbnailPath},
+          ${storageInfo.width},
+          ${storageInfo.height},
+          ${req.performExtraction !== false ? 'processing' : 'skipped'},
+          ${parseInt(authData.userID)}
+        )
+        RETURNING id, created_at
+      `;
+
+      const documentId = documentRecord!.id;
+      const thumbnailUrl = `/guest-checkin/documents/${documentId}/thumbnail`;
+
+      // Perform document type detection and LLM extraction if requested
+      let extractionResult;
+      let detectedDocumentType;
+      let documentTypeConfidence;
+      
+      if (req.performExtraction !== false) {
+        try {
+          // Convert file to base64 for LLM processing
+          const base64Data = fileBuffer.toString('base64');
+          
+          // First detect document type if it's 'other' or auto-detect is enabled
+          if (req.documentType === 'other') {
+            const detectionResult = await detectDocumentType(base64Data, authData.orgId);
+            detectedDocumentType = detectionResult.documentType;
+            documentTypeConfidence = detectionResult.confidence;
+            
+            log.info("Document type auto-detected", {
+              detectedType: detectedDocumentType,
+              confidence: documentTypeConfidence,
+              reasoning: detectionResult.reasoning,
+            });
+          } else {
+            detectedDocumentType = req.documentType;
+            documentTypeConfidence = 100; // User-specified type
+          }
+          
+          // Use detected or specified document type for extraction
+          const extractionDocumentType = detectedDocumentType || req.documentType;
+          
+          extractionResult = await extractFromDocument(
+            base64Data,
+            extractionDocumentType,
+            authData.orgId
+          );
+
+          // Update document with extraction results and detected type
+          await guestCheckinDB.exec`
+            UPDATE guest_documents
+            SET 
+              extracted_data = ${JSON.stringify(extractionResult.fields)}::jsonb,
+              overall_confidence = ${extractionResult.overallConfidence},
+              extraction_status = ${extractionResult.success ? 'completed' : 'failed'},
+              extraction_error = ${extractionResult.error || null},
+              extraction_processed_at = NOW(),
+              detected_document_type = ${detectedDocumentType || null},
+              document_type_confidence = ${documentTypeConfidence || null}
+            WHERE id = ${documentId}
+          `;
+
+          log.info("Document extracted successfully", {
+            documentId,
+            overallConfidence: extractionResult.overallConfidence,
+          });
+        } catch (extractionError: any) {
+          log.error("Document extraction failed", {
+            documentId,
+            error: extractionError.message,
+          });
+
+          // Update document with extraction failure
+          await guestCheckinDB.exec`
+            UPDATE guest_documents
+            SET 
+              extraction_status = 'failed',
+              extraction_error = ${extractionError.message},
+              extraction_processed_at = NOW()
+            WHERE id = ${documentId}
+          `;
+
+          extractionResult = {
+            success: false,
+            documentType: req.documentType,
+            fields: {},
+            overallConfidence: 0,
+            processingTime: 0,
+            error: extractionError.message,
+          };
+        }
+      } else {
+        extractionResult = {
+          success: true,
+          documentType: req.documentType,
+          fields: {},
+          overallConfidence: 0,
+          processingTime: 0,
+        };
+      }
+
+      return {
+        success: true,
+        document: {
+          id: documentId,
+          documentType: req.documentType,
+          filename: storageInfo.filename,
+          fileSize: storageInfo.fileSize,
+          thumbnailUrl,
+          uploadedAt: documentRecord!.created_at,
+        },
+        extraction: {
+          status: extractionResult.success ? "completed" : extractionResult.error ? "failed" : "skipped",
+          data: extractionResult.fields,
+          overallConfidence: extractionResult.overallConfidence,
+          processingTime: extractionResult.processingTime,
+        },
+        message: "Document uploaded and processed successfully",
+      };
+    } catch (error: any) {
+      log.error("Document upload failed", { error: error.message });
+      if (error instanceof APIError) {
+        throw error;
+      }
+      throw APIError.internal("Failed to upload document");
+    }
+  }
+);
+*/

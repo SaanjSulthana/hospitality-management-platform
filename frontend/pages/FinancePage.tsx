@@ -5,7 +5,7 @@ import { useTheme } from '../contexts/ThemeContext';
 import { usePageTitle } from '../contexts/PageTitleContext';
 import { formatCurrency as formatCurrencyUtil } from '../lib/currency';
 import { formatCardDateTime } from '../lib/datetime';
-import { formatDateForAPI, getCurrentDateString, getCurrentDateTimeString } from '../lib/date-utils';
+import { formatDateForAPI, getCurrentDateString, getCurrentDateTimeString, formatDateForInput, formatDateForDisplay } from '../lib/date-utils';
 import { API_CONFIG } from '../src/config/api';
 import { FileUpload } from '@/components/ui/file-upload';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -16,6 +16,7 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { FinanceTabs, FinanceTabsList, FinanceTabsTrigger } from '@/components/ui/finance-tabs';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { useToast } from '@/components/ui/use-toast';
 import { ReceiptViewer } from '@/components/ui/receipt-viewer';
@@ -365,6 +366,8 @@ export default function FinancePage() {
       queryClient.invalidateQueries({ queryKey: ['daily-approval-check'] });
       queryClient.invalidateQueries({ queryKey: ['analytics'] });
       queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+      queryClient.invalidateQueries({ queryKey: ['daily-report'] }); // Reports page
+      queryClient.invalidateQueries({ queryKey: ['monthly-report'] }); // Monthly reports
       
       // Force immediate refetch for all users
       queryClient.refetchQueries({ queryKey: ['expenses'] });
@@ -575,6 +578,8 @@ export default function FinancePage() {
       queryClient.invalidateQueries({ queryKey: ['daily-approval-check'] });
       queryClient.invalidateQueries({ queryKey: ['analytics'] });
       queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+      queryClient.invalidateQueries({ queryKey: ['daily-report'] }); // Reports page
+      queryClient.invalidateQueries({ queryKey: ['monthly-report'] }); // Monthly reports
       
       // Force immediate refetch for all users
       queryClient.refetchQueries({ queryKey: ['expenses'] });
@@ -684,34 +689,35 @@ export default function FinancePage() {
 
   const updateExpenseMutation = useMutation({
     mutationFn: async (data: any) => {
-      const response = await fetch(`${API_CONFIG.BASE_URL}/finance/expenses/${data.id}`, {
-        method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('accessToken')}`,
-        },
-        body: JSON.stringify({
-          ...data,
-          propertyId: parseInt(data.propertyId),
-          amountCents: parseInt(data.amountCents),
-          receiptFileId: data.receiptFile?.fileId || undefined,
-          expenseDate: formatDateForAPI(data.expenseDate),
-          paymentMode: data.paymentMode || 'cash',
-          bankReference: data.bankReference || undefined,
-        }),
-      });
-      
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.message || `Failed to update expense: ${response.statusText}`);
+      const backend = getAuthenticatedBackend();
+      // Extract ID and pass it as first parameter, rest as second parameter
+      const expenseId = parseInt(data.id);
+      if (isNaN(expenseId) || expenseId <= 0) {
+        throw new Error('Invalid expense ID');
       }
       
-      return response.json();
+      return backend.finance.updateExpense(expenseId, {
+        propertyId: parseInt(data.propertyId),
+        category: data.category,
+        amountCents: parseInt(data.amountCents),
+        description: data.description,
+        receiptUrl: data.receiptUrl,
+        receiptFileId: data.receiptFile?.fileId || undefined,
+        expenseDate: new Date(data.expenseDate), // Convert string to Date object
+        paymentMode: data.paymentMode || 'cash',
+        bankReference: data.bankReference || undefined,
+      });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['expenses'] });
       queryClient.invalidateQueries({ queryKey: ['profit-loss'] });
       queryClient.invalidateQueries({ queryKey: ['daily-approval-check'] });
+      queryClient.invalidateQueries({ queryKey: ['daily-report'] }); // Daily report page
+      queryClient.invalidateQueries({ queryKey: ['monthly-report'] }); // Monthly reports
+      queryClient.invalidateQueries({ queryKey: ['monthly-report'] }); // Invalidate monthly reports for real-time updates
+      queryClient.invalidateQueries({ queryKey: ['monthly-yearly-report'] }); // Invalidate monthly/yearly reports
+      queryClient.invalidateQueries({ queryKey: ['today-pending-transactions'] }); // Invalidate pending transactions
+      queryClient.invalidateQueries({ queryKey: ['daily-report'] }); // Daily report page
       
       setIsEditExpenseDialogOpen(false);
       setEditingExpense(null);
@@ -734,34 +740,32 @@ export default function FinancePage() {
 
   const updateRevenueMutation = useMutation({
     mutationFn: async (data: any) => {
-      const response = await fetch(`${API_CONFIG.BASE_URL}/finance/revenues/${data.id}`, {
-        method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('accessToken')}`,
-        },
-        body: JSON.stringify({
-          ...data,
-          propertyId: parseInt(data.propertyId),
-          amountCents: parseInt(data.amountCents),
-          receiptFileId: data.receiptFile?.fileId || undefined,
-          occurredAt: formatDateForAPI(data.occurredAt),
-          paymentMode: data.paymentMode || 'cash',
-          bankReference: data.bankReference || undefined,
-        }),
-      });
-      
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.message || `Failed to update revenue: ${response.statusText}`);
+      const backend = getAuthenticatedBackend();
+      // Extract ID and pass it as first parameter, rest as second parameter
+      const revenueId = parseInt(data.id);
+      if (isNaN(revenueId) || revenueId <= 0) {
+        throw new Error('Invalid revenue ID');
       }
       
-      return response.json();
+      return backend.finance.updateRevenue(revenueId, {
+        propertyId: parseInt(data.propertyId),
+        source: data.source,
+        amountCents: parseInt(data.amountCents),
+        description: data.description,
+        receiptUrl: data.receiptUrl,
+        receiptFileId: data.receiptFile?.fileId || undefined,
+        occurredAt: data.occurredAt, // This is already a Date object from handleUpdateRevenueSubmit
+        paymentMode: data.paymentMode || 'cash',
+        bankReference: data.bankReference || undefined,
+      });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['revenues'] });
       queryClient.invalidateQueries({ queryKey: ['profit-loss'] });
       queryClient.invalidateQueries({ queryKey: ['daily-approval-check'] });
+      queryClient.invalidateQueries({ queryKey: ['monthly-report'] }); // Invalidate monthly reports for real-time updates
+      queryClient.invalidateQueries({ queryKey: ['monthly-yearly-report'] }); // Invalidate monthly/yearly reports
+      queryClient.invalidateQueries({ queryKey: ['today-pending-transactions'] }); // Invalidate pending transactions
       
       setIsEditRevenueDialogOpen(false);
       setEditingRevenue(null);
@@ -801,6 +805,8 @@ export default function FinancePage() {
       queryClient.invalidateQueries({ queryKey: ['expenses'] });
       queryClient.invalidateQueries({ queryKey: ['profit-loss'] });
       queryClient.invalidateQueries({ queryKey: ['daily-approval-check'] });
+      queryClient.invalidateQueries({ queryKey: ['daily-report'] }); // Daily report page
+      queryClient.invalidateQueries({ queryKey: ['monthly-report'] }); // Monthly reports
       
       toast({
         title: data.deleted ? "Expense deleted" : "Deletion requested",
@@ -1032,7 +1038,94 @@ export default function FinancePage() {
   };
 
   const handleEditExpense = (expense: any) => {
-    setEditingExpense(expense);
+    console.log('=== EDIT EXPENSE DEBUG ===');
+    console.log('Expense object:', expense);
+    console.log('Expense ID:', expense.id, 'Type:', typeof expense.id);
+    console.log('Expense ID parsed:', parseInt(expense.id), 'Is NaN:', isNaN(parseInt(expense.id)));
+    
+    // Comprehensive validation of expense object
+    if (!expense) {
+      console.error('Expense object is null or undefined');
+      toast({
+        variant: "destructive",
+        title: "Invalid expense",
+        description: "Cannot edit expense: expense data is missing.",
+      });
+      return;
+    }
+
+    if (!expense.id) {
+      console.error('Expense ID is missing:', expense);
+      toast({
+        variant: "destructive",
+        title: "Invalid expense",
+        description: "Cannot edit expense: missing expense ID.",
+      });
+      return;
+    }
+
+    // Check if expense.id is an object (this is the bug!)
+    if (typeof expense.id === 'object') {
+      console.error('Expense ID is an object instead of a number:', expense.id);
+      console.error('Expense ID stringified:', JSON.stringify(expense.id));
+      toast({
+        variant: "destructive",
+        title: "Invalid expense ID",
+        description: "Cannot edit expense: ID is in wrong format. Please refresh and try again.",
+      });
+      return;
+    }
+
+    // Convert to string first, then parse to number
+    const expenseIdString = String(expense.id);
+    const expenseId = parseInt(expenseIdString);
+    
+    console.log('Expense ID conversion:', {
+      original: expense.id,
+      stringified: expenseIdString,
+      parsed: expenseId,
+      isNaN: isNaN(expenseId)
+    });
+
+    if (isNaN(expenseId) || expenseId <= 0) {
+      console.error('Expense ID is not a valid number after conversion:', {
+        original: expense.id,
+        stringified: expenseIdString,
+        parsed: expenseId,
+        type: typeof expense.id
+      });
+      toast({
+        variant: "destructive",
+        title: "Invalid expense ID",
+        description: `Cannot edit expense: invalid ID "${expense.id}". Please refresh and try again.`,
+      });
+      return;
+    }
+
+    // Validate required expense fields
+    if (!expense.propertyId || !expense.category || !expense.amountCents) {
+      console.error('Expense missing required fields:', {
+        propertyId: expense.propertyId,
+        category: expense.category,
+        amountCents: expense.amountCents
+      });
+      toast({
+        variant: "destructive",
+        title: "Incomplete expense data",
+        description: "Cannot edit expense: missing required information. Please refresh and try again.",
+      });
+      return;
+    }
+
+    console.log('Expense validation passed, proceeding with edit');
+    
+    // Ensure the expense object has a proper numeric ID
+    const validatedExpense = {
+      ...expense,
+      id: expenseId // Ensure ID is a number
+    };
+    
+    setEditingExpense(validatedExpense);
     setExpenseForm({
       propertyId: expense.propertyId.toString(),
       category: expense.category,
@@ -1040,7 +1133,7 @@ export default function FinancePage() {
       description: expense.description || '',
       receiptUrl: expense.receiptUrl || '',
       receiptFile: expense.receiptFileId ? { fileId: expense.receiptFileId, filename: 'Existing file' } : null,
-      expenseDate: new Date(expense.expenseDate).toISOString().split('T')[0],
+      expenseDate: formatDateForInput(expense.expenseDate),
       paymentMode: expense.paymentMode,
       bankReference: expense.bankReference || '',
     });
@@ -1048,6 +1141,23 @@ export default function FinancePage() {
   };
 
   const handleEditRevenue = (revenue: any) => {
+    console.log('=== EDIT REVENUE DEBUG ===');
+    console.log('Revenue object:', revenue);
+    console.log('Revenue ID:', revenue.id, 'Type:', typeof revenue.id);
+    console.log('Revenue ID parsed:', parseInt(revenue.id), 'Is NaN:', isNaN(parseInt(revenue.id)));
+    console.log('Revenue occurredAt:', revenue.occurredAt, 'Type:', typeof revenue.occurredAt);
+    console.log('Formatted for input:', formatDateForInput(revenue.occurredAt));
+    
+    if (!revenue || !revenue.id) {
+      console.error('Invalid revenue object or missing ID:', revenue);
+      toast({
+        variant: "destructive",
+        title: "Invalid revenue",
+        description: "Cannot edit revenue: missing ID.",
+      });
+      return;
+    }
+    
     setEditingRevenue(revenue);
     setRevenueForm({
       propertyId: revenue.propertyId.toString(),
@@ -1056,7 +1166,7 @@ export default function FinancePage() {
       description: revenue.description || '',
       receiptUrl: revenue.receiptUrl || '',
       receiptFile: revenue.receiptFileId ? { fileId: revenue.receiptFileId, filename: 'Existing file' } : null,
-      occurredAt: new Date(revenue.occurredAt).toISOString().split('T')[0],
+      occurredAt: formatDateForInput(revenue.occurredAt),
       paymentMode: revenue.paymentMode,
       bankReference: revenue.bankReference || '',
     });
@@ -1064,6 +1174,11 @@ export default function FinancePage() {
   };
 
   const handleUpdateExpenseSubmit = () => {
+    console.log('=== UPDATE EXPENSE SUBMIT DEBUG ===');
+    console.log('Expense form:', expenseForm);
+    console.log('Editing expense:', editingExpense);
+    
+    // Validate form fields
     if (!expenseForm.propertyId || !expenseForm.category || !expenseForm.amountCents) {
       toast({
         variant: "destructive",
@@ -1072,10 +1187,106 @@ export default function FinancePage() {
       });
       return;
     }
-    updateExpenseMutation.mutate({ ...expenseForm, id: editingExpense.id });
+
+    // Validate expense ID
+    if (!editingExpense || !editingExpense.id) {
+      console.error('Expense ID validation failed:', { editingExpense });
+      toast({
+        variant: "destructive",
+        title: "Invalid expense",
+        description: "Cannot update expense: missing expense ID. Please refresh and try again.",
+      });
+      return;
+    }
+
+    console.log('=== UPDATE EXPENSE ID DEBUG ===');
+    console.log('Editing expense:', editingExpense);
+    console.log('Editing expense ID:', editingExpense.id, 'Type:', typeof editingExpense.id);
+
+    // Check if editingExpense.id is an object (this should not happen after our fix)
+    if (typeof editingExpense.id === 'object') {
+      console.error('CRITICAL: Editing expense ID is still an object:', editingExpense.id);
+      toast({
+        variant: "destructive",
+        title: "Invalid expense ID",
+        description: "Cannot update expense: ID is in wrong format. Please refresh and try again.",
+      });
+      return;
+    }
+
+    // Convert to string first, then parse to number
+    const expenseIdString = String(editingExpense.id);
+    const expenseId = parseInt(expenseIdString);
+    
+    console.log('Update expense ID conversion:', {
+      original: editingExpense.id,
+      stringified: expenseIdString,
+      parsed: expenseId,
+      isNaN: isNaN(expenseId)
+    });
+
+    if (isNaN(expenseId) || expenseId <= 0) {
+      console.error('Expense ID is not a valid number during update:', {
+        original: editingExpense.id,
+        stringified: expenseIdString,
+        parsed: expenseId,
+        type: typeof editingExpense.id
+      });
+      toast({
+        variant: "destructive",
+        title: "Invalid expense ID",
+        description: `Cannot update expense: invalid ID "${editingExpense.id}". Please refresh and try again.`,
+      });
+      return;
+    }
+
+    // Validate amount is a positive number
+    const amountCents = parseInt(expenseForm.amountCents);
+    if (isNaN(amountCents) || amountCents <= 0) {
+      toast({
+        variant: "destructive",
+        title: "Invalid amount",
+        description: "Please enter a valid amount greater than zero.",
+      });
+      return;
+    }
+
+    // Validate property ID
+    const propertyId = parseInt(expenseForm.propertyId);
+    if (isNaN(propertyId) || propertyId <= 0) {
+      toast({
+        variant: "destructive",
+        title: "Invalid property",
+        description: "Please select a valid property.",
+      });
+      return;
+    }
+
+    console.log('All validations passed, submitting expense update with ID:', expenseId);
+    
+    const updateData = {
+      id: expenseId,
+      propertyId: propertyId,
+      category: expenseForm.category,
+      amountCents: amountCents,
+      description: expenseForm.description || undefined,
+      receiptUrl: expenseForm.receiptUrl || undefined,
+      receiptFileId: expenseForm.receiptFile?.fileId || undefined,
+      expenseDate: expenseForm.expenseDate, // Pass the date string directly - will be converted to Date object in mutation
+      paymentMode: expenseForm.paymentMode || 'cash',
+      bankReference: expenseForm.bankReference || undefined,
+    };
+
+    console.log('Update data being sent:', updateData);
+    updateExpenseMutation.mutate(updateData);
   };
 
   const handleUpdateRevenueSubmit = () => {
+    console.log('=== UPDATE REVENUE SUBMIT DEBUG ===');
+    console.log('Revenue form:', revenueForm);
+    console.log('Editing revenue:', editingRevenue);
+    
+    // Validate form fields
     if (!revenueForm.propertyId || !revenueForm.amountCents) {
       toast({
         variant: "destructive",
@@ -1084,7 +1295,132 @@ export default function FinancePage() {
       });
       return;
     }
-    updateRevenueMutation.mutate({ ...revenueForm, id: editingRevenue.id });
+
+    // Validate date field with comprehensive checks
+    if (!revenueForm.occurredAt) {
+      toast({
+        variant: "destructive",
+        title: "Missing date",
+        description: "Please select a date for the revenue.",
+      });
+      return;
+    }
+
+    // Check if occurredAt is a string
+    if (typeof revenueForm.occurredAt !== 'string') {
+      console.error('Revenue occurredAt is not a string:', revenueForm.occurredAt, 'Type:', typeof revenueForm.occurredAt);
+      toast({
+        variant: "destructive",
+        title: "Invalid date type",
+        description: "Date field contains invalid data. Please refresh and try again.",
+      });
+      return;
+    }
+
+    // Validate date format
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(revenueForm.occurredAt)) {
+      toast({
+        variant: "destructive",
+        title: "Invalid date format",
+        description: "Please enter a valid date in YYYY-MM-DD format.",
+      });
+      return;
+    }
+
+    // Additional validation: check if the date is valid
+    const testDate = new Date(revenueForm.occurredAt);
+    if (isNaN(testDate.getTime())) {
+      toast({
+        variant: "destructive",
+        title: "Invalid date",
+        description: "The selected date is not valid. Please choose a different date.",
+      });
+      return;
+    }
+
+    // Validate revenue ID
+    if (!editingRevenue || !editingRevenue.id) {
+      console.error('Revenue ID validation failed: editingRevenue or ID is missing', { editingRevenue });
+      toast({
+        variant: "destructive",
+        title: "Invalid revenue",
+        description: "Cannot update revenue: ID is missing or invalid.",
+      });
+      return;
+    }
+
+    const revenueId = parseInt(editingRevenue.id);
+    if (isNaN(revenueId)) {
+      console.error('Revenue ID is not a valid number:', { 
+        editingRevenue, 
+        revenueId: editingRevenue.id,
+        type: typeof editingRevenue.id 
+      });
+      toast({
+        variant: "destructive",
+        title: "Invalid revenue ID",
+        description: "The revenue ID is not a valid number. Please try again.",
+      });
+      return;
+    }
+
+    // Validate amount is a positive number
+    const amountCents = parseInt(revenueForm.amountCents);
+    if (isNaN(amountCents) || amountCents <= 0) {
+      toast({
+        variant: "destructive",
+        title: "Invalid amount",
+        description: "Please enter a valid amount greater than zero.",
+      });
+      return;
+    }
+
+    // Validate property ID
+    const propertyId = parseInt(revenueForm.propertyId);
+    if (isNaN(propertyId) || propertyId <= 0) {
+      toast({
+        variant: "destructive",
+        title: "Invalid property",
+        description: "Please select a valid property.",
+      });
+      return;
+    }
+
+    console.log('All validations passed, submitting revenue update with ID:', revenueId);
+    
+    // Validate and format the date properly
+    const formattedDate = formatDateForAPI(revenueForm.occurredAt);
+    console.log('Date formatting debug:', {
+      originalDate: revenueForm.occurredAt,
+      formattedDate: formattedDate,
+      isValidDate: !isNaN(new Date(formattedDate).getTime())
+    });
+    
+    // Validate the formatted date
+    if (!formattedDate || isNaN(new Date(formattedDate).getTime())) {
+      toast({
+        variant: "destructive",
+        title: "Invalid date",
+        description: "Please enter a valid date for the revenue.",
+      });
+      return;
+    }
+    
+    const updateData = {
+      id: revenueId,
+      propertyId: propertyId,
+      source: revenueForm.source,
+      amountCents: amountCents,
+      description: revenueForm.description || undefined,
+      receiptUrl: revenueForm.receiptUrl || undefined,
+      receiptFileId: revenueForm.receiptFile?.fileId || undefined,
+      occurredAt: new Date(formattedDate), // Convert to Date object for backend
+      paymentMode: revenueForm.paymentMode || 'cash',
+      bankReference: revenueForm.bankReference || undefined,
+    };
+
+    console.log('Update data being sent:', updateData);
+    updateRevenueMutation.mutate(updateData);
   };
 
   const handleDeleteExpense = (id: number) => {
@@ -1100,7 +1436,7 @@ export default function FinancePage() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="w-full min-h-screen bg-gray-50">
       <div className="space-y-6">
         {/* Daily Approval Status Banner for Managers */}
         {user?.role === 'MANAGER' && approvalStatus && (
@@ -1346,7 +1682,7 @@ export default function FinancePage() {
                   <div className="space-y-2">
                     <FileUpload
                       label="Receipt Upload"
-                      description="Upload receipt images (JPG, PNG, GIF, WebP) or PDF files. Max size: 10MB"
+                      description="Upload receipt images (JPG, PNG, GIF, WebP) or PDF files. Max size: 50MB"
                       onFileUpload={handleRevenueFileUpload}
                       value={revenueForm.receiptFile}
                       onClear={() => setRevenueForm(prev => ({ ...prev, receiptFile: null }))}
@@ -1508,7 +1844,7 @@ export default function FinancePage() {
                   <div className="space-y-2">
                     <FileUpload
                       label="Receipt Upload"
-                      description="Upload receipt images (JPG, PNG, GIF, WebP) or PDF files. Max size: 10MB"
+                      description="Upload receipt images (JPG, PNG, GIF, WebP) or PDF files. Max size: 50MB"
                       onFileUpload={handleExpenseFileUpload}
                       value={expenseForm.receiptFile}
                       onClear={() => setExpenseForm(prev => ({ ...prev, receiptFile: null }))}
@@ -1661,7 +1997,7 @@ export default function FinancePage() {
                   <div className="space-y-2">
                     <FileUpload
                       label="Receipt Upload"
-                      description="Upload receipt images (JPG, PNG, GIF, WebP) or PDF files. Max size: 10MB"
+                      description="Upload receipt images (JPG, PNG, GIF, WebP) or PDF files. Max size: 50MB"
                       onFileUpload={handleExpenseFileUpload}
                       value={expenseForm.receiptFile}
                       onClear={() => setExpenseForm(prev => ({ ...prev, receiptFile: null }))}
@@ -1810,7 +2146,7 @@ export default function FinancePage() {
                   <div className="space-y-2">
                     <FileUpload
                       label="Receipt Upload"
-                      description="Upload receipt images (JPG, PNG, GIF, WebP) or PDF files. Max size: 10MB"
+                      description="Upload receipt images (JPG, PNG, GIF, WebP) or PDF files. Max size: 50MB"
                       onFileUpload={handleRevenueFileUpload}
                       value={revenueForm.receiptFile}
                       onClear={() => setRevenueForm(prev => ({ ...prev, receiptFile: null }))}
@@ -1899,86 +2235,6 @@ export default function FinancePage() {
         />
       )}
 
-        {/* Enhanced Financial Overview */}
-        {profitLoss && (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
-            <Card className="border-l-4 border-l-green-500 shadow-sm hover:shadow-md transition-shadow duration-200">
-              <CardHeader className="pb-4">
-                <CardTitle className="text-sm font-medium flex items-center gap-2">
-                  <div className="p-2 bg-green-100 rounded-lg shadow-sm">
-                    <TrendingUp className="h-4 w-4 text-green-600" />
-                  </div>
-                  Total Revenue
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold text-green-600">
-                  {formatCurrency(profitLoss.data.totalRevenue * 100)}
-                </div>
-                <p className="text-xs text-gray-600 mt-1">
-                  {formatPeriodLabel(new Date(profitLoss.period.startDate), new Date(profitLoss.period.endDate))}
-                </p>
-              </CardContent>
-            </Card>
-
-            <Card className="border-l-4 border-l-red-500 shadow-sm hover:shadow-md transition-shadow duration-200">
-              <CardHeader className="pb-4">
-                <CardTitle className="text-sm font-medium flex items-center gap-2">
-                  <div className="p-2 bg-red-100 rounded-lg shadow-sm">
-                    <TrendingDown className="h-4 w-4 text-red-600" />
-                  </div>
-                  Total Expenses
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold text-red-600">
-                  {formatCurrency(profitLoss.data.totalExpenses * 100)}
-                </div>
-                <p className="text-xs text-gray-600 mt-1">
-                  {formatPeriodLabel(new Date(profitLoss.period.startDate), new Date(profitLoss.period.endDate))}
-                </p>
-              </CardContent>
-            </Card>
-
-            <Card className="border-l-4 border-l-blue-500 shadow-sm hover:shadow-md transition-shadow duration-200">
-              <CardHeader className="pb-4">
-                <CardTitle className="text-sm font-medium flex items-center gap-2">
-                  <div className="p-2 bg-blue-100 rounded-lg shadow-sm">
-                    <BarChart3 className="h-4 w-4 text-blue-600" />
-                  </div>
-                  Net Income
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className={`text-2xl font-bold ${profitLoss.data.netIncome >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                  {formatCurrency(profitLoss.data.netIncome * 100)}
-                </div>
-                <p className="text-xs text-gray-600 mt-1">
-                  {formatPeriodLabel(new Date(profitLoss.period.startDate), new Date(profitLoss.period.endDate))}
-                </p>
-              </CardContent>
-            </Card>
-
-            <Card className="border-l-4 border-l-purple-500 shadow-sm hover:shadow-md transition-shadow duration-200">
-              <CardHeader className="pb-4">
-                <CardTitle className="text-sm font-medium flex items-center gap-2">
-                  <div className="p-2 bg-purple-100 rounded-lg shadow-sm">
-                    <Receipt className="h-4 w-4 text-purple-600" />
-                  </div>
-                  Profit Margin
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className={`text-2xl font-bold ${profitLoss.data.profitMargin >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                  {profitLoss.data.profitMargin.toFixed(1)}%
-                </div>
-                <p className="text-xs text-gray-600 mt-1">
-                  {formatPeriodLabel(new Date(profitLoss.period.startDate), new Date(profitLoss.period.endDate))}
-                </p>
-              </CardContent>
-            </Card>
-          </div>
-        )}
 
         {/* Enhanced Financial Summary */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
@@ -2084,29 +2340,17 @@ export default function FinancePage() {
         </div>
 
         {/* Enhanced Transactions Tabs */}
-        <Tabs defaultValue="expenses" className="space-y-0">
-          <div className="sticky top-20 z-30 bg-gradient-to-br from-orange-500 via-orange-600 to-orange-700 border-b-2 border-orange-400 -mx-6 px-4 py-3 shadow-2xl rounded-b-xl">
-            <div className="overflow-x-auto">
-              <div className="bg-white/10 backdrop-blur-sm rounded-lg p-1 border border-white/20 shadow-inner">
-                <TabsList className="grid w-full grid-cols-2 min-w-max bg-transparent h-auto p-0 gap-2">
-                  <TabsTrigger 
-                    value="expenses" 
-                    className="text-xs sm:text-sm px-4 sm:px-8 py-4 data-[state=active]:bg-white data-[state=active]:text-orange-600 data-[state=active]:shadow-xl data-[state=active]:border-2 data-[state=active]:border-orange-300 data-[state=inactive]:text-white data-[state=inactive]:bg-gradient-to-r data-[state=inactive]:from-orange-500/30 data-[state=inactive]:to-orange-600/30 data-[state=inactive]:hover:from-orange-500/50 data-[state=inactive]:hover:to-orange-600/50 data-[state=inactive]:hover:shadow-lg data-[state=inactive]:border data-[state=inactive]:border-white/30 transition-all duration-500 flex items-center gap-2 rounded-xl font-semibold relative overflow-hidden group"
-                  >
-                    <div className="absolute inset-0 bg-gradient-to-r from-white/0 via-white/10 to-white/0 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700"></div>
-                    <span className="relative z-10">Expenses</span>
-                  </TabsTrigger>
-                  <TabsTrigger 
-                    value="revenues" 
-                    className="text-xs sm:text-sm px-4 sm:px-8 py-4 data-[state=active]:bg-white data-[state=active]:text-orange-600 data-[state=active]:shadow-xl data-[state=active]:border-2 data-[state=active]:border-orange-300 data-[state=inactive]:text-white data-[state=inactive]:bg-gradient-to-r data-[state=inactive]:from-orange-500/30 data-[state=inactive]:to-orange-600/30 data-[state=inactive]:hover:from-orange-500/50 data-[state=inactive]:hover:to-orange-600/50 data-[state=inactive]:hover:shadow-lg data-[state=inactive]:border data-[state=inactive]:border-white/30 transition-all duration-500 flex items-center gap-2 rounded-xl font-semibold relative overflow-hidden group"
-                  >
-                    <div className="absolute inset-0 bg-gradient-to-r from-white/0 via-white/10 to-white/0 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700"></div>
-                    <span className="relative z-10">Revenues</span>
-                  </TabsTrigger>
-                </TabsList>
-              </div>
-            </div>
-          </div>
+        <FinanceTabs defaultValue="expenses" theme={theme}>
+          <FinanceTabsList className="grid-cols-2" theme={theme}>
+            <FinanceTabsTrigger value="expenses" theme={theme}>
+              <TrendingDown className="h-4 w-4 mr-2" />
+              Expenses
+            </FinanceTabsTrigger>
+            <FinanceTabsTrigger value="revenues" theme={theme}>
+              <TrendingUp className="h-4 w-4 mr-2" />
+              Revenues
+            </FinanceTabsTrigger>
+          </FinanceTabsList>
 
           {/* Content Container */}
           <div className="px-6 py-6">
@@ -2126,7 +2370,7 @@ export default function FinancePage() {
                 </CardHeader>
                 <CardContent>
                   {expensesLoading ? (
-                    <Card className="border-l-4 border-l-blue-500">
+                    <Card className="">
                       <CardContent className="flex items-center justify-center p-12">
                         <div className="text-center">
                           <RefreshCw className="h-8 w-8 animate-spin text-blue-600 mx-auto mb-4" />
@@ -2136,7 +2380,7 @@ export default function FinancePage() {
                       </CardContent>
                     </Card>
                   ) : expenses?.expenses.length === 0 ? (
-                    <Card className="border-l-4 border-l-blue-500">
+                    <Card className="">
                       <CardContent className="flex flex-col items-center justify-center py-12">
                         <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
                           <Receipt className="h-8 w-8 text-blue-600" />
@@ -2184,7 +2428,7 @@ export default function FinancePage() {
                                   </span>
                                   <span className="flex items-center bg-blue-50 text-blue-700 px-2 py-1 rounded text-xs font-medium">
                                     <Calendar className="h-3 w-3 mr-1 flex-shrink-0" />
-                                    For: {new Date(expense.expenseDate).toLocaleDateString()}
+                                    For: {formatDateForDisplay(expense.expenseDate)}
                                   </span>
                                   <span className="truncate">By {expense.createdByName}</span>
                                   {(expense.receiptUrl || expense.receiptFileId) && (
@@ -2294,7 +2538,8 @@ export default function FinancePage() {
                 </CardHeader>
                 <CardContent>
                   {revenuesLoading ? (
-                    <Card className="border-l-4 border-l-blue-500">
+                    <Card className="
+                    ">
                       <CardContent className="flex items-center justify-center p-12">
                         <div className="text-center">
                           <RefreshCw className="h-8 w-8 animate-spin text-blue-600 mx-auto mb-4" />
@@ -2304,7 +2549,7 @@ export default function FinancePage() {
                       </CardContent>
                     </Card>
                   ) : revenues?.revenues.length === 0 ? (
-                    <Card className="border-l-4 border-l-blue-500">
+                    <Card className="">
                       <CardContent className="flex flex-col items-center justify-center py-12">
                         <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
                           <TrendingUp className="h-8 w-8 text-blue-600" />
@@ -2323,7 +2568,7 @@ export default function FinancePage() {
                   ) : (
                     <div className="space-y-4">
                       {revenues?.revenues.map((revenue: any) => (
-                        <Card key={revenue.id} className="border-l-4 border-l-green-500 shadow-sm hover:shadow-md transition-all duration-200">
+                        <Card key={revenue.id} className=" shadow-sm hover:shadow-md transition-all duration-200">
                           <CardContent className="p-4">
                             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                       <div className="flex-1 min-w-0">
@@ -2355,7 +2600,7 @@ export default function FinancePage() {
                           </span>
                           <span className="flex items-center bg-blue-50 text-blue-700 px-2 py-1 rounded text-xs font-medium">
                             <Calendar className="h-3 w-3 mr-1 flex-shrink-0" />
-                            For: {new Date(revenue.occurredAt).toLocaleDateString()}
+                            For: {formatDateForDisplay(revenue.occurredAt)}
                           </span>
                           <span className="truncate">By {revenue.createdByName}</span>
                           {(revenue.receiptUrl || revenue.receiptFileId) && (
@@ -2449,7 +2694,7 @@ export default function FinancePage() {
               </Card>
             </TabsContent>
           </div>
-        </Tabs>
+        </FinanceTabs>
 
         {/* Receipt Viewer Modal */}
         {selectedReceipt && (

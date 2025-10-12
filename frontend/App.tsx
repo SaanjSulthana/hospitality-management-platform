@@ -19,12 +19,14 @@ import ResetPasswordPage from './pages/ResetPasswordPage';
 import DashboardPage from './pages/DashboardPage';
 import PropertiesPage from './pages/PropertiesPage';
 import TasksPage from './pages/TasksPage';
+import TaskManagementPage from './pages/TaskManagementPage';
 import FinancePage from './pages/FinancePage';
 import ReportsPage from './pages/ReportsPage';
 import StaffPage from './pages/StaffPage';
 import UsersPage from './pages/UsersPage';
 import AnalyticsPage from './pages/AnalyticsPage';
 import SettingsPage from './pages/SettingsPage';
+import GuestCheckInPage from './pages/GuestCheckInPage';
 import ProtectedRoute from './components/ProtectedRoute';
 import Layout from './components/Layout';
 
@@ -65,12 +67,14 @@ function AppInner() {
                   <Route path="/dashboard" element={<DashboardPage />} />
                   <Route path="/properties" element={<PropertiesPage />} />
                   <Route path="/tasks" element={<TasksPage />} />
+                  <Route path="/task-management" element={<TaskManagementPage />} />
                   <Route path="/finance" element={<FinancePage />} />
                   <Route path="/reports" element={<ReportsPage />} />
                   <Route path="/staff" element={<StaffPage />} />
                   <Route path="/users" element={<UsersPage />} />
                   <Route path="/analytics" element={<AnalyticsPage />} />
                   <Route path="/settings" element={<SettingsPage />} />
+                  <Route path="/guest-checkin" element={<GuestCheckInPage />} />
                 </Routes>
               </Layout>
             </ProtectedRoute>

@@ -1,0 +1,16 @@
+78[0J[1000D[2K[36m  ⠋ Building Encore application graph... [0m
+8[0J[1000D[2K[36m  ⠙ Building Encore application graph... [0m
+[1000D[2K[36m  ⠋ Analyzing service topology... [0m
+8[0J[1000D[2K[36m  ⠚ Building Encore application graph... [0m
+[1000D[2K[36m  ⠙ Analyzing service topology... [0m
+8[0J[1000D[2K[36m  ⠒ Building Encore application graph... [0m
+[1000D[2K[36m  ⠚ Analyzing service topology... [0m
+8[0J[1000D[2K[31m  ❌ Building Encore application graph... Failed: parse error[0m
+[1000D[2K[36m  ⠒ Analyzing service topology... [0m
+error: unknown identifier
+  --> /Users/shreyanavelkar/Documents/GITHUB/hospitality-management-platform/backend/guest-checkin/upload-formdata.ts:53:47
+   |
+53 |   async (req: UploadFormDataRequest & { file: File }): Promise<UploadFormDataResponse> => {
+   |                                               ^^^^
+
+

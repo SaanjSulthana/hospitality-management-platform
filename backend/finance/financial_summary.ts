@@ -63,66 +63,94 @@ export const getFinancialSummary = api<FinancialSummaryRequest, FinancialSummary
     const { propertyId, startDate, endDate } = req || {};
 
     try {
-      // Build base query conditions
-      let whereConditions = ['r.org_id = $1'];
-      let params: any[] = [authData.orgId];
-      let paramIndex = 2;
-
-      if (propertyId) {
-        whereConditions.push(`r.property_id = $${paramIndex}`);
-        params.push(propertyId);
-        paramIndex++;
-      }
-
-      if (startDate) {
-        whereConditions.push(`r.occurred_at >= $${paramIndex}`);
-        params.push(new Date(`${startDate}T00:00:00.000Z`));
-        paramIndex++;
-      }
-
-      if (endDate) {
-        whereConditions.push(`r.occurred_at <= $${paramIndex}`);
-        params.push(new Date(`${endDate}T23:59:59.999Z`));
-        paramIndex++;
-      }
-
-      // Managers can only see data for properties they have access to
-      if (authData.role === "MANAGER") {
-        whereConditions.push(`r.property_id IN (
-          SELECT property_id FROM user_properties WHERE user_id = $${paramIndex}
-        )`);
-        params.push(parseInt(authData.userID));
-        paramIndex++;
-      }
-
-      const whereClause = whereConditions.join(' AND ');
 
       // Get revenue summary by payment mode
-      const revenueSummary = await financeDB.queryRow`
+      let revenueQuery = `
         SELECT 
-          COALESCE(SUM(CASE WHEN r.payment_mode = 'cash' THEN r.amount_cents ELSE 0 END), 0) as cash_revenue,
-          COALESCE(SUM(CASE WHEN r.payment_mode = 'bank' THEN r.amount_cents ELSE 0 END), 0) as bank_revenue,
-          COALESCE(SUM(r.amount_cents), 0) as total_revenue,
-          COUNT(CASE WHEN r.payment_mode = 'cash' THEN 1 END) as cash_count,
-          COUNT(CASE WHEN r.payment_mode = 'bank' THEN 1 END) as bank_count,
-          COUNT(*) as total_count
+          COALESCE(SUM(CASE WHEN r.payment_mode = 'cash' THEN r.amount_cents ELSE 0 END), 0)::text as cash_revenue,
+          COALESCE(SUM(CASE WHEN r.payment_mode = 'bank' THEN r.amount_cents ELSE 0 END), 0)::text as bank_revenue,
+          COALESCE(SUM(r.amount_cents), 0)::text as total_revenue,
+          COUNT(CASE WHEN r.payment_mode = 'cash' THEN 1 END)::text as cash_count,
+          COUNT(CASE WHEN r.payment_mode = 'bank' THEN 1 END)::text as bank_count,
+          COUNT(*)::text as total_count
         FROM revenues r
-        WHERE ${whereClause}
+        WHERE r.org_id = $1
       `;
+      
+      let revenueParams = [authData.orgId];
+      let paramIndex = 2;
+      
+      if (propertyId) {
+        revenueQuery += ` AND r.property_id = $${paramIndex}`;
+        revenueParams.push(propertyId);
+        paramIndex++;
+      }
+      
+      if (startDate) {
+        revenueQuery += ` AND DATE(r.occurred_at AT TIME ZONE 'Asia/Kolkata') >= $${paramIndex}`;
+        revenueParams.push(startDate);
+        paramIndex++;
+      }
+      
+      if (endDate) {
+        revenueQuery += ` AND DATE(r.occurred_at AT TIME ZONE 'Asia/Kolkata') <= $${paramIndex}`;
+        revenueParams.push(endDate);
+        paramIndex++;
+      }
+      
+      if (authData.role === "MANAGER") {
+        revenueQuery += ` AND r.property_id IN (SELECT property_id FROM user_properties WHERE user_id = $${paramIndex})`;
+        revenueParams.push(parseInt(authData.userID));
+        paramIndex++;
+      }
+      
+      const revenueResult = await financeDB.rawQueryRow(revenueQuery, ...revenueParams);
+      console.log('Revenue result:', revenueResult);
+      const revenueSummary = revenueResult;
 
       // Get expense summary by payment mode
-      const expenseSummary = await financeDB.queryRow`
+      let expenseQuery = `
         SELECT 
-          COALESCE(SUM(CASE WHEN e.payment_mode = 'cash' THEN e.amount_cents ELSE 0 END), 0) as cash_expenses,
-          COALESCE(SUM(CASE WHEN e.payment_mode = 'bank' THEN e.amount_cents ELSE 0 END), 0) as bank_expenses,
-          COALESCE(SUM(e.amount_cents), 0) as total_expenses,
-          COUNT(CASE WHEN e.payment_mode = 'cash' THEN 1 END) as cash_count,
-          COUNT(CASE WHEN e.payment_mode = 'bank' THEN 1 END) as bank_count,
-          COUNT(*) as total_count
+          COALESCE(SUM(CASE WHEN e.payment_mode = 'cash' THEN e.amount_cents ELSE 0 END), 0)::text as cash_expenses,
+          COALESCE(SUM(CASE WHEN e.payment_mode = 'bank' THEN e.amount_cents ELSE 0 END), 0)::text as bank_expenses,
+          COALESCE(SUM(e.amount_cents), 0)::text as total_expenses,
+          COUNT(CASE WHEN e.payment_mode = 'cash' THEN 1 END)::text as cash_count,
+          COUNT(CASE WHEN e.payment_mode = 'bank' THEN 1 END)::text as bank_count,
+          COUNT(*)::text as total_count
         FROM expenses e
-        WHERE e.org_id = $1 ${propertyId ? `AND e.property_id = $${paramIndex}` : ''} ${startDate ? `AND e.expense_date >= $${paramIndex + (propertyId ? 1 : 0)}` : ''} ${endDate ? `AND e.expense_date <= $${paramIndex + (propertyId ? 1 : 0) + (startDate ? 1 : 0)}` : ''}
-        ${authData.role === "MANAGER" ? `AND e.property_id IN (SELECT property_id FROM user_properties WHERE user_id = $${paramIndex + (propertyId ? 1 : 0) + (startDate ? 1 : 0) + (endDate ? 1 : 0)})` : ''}
+        WHERE e.org_id = $1
       `;
+      
+      let expenseParams = [authData.orgId];
+      let expenseParamIndex = 2;
+      
+      if (propertyId) {
+        expenseQuery += ` AND e.property_id = $${expenseParamIndex}`;
+        expenseParams.push(propertyId);
+        expenseParamIndex++;
+      }
+      
+      if (startDate) {
+        expenseQuery += ` AND e.expense_date >= $${expenseParamIndex}`;
+        expenseParams.push(startDate);
+        expenseParamIndex++;
+      }
+      
+      if (endDate) {
+        expenseQuery += ` AND e.expense_date <= $${expenseParamIndex}`;
+        expenseParams.push(endDate);
+        expenseParamIndex++;
+      }
+      
+      if (authData.role === "MANAGER") {
+        expenseQuery += ` AND e.property_id IN (SELECT property_id FROM user_properties WHERE user_id = $${expenseParamIndex})`;
+        expenseParams.push(parseInt(authData.userID));
+        expenseParamIndex++;
+      }
+      
+      const expenseResult = await financeDB.rawQueryRow(expenseQuery, ...expenseParams);
+      console.log('Expense result:', expenseResult);
+      const expenseSummary = expenseResult;
 
       console.log('Revenue summary:', revenueSummary);
       console.log('Expense summary:', expenseSummary);

@@ -10,7 +10,7 @@ export interface DateTimeOptions {
 }
 
 /**
- * Formats a date with timestamp consistently across the application
+ * Formats a date with timestamp consistently in IST across the application
  */
 export function formatDateTime(
   date: string | Date | null | undefined,
@@ -33,11 +33,14 @@ export function formatDateTime(
     }
 
     // Base date formatting
-    let dateOptions: Intl.DateTimeFormatOptions = {};
+    let dateOptions: Intl.DateTimeFormatOptions = {
+      timeZone: 'Asia/Kolkata' // Always use IST
+    };
 
     switch (format) {
       case 'short':
         dateOptions = {
+          ...dateOptions,
           year: '2-digit',
           month: 'short',
           day: 'numeric'
@@ -45,6 +48,7 @@ export function formatDateTime(
         break;
       case 'medium':
         dateOptions = {
+          ...dateOptions,
           year: 'numeric',
           month: 'short',
           day: 'numeric'
@@ -52,6 +56,7 @@ export function formatDateTime(
         break;
       case 'long':
         dateOptions = {
+          ...dateOptions,
           year: 'numeric',
           month: 'long',
           day: 'numeric'
@@ -59,6 +64,7 @@ export function formatDateTime(
         break;
       case 'full':
         dateOptions = {
+          ...dateOptions,
           year: 'numeric',
           month: 'long',
           day: 'numeric',
@@ -71,7 +77,7 @@ export function formatDateTime(
     if (includeTime) {
       dateOptions.hour = '2-digit';
       dateOptions.minute = '2-digit';
-      dateOptions.hour12 = true;
+      dateOptions.hour12 = false; // 24-hour format for IST
 
       if (includeSeconds) {
         dateOptions.second = '2-digit';
@@ -82,7 +88,7 @@ export function formatDateTime(
       }
     }
 
-    return new Intl.DateTimeFormat('en-US', dateOptions).format(dateObj);
+    return new Intl.DateTimeFormat('en-IN', dateOptions).format(dateObj);
   } catch (error) {
     console.error('Error formatting date:', error);
     return 'Invalid Date';
@@ -90,14 +96,87 @@ export function formatDateTime(
 }
 
 /**
- * Formats date for transactions (includes time by default)
+ * Format date only (no time) in DD/MM/YYYY format
+ * @param date - Date string or Date object
+ * @param format - Format style (default: DD/MM/YYYY)
+ * @returns Formatted date string
+ */
+export function formatDateOnly(
+  date: string | Date | null | undefined,
+  format: 'DD/MM/YYYY' | 'DD MMM YYYY' | 'DD MMMM YYYY' = 'DD/MM/YYYY'
+): string {
+  if (!date) return 'N/A';
+  
+  try {
+    const dateObj = typeof date === 'string' ? new Date(date) : date;
+    
+    if (isNaN(dateObj.getTime())) {
+      return 'Invalid Date';
+    }
+    
+    if (format === 'DD/MM/YYYY') {
+      return new Intl.DateTimeFormat('en-GB', {
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric',
+        timeZone: 'Asia/Kolkata'
+      }).format(dateObj);
+    } else if (format === 'DD MMM YYYY') {
+      return new Intl.DateTimeFormat('en-GB', {
+        day: '2-digit',
+        month: 'short',
+        year: 'numeric',
+        timeZone: 'Asia/Kolkata'
+      }).format(dateObj);
+    } else {
+      return new Intl.DateTimeFormat('en-GB', {
+        day: '2-digit',
+        month: 'long',
+        year: 'numeric',
+        timeZone: 'Asia/Kolkata'
+      }).format(dateObj);
+    }
+  } catch (error) {
+    console.error('Error formatting date:', error);
+    return 'Invalid Date';
+  }
+}
+
+/**
+ * Format date and time with DD/MM/YYYY date format
+ * @param date - Date string or Date object
+ * @returns Formatted date and time string (DD/MM/YYYY HH:mm)
+ */
+export function formatDateTimeDDMMYYYY(date: string | Date | null | undefined): string {
+  if (!date) return 'N/A';
+  
+  try {
+    const dateObj = typeof date === 'string' ? new Date(date) : date;
+    
+    if (isNaN(dateObj.getTime())) {
+      return 'Invalid Date';
+    }
+    
+    const datePart = formatDateOnly(dateObj, 'DD/MM/YYYY');
+    const timePart = new Intl.DateTimeFormat('en-IN', {
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+      timeZone: 'Asia/Kolkata'
+    }).format(dateObj);
+    
+    return `${datePart} ${timePart}`;
+  } catch (error) {
+    console.error('Error formatting date time:', error);
+    return 'Invalid Date';
+  }
+}
+
+/**
+ * Formats date for transactions (includes time by default, uses DD/MM/YYYY)
  */
 export function formatTransactionDateTime(date: string | Date | null | undefined): string {
-  return formatDateTime(date, {
-    includeTime: true,
-    includeSeconds: false,
-    format: 'medium'
-  });
+  return formatDateTimeDDMMYYYY(date);
 }
 
 /**

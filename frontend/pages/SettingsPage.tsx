@@ -9,6 +9,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { FinanceTabs, FinanceTabsList, FinanceTabsTrigger } from '@/components/ui/finance-tabs';
 import { useToast } from '@/components/ui/use-toast';
 import { Settings, Palette, Building2, Save, Upload, X, Image } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
@@ -44,6 +45,7 @@ export default function SettingsPage() {
     currency: theme.currency,
     dateFormat: theme.dateFormat,
     timeFormat: theme.timeFormat,
+    timezone: theme.timezone,
   });
 
   const [isUploadingLogo, setIsUploadingLogo] = useState(false);
@@ -60,6 +62,7 @@ export default function SettingsPage() {
       currency: theme.currency,
       dateFormat: theme.dateFormat,
       timeFormat: theme.timeFormat,
+      timezone: theme.timezone,
     });
 
     // Set logo preview - simplified logic
@@ -333,37 +336,21 @@ export default function SettingsPage() {
           </CardHeader>
         </Card>
 
-        <Tabs defaultValue="branding" className="space-y-6">
-          {/* Enhanced Sticky Tabs */}
-          <div className="sticky top-20 z-30 bg-gradient-to-br from-orange-500 via-orange-600 to-orange-700 border-b-2 border-orange-400 -mx-6 px-4 py-3 shadow-2xl rounded-b-xl mb-6">
-            <div className="overflow-x-auto">
-              <div className="bg-white/10 backdrop-blur-sm rounded-lg p-1 border border-white/20 shadow-inner">
-                <TabsList className="grid w-full grid-cols-3 min-w-max bg-transparent h-auto p-0 gap-2">
-                  <TabsTrigger 
-                    value="branding" 
-                    className="text-xs sm:text-sm px-4 sm:px-8 py-4 data-[state=active]:bg-white data-[state=active]:text-orange-600 data-[state=active]:shadow-xl data-[state=active]:border-2 data-[state=active]:border-orange-300 data-[state=inactive]:text-white data-[state=inactive]:bg-gradient-to-r data-[state=inactive]:from-orange-500/30 data-[state=inactive]:to-orange-600/30 data-[state=inactive]:hover:from-orange-500/50 data-[state=inactive]:hover:to-orange-600/50 data-[state=inactive]:hover:shadow-lg data-[state=inactive]:border data-[state=inactive]:border-white/30 transition-all duration-500 flex items-center gap-2 rounded-xl font-semibold relative overflow-hidden group"
-                  >
-                    <div className="absolute inset-0 bg-gradient-to-r from-white/0 via-white/10 to-white/0 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700"></div>
-                    <span className="relative z-10">Branding</span>
-                  </TabsTrigger>
-                  <TabsTrigger 
-                    value="organization" 
-                    className="text-xs sm:text-sm px-4 sm:px-8 py-4 data-[state=active]:bg-white data-[state=active]:text-orange-600 data-[state=active]:shadow-xl data-[state=active]:border-2 data-[state=active]:border-orange-300 data-[state=inactive]:text-white data-[state=inactive]:bg-gradient-to-r data-[state=inactive]:from-orange-500/30 data-[state=inactive]:to-orange-600/30 data-[state=inactive]:hover:from-orange-500/50 data-[state=inactive]:hover:to-orange-600/50 data-[state=inactive]:hover:shadow-lg data-[state=inactive]:border data-[state=inactive]:border-white/30 transition-all duration-500 flex items-center gap-2 rounded-xl font-semibold relative overflow-hidden group"
-                  >
-                    <div className="absolute inset-0 bg-gradient-to-r from-white/0 via-white/10 to-white/0 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700"></div>
-                    <span className="relative z-10">Organization</span>
-                  </TabsTrigger>
-                  <TabsTrigger 
-                    value="integrations" 
-                    className="text-xs sm:text-sm px-4 sm:px-8 py-4 data-[state=active]:bg-white data-[state=active]:text-orange-600 data-[state=active]:shadow-xl data-[state=active]:border-2 data-[state=active]:border-orange-300 data-[state=inactive]:text-white data-[state=inactive]:bg-gradient-to-r data-[state=inactive]:from-orange-500/30 data-[state=inactive]:to-orange-600/30 data-[state=inactive]:hover:from-orange-500/50 data-[state=inactive]:hover:to-orange-600/50 data-[state=inactive]:hover:shadow-lg data-[state=inactive]:border data-[state=inactive]:border-white/30 transition-all duration-500 flex items-center gap-2 rounded-xl font-semibold relative overflow-hidden group"
-                  >
-                    <div className="absolute inset-0 bg-gradient-to-r from-white/0 via-white/10 to-white/0 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700"></div>
-                    <span className="relative z-10">Integrations</span>
-                  </TabsTrigger>
-                </TabsList>
-              </div>
-            </div>
-          </div>
+        <FinanceTabs defaultValue="branding" theme={theme}>
+          <FinanceTabsList className="grid-cols-3" theme={theme}>
+            <FinanceTabsTrigger value="branding" theme={theme}>
+              <Palette className="h-4 w-4 mr-2" />
+              Branding
+            </FinanceTabsTrigger>
+            <FinanceTabsTrigger value="organization" theme={theme}>
+              <Building2 className="h-4 w-4 mr-2" />
+              Organization
+            </FinanceTabsTrigger>
+            <FinanceTabsTrigger value="integrations" theme={theme}>
+              <Settings className="h-4 w-4 mr-2" />
+              Integrations
+            </FinanceTabsTrigger>
+          </FinanceTabsList>
 
         <TabsContent value="branding" className="space-y-6 mt-0">
           <form onSubmit={handleThemeSubmit} className="space-y-6">
@@ -575,7 +562,7 @@ export default function SettingsPage() {
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                   <div className="space-y-2">
                     <Label htmlFor="currency" className="text-sm font-medium text-gray-700">Currency</Label>
                     <Select value={themeForm.currency} onValueChange={(value) => setThemeForm(prev => ({ ...prev, currency: value }))}>
@@ -600,8 +587,8 @@ export default function SettingsPage() {
                         <SelectValue placeholder="Select date format" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="MM/DD/YYYY">MM/DD/YYYY</SelectItem>
                         <SelectItem value="DD/MM/YYYY">DD/MM/YYYY</SelectItem>
+                        <SelectItem value="MM/DD/YYYY">MM/DD/YYYY</SelectItem>
                         <SelectItem value="YYYY-MM-DD">YYYY-MM-DD</SelectItem>
                       </SelectContent>
                     </Select>
@@ -614,8 +601,28 @@ export default function SettingsPage() {
                         <SelectValue placeholder="Select time format" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="12h">12 Hour</SelectItem>
                         <SelectItem value="24h">24 Hour</SelectItem>
+                        <SelectItem value="12h">12 Hour</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="timezone" className="text-sm font-medium text-gray-700">Timezone</Label>
+                    <Select value={themeForm.timezone} onValueChange={(value) => setThemeForm(prev => ({ ...prev, timezone: value }))}>
+                      <SelectTrigger className="h-11 border-gray-300 focus:border-blue-500 focus:ring-blue-500">
+                        <SelectValue placeholder="Select timezone" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="Asia/Kolkata">Asia/Kolkata (IST)</SelectItem>
+                        <SelectItem value="UTC">UTC</SelectItem>
+                        <SelectItem value="America/New_York">America/New_York (EST)</SelectItem>
+                        <SelectItem value="America/Los_Angeles">America/Los_Angeles (PST)</SelectItem>
+                        <SelectItem value="Europe/London">Europe/London (GMT)</SelectItem>
+                        <SelectItem value="Europe/Paris">Europe/Paris (CET)</SelectItem>
+                        <SelectItem value="Asia/Tokyo">Asia/Tokyo (JST)</SelectItem>
+                        <SelectItem value="Asia/Shanghai">Asia/Shanghai (CST)</SelectItem>
+                        <SelectItem value="Australia/Sydney">Australia/Sydney (AEST)</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
@@ -773,7 +780,7 @@ export default function SettingsPage() {
             </CardContent>
           </Card>
         </TabsContent>
-        </Tabs>
+        </FinanceTabs>
       </div>
     </div>
   );

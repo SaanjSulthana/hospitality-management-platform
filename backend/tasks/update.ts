@@ -167,60 +167,22 @@ export const update = api<UpdateTaskRequest, UpdateTaskResponse>(
       // Always update the updated_at timestamp
       updateFields.push(`updated_at = NOW()`);
 
-      // Execute update using Encore's template literal syntax
-      let taskRow;
-      if (title !== undefined && description !== undefined && priority !== undefined) {
-        taskRow = await tx.queryRow`
-          UPDATE tasks 
-          SET title = ${title}, description = ${description}, priority = ${priority}, updated_at = NOW()
-          WHERE id = ${id} AND org_id = ${authData.orgId}
-          RETURNING id, property_id, type, title, description, priority, status, assignee_staff_id, due_at, created_by_user_id, created_at, updated_at, completed_at, 0 as estimated_hours, 0 as actual_hours
-        `;
-      } else if (title !== undefined && description !== undefined) {
-        taskRow = await tx.queryRow`
-          UPDATE tasks 
-          SET title = ${title}, description = ${description}, updated_at = NOW()
-          WHERE id = ${id} AND org_id = ${authData.orgId}
-          RETURNING id, property_id, type, title, description, priority, status, assignee_staff_id, due_at, created_by_user_id, created_at, updated_at, completed_at, 0 as estimated_hours, 0 as actual_hours
-        `;
-      } else if (title !== undefined && priority !== undefined) {
-        taskRow = await tx.queryRow`
-          UPDATE tasks 
-          SET title = ${title}, priority = ${priority}, updated_at = NOW()
-          WHERE id = ${id} AND org_id = ${authData.orgId}
-          RETURNING id, property_id, type, title, description, priority, status, assignee_staff_id, due_at, created_by_user_id, created_at, updated_at, completed_at, 0 as estimated_hours, 0 as actual_hours
-        `;
-      } else if (description !== undefined && priority !== undefined) {
-        taskRow = await tx.queryRow`
-          UPDATE tasks 
-          SET description = ${description}, priority = ${priority}, updated_at = NOW()
-          WHERE id = ${id} AND org_id = ${authData.orgId}
-          RETURNING id, property_id, type, title, description, priority, status, assignee_staff_id, due_at, created_by_user_id, created_at, updated_at, completed_at, 0 as estimated_hours, 0 as actual_hours
-        `;
-      } else if (title !== undefined) {
-        taskRow = await tx.queryRow`
-          UPDATE tasks 
-          SET title = ${title}, updated_at = NOW()
-          WHERE id = ${id} AND org_id = ${authData.orgId}
-          RETURNING id, property_id, type, title, description, priority, status, assignee_staff_id, due_at, created_by_user_id, created_at, updated_at, completed_at, 0 as estimated_hours, 0 as actual_hours
-        `;
-      } else if (description !== undefined) {
-        taskRow = await tx.queryRow`
-          UPDATE tasks 
-          SET description = ${description}, updated_at = NOW()
-          WHERE id = ${id} AND org_id = ${authData.orgId}
-          RETURNING id, property_id, type, title, description, priority, status, assignee_staff_id, due_at, created_by_user_id, created_at, updated_at, completed_at, 0 as estimated_hours, 0 as actual_hours
-        `;
-      } else if (priority !== undefined) {
-        taskRow = await tx.queryRow`
-          UPDATE tasks 
-          SET priority = ${priority}, updated_at = NOW()
-          WHERE id = ${id} AND org_id = ${authData.orgId}
-          RETURNING id, property_id, type, title, description, priority, status, assignee_staff_id, due_at, created_by_user_id, created_at, updated_at, completed_at, 0 as estimated_hours, 0 as actual_hours
-        `;
-      } else {
-        throw APIError.invalidArgument("No fields to update");
-      }
+      // Execute update using a simple approach - update all provided fields
+      const taskRow = await tx.queryRow`
+        UPDATE tasks 
+        SET 
+          ${propertyId !== undefined ? `property_id = ${propertyId},` : ''}
+          ${type !== undefined ? `type = ${type},` : ''}
+          ${title !== undefined ? `title = ${title},` : ''}
+          ${description !== undefined ? `description = ${description},` : ''}
+          ${priority !== undefined ? `priority = ${priority},` : ''}
+          ${assigneeStaffId !== undefined ? `assignee_staff_id = ${assigneeStaffId},` : ''}
+          ${dueAtDate !== undefined ? `due_at = ${dueAtDate},` : ''}
+          ${estimatedHours !== undefined ? `estimated_hours = ${estimatedHours},` : ''}
+          updated_at = NOW()
+        WHERE id = ${id} AND org_id = ${authData.orgId}
+        RETURNING id, property_id, type, title, description, priority, status, assignee_staff_id, due_at, created_by_user_id, created_at, updated_at, completed_at, estimated_hours, actual_hours
+      `;
 
       if (!taskRow) {
         throw new Error("Failed to update task");
@@ -231,7 +193,7 @@ export const update = api<UpdateTaskRequest, UpdateTaskResponse>(
         SELECT 
           t.id, t.property_id, p.name as property_name, t.type, t.title, t.description, 
           t.priority, t.status, t.assignee_staff_id, t.due_at, t.created_by_user_id, 
-          t.created_at, t.updated_at, t.completed_at, 0 as estimated_hours, 0 as actual_hours,
+          t.created_at, t.updated_at, t.completed_at, t.estimated_hours, t.actual_hours,
           u.display_name as created_by_name,
           au.display_name as assignee_name,
           0 as attachment_count

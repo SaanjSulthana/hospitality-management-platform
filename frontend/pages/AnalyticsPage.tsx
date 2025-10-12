@@ -128,7 +128,7 @@ export default function AnalyticsPage() {
                 <Button 
                   variant="outline" 
                   onClick={() => window.location.reload()}
-                  className="border-red-300 text-red-700 hover:bg-red-50 transition-all duration-200 hover:scale-105 hover:shadow-md"
+                  className="bg-white border-rose-200 text-red-700 hover:bg-rose-50 hover:border-rose-300 font-semibold transition-all duration-200 hover:scale-105 hover:shadow-md"
                 >
                   <RefreshCw className="h-4 w-4 mr-2" />
                   Try Again

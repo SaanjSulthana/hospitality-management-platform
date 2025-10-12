@@ -51,6 +51,10 @@ export { runMigrationNoAuth } from "./run_migration_no_auth";
 export { testPaymentMode } from "./test_payment_mode";
 export { addReceiptFileIdColumns } from "./add_receipt_file_id_columns";
 
+// Export new schema validation and fix endpoints
+export { getSchemaStatus } from "./schema_status";
+export { fixSchema } from "./schema_fix";
+
 // Export daily approval management endpoints
 export { getDailyApprovalStats } from "./daily_approval_manager";
 export { bulkApproveTransactions } from "./daily_approval_manager";
@@ -59,3 +63,28 @@ export { getTodayPendingTransactions } from "./daily_approval_manager";
 
 // Export reset approval status endpoint
 export { resetApprovalStatus } from "./reset_approval_status";
+
+// Export migration management endpoints
+export { 
+  getMigrationStatusEndpoint as getMigrationStatus,
+  applyAllMigrationsEndpoint as applyAllMigrations,
+  applyMigrationEndpoint as applyMigration,
+  rollbackMigrationEndpoint as rollbackMigration,
+  validateMigrationsEndpoint as validateMigrations
+} from "./migration_status_endpoint";
+
+// Export health monitoring endpoints
+export {
+  healthCheckEndpoint as healthCheck,
+  performanceReportEndpoint as performanceReport,
+  getAlertsEndpoint as getAlerts,
+  resolveAlertEndpoint as resolveAlert,
+  clearResolvedAlertsEndpoint as clearResolvedAlerts,
+  quickHealthCheckEndpoint as quickHealthCheck
+} from "./health_check_endpoint";
+
+// Export missing columns fix endpoint
+export { addMissingColumns } from "./add_missing_columns";
+
+// Export migration fix endpoint
+export { fixMigrationIssues } from "./fix_migration_issues";

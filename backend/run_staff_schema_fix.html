@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Staff Schema Fix</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 40px; }
+        .container { max-width: 800px; margin: 0 auto; }
+        .button { 
+            background: #007bff; color: white; padding: 10px 20px; 
+            border: none; border-radius: 5px; cursor: pointer; margin: 10px 5px;
+        }
+        .button:hover { background: #0056b3; }
+        .output { 
+            background: #f8f9fa; border: 1px solid #dee2e6; 
+            padding: 20px; margin: 20px 0; border-radius: 5px; 
+            white-space: pre-wrap; font-family: monospace;
+        }
+        .error { color: #dc3545; }
+        .success { color: #28a745; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🚀 Staff Schema Fix Tool</h1>
+        <p>This tool will fix the staff management schema issues including missing columns and constraints.</p>
+        
+        <button class="button" onclick="runSchemaFix()">Fix Staff Schema</button>
+        <button class="button" onclick="checkSchema()">Check Current Schema</button>
+        <button class="button" onclick="clearOutput()">Clear Output</button>
+        
+        <div id="output" class="output"></div>
+    </div>
+
+    <script>
+        function log(message, type = 'info') {
+            const output = document.getElementById('output');
+            const timestamp = new Date().toLocaleTimeString();
+            const className = type === 'error' ? 'error' : type === 'success' ? 'success' : '';
+            output.innerHTML += `<span class="${className}">[${timestamp}] ${message}</span>\n`;
+            output.scrollTop = output.scrollHeight;
+        }
+
+        function clearOutput() {
+            document.getElementById('output').innerHTML = '';
+        }
+
+        async function runSchemaFix() {
+            log('🚀 Starting Staff Schema Fix...', 'info');
+            
+            try {
+                const response = await fetch('/staff/fix-schema', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${localStorage.getItem('authToken')}`
+                    }
+                });
+                
+                if (response.ok) {
+                    const result = await response.json();
+                    log('✅ Schema fix completed successfully!', 'success');
+                    log(`Message: ${result.message}`, 'success');
+                    if (result.details) {
+                        log(`Details: ${JSON.stringify(result.details, null, 2)}`, 'info');
+                    }
+                } else {
+                    const error = await response.text();
+                    log(`❌ Schema fix failed: ${error}`, 'error');
+                }
+            } catch (error) {
+                log(`❌ Network error: ${error.message}`, 'error');
+            }
+        }
+
+        async function checkSchema() {
+            log('🔍 Checking current schema...', 'info');
+            
+            try {
+                // Check staff_attendance table structure
+                const response = await fetch('/staff/attendance', {
+                    method: 'GET',
+                    headers: {
+                        'Authorization': `Bearer ${localStorage.getItem('authToken')}`
+                    }
+                });
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    log('✅ staff_attendance table is accessible', 'success');
+                    log(`Found ${data.attendance?.length || 0} attendance records`, 'info');
+                } else {
+                    const error = await response.text();
+                    log(`❌ staff_attendance table issue: ${error}`, 'error');
+                }
+            } catch (error) {
+                log(`❌ Schema check failed: ${error.message}`, 'error');
+            }
+        }
+
+        // Check if user is authenticated
+        if (!localStorage.getItem('authToken')) {
+            log('⚠️ Please log in first to use this tool', 'error');
+        }
+    </script>
+</body>
+</html>

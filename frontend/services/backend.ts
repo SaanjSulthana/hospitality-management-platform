@@ -1,4 +1,4 @@
-import Client, { Local, Environment } from '../client';
+import Client, { Local, Environment } from '../src/client';
 import { isDevelopment } from '../src/utils/env';
 
 // Test if the import is working
@@ -12,7 +12,8 @@ console.log('Local type:', typeof Local);
 // Determine the correct API URL based on environment
 function getApiUrl(): string {
   if (isDevelopment()) {
-    return Local; // Use localhost for development
+    // Backend is running on port 4000
+    return 'http://localhost:4000';
   }
   
   // For production/staging, use the correct API URL from Encore Cloud

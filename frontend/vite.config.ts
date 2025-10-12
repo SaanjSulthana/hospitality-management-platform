@@ -26,4 +26,9 @@ export default defineConfig({
     'process.env.REACT_APP_API_URL': JSON.stringify(process.env.REACT_APP_API_URL || 'http://localhost:4000'),
   },
   envPrefix: 'VITE_',
+  server: {
+    // Increase request size limit for development server
+    // Note: Vite doesn't support bodySizeLimit directly
+    // This is handled by the backend
+  },
 })

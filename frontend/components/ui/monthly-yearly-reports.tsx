@@ -10,6 +10,7 @@ import { Input } from './input';
 import { Label } from './label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from './tabs';
+import { FinanceTabs, FinanceTabsList, FinanceTabsTrigger } from './finance-tabs';
 import { 
   Calendar, 
   TrendingUp, 
@@ -22,8 +23,45 @@ import {
   Banknote
 } from 'lucide-react';
 
-interface MonthlyReport {
-  month: string;
+// Helper function to get current quarter (Indian fiscal year)
+function getCurrentQuarter(): string {
+  const month = new Date().getMonth() + 1; // getMonth() returns 0-11, so add 1
+  // Indian fiscal year: Q1 (Apr-Jun), Q2 (Jul-Sep), Q3 (Oct-Dec), Q4 (Jan-Mar)
+  if (month >= 4 && month <= 6) return 'Q1';
+  if (month >= 7 && month <= 9) return 'Q2';
+  if (month >= 10 && month <= 12) return 'Q3';
+  return 'Q4'; // January, February, March
+}
+
+// Helper function to get quarter months (Indian fiscal year)
+function getQuarterMonths(quarter: string): number[] {
+  switch (quarter) {
+    case 'Q1': return [4, 5, 6]; // April, May, June
+    case 'Q2': return [7, 8, 9]; // July, August, September
+    case 'Q3': return [10, 11, 12]; // October, November, December
+    case 'Q4': return [1, 2, 3]; // January, February, March
+    default: return [4, 5, 6];
+  }
+}
+
+// Helper function to get quarter date range (Indian fiscal year)
+function getQuarterDateRange(quarter: string, year: number): { startDate: string; endDate: string } {
+  const months = getQuarterMonths(quarter);
+  const startDate = `${year}-${months[0].toString().padStart(2, '0')}-01`;
+  
+  // For Q4 (Jan-Mar), we need to handle the year correctly since it spans across fiscal years
+  let endYear = year;
+  if (quarter === 'Q4') {
+    // Q4 months are Jan-Mar, so the end date should be in the same calendar year
+    endYear = year;
+  }
+  
+  const endDate = new Date(endYear, months[2], 0).toISOString().split('T')[0]; // Last day of last month in quarter
+  return { startDate, endDate };
+}
+
+interface QuarterlyReport {
+  quarter: string;
   year: string;
   propertyId?: number;
   propertyName?: string;
@@ -64,7 +102,7 @@ export function MonthlyYearlyReports() {
   const { theme } = useTheme();
   
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear().toString());
-  const [selectedMonth, setSelectedMonth] = useState((new Date().getMonth() + 1).toString().padStart(2, '0'));
+  const [selectedQuarter, setSelectedQuarter] = useState(getCurrentQuarter());
   const [selectedPropertyId, setSelectedPropertyId] = useState<string>('');
 
   // Get properties for selection
@@ -76,13 +114,12 @@ export function MonthlyYearlyReports() {
     },
   });
 
-  // Get monthly report
-  const { data: monthlyReport, isLoading: monthlyReportLoading } = useQuery({
-    queryKey: ['monthly-report', selectedYear, selectedMonth, selectedPropertyId],
+  // Get quarterly report
+  const { data: quarterlyReport, isLoading: quarterlyReportLoading } = useQuery({
+    queryKey: ['quarterly-report', selectedYear, selectedQuarter, selectedPropertyId],
     queryFn: async () => {
       const backend = getAuthenticatedBackend();
-      const startDate = `${selectedYear}-${selectedMonth}-01`;
-      const endDate = new Date(parseInt(selectedYear), parseInt(selectedMonth), 0).toISOString().split('T')[0];
+      const { startDate, endDate } = getQuarterDateRange(selectedQuarter, parseInt(selectedYear));
       
       const dailyReports = await backend.reports.getDailyReports({
         startDate,
@@ -90,7 +127,7 @@ export function MonthlyYearlyReports() {
         propertyId: selectedPropertyId && selectedPropertyId !== 'all' ? parseInt(selectedPropertyId) : undefined,
       });
 
-      // Calculate monthly totals
+      // Calculate quarterly totals
       const totalOpeningBalanceCents = dailyReports.reports.reduce((sum: any, report: any) => sum + report.openingBalanceCents, 0);
       const totalCashReceivedCents = dailyReports.reports.reduce((sum: any, report: any) => sum + report.cashReceivedCents, 0);
       const totalBankReceivedCents = dailyReports.reports.reduce((sum: any, report: any) => sum + report.bankReceivedCents, 0);
@@ -98,8 +135,8 @@ export function MonthlyYearlyReports() {
       const totalBankExpensesCents = dailyReports.reports.reduce((sum: any, report: any) => sum + report.bankExpensesCents, 0);
       const totalClosingBalanceCents = dailyReports.reports.reduce((sum: any, report: any) => sum + report.closingBalanceCents, 0);
 
-      const monthlyReport: MonthlyReport = {
-        month: selectedMonth,
+      const quarterlyReport: QuarterlyReport = {
+        quarter: selectedQuarter,
         year: selectedYear,
         propertyId: selectedPropertyId && selectedPropertyId !== 'all' ? parseInt(selectedPropertyId) : undefined,
         propertyName: selectedPropertyId && selectedPropertyId !== 'all' && properties?.properties.find((p: any) => p.id.toString() === selectedPropertyId)?.name,
@@ -117,9 +154,9 @@ export function MonthlyYearlyReports() {
         totalDays: dailyReports.reports.length,
       };
 
-      return monthlyReport;
+      return quarterlyReport;
     },
-    enabled: !!selectedYear && !!selectedMonth,
+    enabled: !!selectedYear && !!selectedQuarter,
     refetchInterval: 30000, // Refresh every 30 seconds
     staleTime: 0,
     gcTime: 0,
@@ -189,11 +226,11 @@ export function MonthlyYearlyReports() {
     return months[parseInt(month) - 1];
   };
 
-  const exportMonthlyReport = () => {
-    if (!monthlyReport) return;
+  const exportQuarterlyReport = () => {
+    if (!quarterlyReport) return;
     
     const headers = [
-      'Month',
+      'Quarter',
       'Year',
       'Property',
       'Total Opening Balance',
@@ -213,21 +250,21 @@ export function MonthlyYearlyReports() {
     const csvContent = [
       headers.join(','),
       [
-        getMonthName(monthlyReport.month),
-        monthlyReport.year,
-        monthlyReport.propertyName || 'All Properties',
-        formatCurrency(monthlyReport.totalOpeningBalanceCents),
-        formatCurrency(monthlyReport.totalCashReceivedCents),
-        formatCurrency(monthlyReport.totalBankReceivedCents),
-        formatCurrency(monthlyReport.totalReceivedCents),
-        formatCurrency(monthlyReport.totalCashExpensesCents),
-        formatCurrency(monthlyReport.totalBankExpensesCents),
-        formatCurrency(monthlyReport.totalExpensesCents),
-        formatCurrency(monthlyReport.totalClosingBalanceCents),
-        formatCurrency(monthlyReport.netCashFlowCents),
-        formatCurrency(monthlyReport.averageDailyBalanceCents),
-        monthlyReport.daysWithTransactions,
-        monthlyReport.totalDays
+        quarterlyReport.quarter,
+        quarterlyReport.year,
+        quarterlyReport.propertyName || 'All Properties',
+        formatCurrency(quarterlyReport.totalOpeningBalanceCents),
+        formatCurrency(quarterlyReport.totalCashReceivedCents),
+        formatCurrency(quarterlyReport.totalBankReceivedCents),
+        formatCurrency(quarterlyReport.totalReceivedCents),
+        formatCurrency(quarterlyReport.totalCashExpensesCents),
+        formatCurrency(quarterlyReport.totalBankExpensesCents),
+        formatCurrency(quarterlyReport.totalExpensesCents),
+        formatCurrency(quarterlyReport.totalClosingBalanceCents),
+        formatCurrency(quarterlyReport.netCashFlowCents),
+        formatCurrency(quarterlyReport.averageDailyBalanceCents),
+        quarterlyReport.daysWithTransactions,
+        quarterlyReport.totalDays
       ].join(',')
     ].join('\n');
 
@@ -235,7 +272,7 @@ export function MonthlyYearlyReports() {
     const url = window.URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `monthly-report-${selectedYear}-${selectedMonth}.csv`;
+    a.download = `quarterly-report-${selectedYear}-${selectedQuarter}.csv`;
     a.click();
     window.URL.revokeObjectURL(url);
   };
@@ -301,7 +338,7 @@ export function MonthlyYearlyReports() {
                   <BarChart3 className="h-5 w-5 text-blue-600" />
                 </div>
                 <div>
-                  <CardTitle className="text-xl font-bold text-gray-900">Monthly & Yearly Reports</CardTitle>
+                  <CardTitle className="text-xl font-bold text-gray-900">Quarterly & Yearly Reports</CardTitle>
                   <CardDescription className="text-sm text-gray-600">Aggregated financial reports and analytics</CardDescription>
                 </div>
               </div>
@@ -321,7 +358,7 @@ export function MonthlyYearlyReports() {
               Report Filters
               <span className="text-xs bg-green-100 text-green-700 px-2 py-1 rounded-full font-medium">Active</span>
             </CardTitle>
-            <CardDescription className="text-sm text-gray-600">Select year, month, and property for aggregated reports</CardDescription>
+            <CardDescription className="text-sm text-gray-600">Select year, quarter, and property for aggregated reports</CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -354,20 +391,16 @@ export function MonthlyYearlyReports() {
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="month-filter" className="text-sm font-medium text-gray-700">Month</Label>
-                <Select value={selectedMonth} onValueChange={setSelectedMonth}>
+                <Label htmlFor="quarter-filter" className="text-sm font-medium text-gray-700">Quarter</Label>
+                <Select value={selectedQuarter} onValueChange={setSelectedQuarter}>
                   <SelectTrigger className="h-11 border-gray-300 focus:border-blue-500 focus:ring-blue-500">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    {Array.from({ length: 12 }, (_, i) => {
-                      const month = (i + 1).toString().padStart(2, '0');
-                      return (
-                        <SelectItem key={month} value={month}>
-                          {getMonthName(month)}
-                        </SelectItem>
-                      );
-                    })}
+                    <SelectItem value="Q1">Q1 (Apr-Jun)</SelectItem>
+                    <SelectItem value="Q2">Q2 (Jul-Sep)</SelectItem>
+                    <SelectItem value="Q3">Q3 (Oct-Dec)</SelectItem>
+                    <SelectItem value="Q4">Q4 (Jan-Mar)</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -375,30 +408,21 @@ export function MonthlyYearlyReports() {
           </CardContent>
         </Card>
 
-        {/* Enhanced Reports Tabs */}
-        <Tabs defaultValue="monthly" className="space-y-0">
-          <div className="sticky top-20 z-30 bg-white border-b border-gray-200 -mx-6 px-4 sm:px-6 py-3 shadow-sm">
-            <div className="overflow-x-auto">
-              <TabsList className="grid w-full grid-cols-2 min-w-max bg-gray-100">
-                <TabsTrigger 
-                  value="monthly" 
-                  className="text-xs sm:text-sm px-3 sm:px-6 py-2 data-[state=active]:bg-white data-[state=active]:shadow-sm transition-all duration-200"
-                >
-                  Monthly Report
-                </TabsTrigger>
-                <TabsTrigger 
-                  value="yearly" 
-                  className="text-xs sm:text-sm px-3 sm:px-6 py-2 data-[state=active]:bg-white data-[state=active]:shadow-sm transition-all duration-200"
-                >
-                  Yearly Report
-                </TabsTrigger>
-              </TabsList>
-            </div>
-          </div>
+        <FinanceTabs defaultValue="quarterly" theme={theme}>
+          <FinanceTabsList className="grid-cols-2" theme={theme}>
+            <FinanceTabsTrigger value="quarterly" theme={theme}>
+              <Calendar className="h-4 w-4 mr-2" />
+              Quarterly Report
+            </FinanceTabsTrigger>
+            <FinanceTabsTrigger value="yearly" theme={theme}>
+              <BarChart3 className="h-4 w-4 mr-2" />
+              Yearly Report
+            </FinanceTabsTrigger>
+          </FinanceTabsList>
 
           {/* Content Container */}
           <div className="px-6 py-6">
-            <TabsContent value="monthly" className="space-y-6 mt-0">
+            <TabsContent value="quarterly" className="space-y-6 mt-0">
               <Card className="border-l-4 border-l-blue-500 shadow-sm hover:shadow-md transition-shadow duration-200">
                 <CardHeader className="pb-4">
                   <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
@@ -408,19 +432,19 @@ export function MonthlyYearlyReports() {
                       </div>
                       <div>
                         <CardTitle className="text-lg font-bold text-gray-900">
-                          Monthly Report - {getMonthName(selectedMonth)} {selectedYear}
+                          Quarterly Report - {selectedQuarter} {selectedYear}
                         </CardTitle>
                         <CardDescription className="text-sm text-gray-600">
-                          Financial summary for {getMonthName(selectedMonth)} {selectedYear}
+                          Financial summary for {selectedQuarter} {selectedYear}
                           {selectedPropertyId && properties?.properties.find((p: any) => p.id.toString() === selectedPropertyId) && 
                             ` - ${properties.properties.find((p: any) => p.id.toString() === selectedPropertyId)?.name}`
                           }
                         </CardDescription>
                       </div>
                     </div>
-                    {monthlyReport && (
+                    {quarterlyReport && (
                       <Button 
-                        onClick={exportMonthlyReport}
+                        onClick={exportQuarterlyReport}
                         className="bg-green-600 hover:bg-green-700 transition-all duration-200 hover:scale-105 hover:shadow-md"
                       >
                         <Download className="mr-2 h-4 w-4" />
@@ -431,19 +455,19 @@ export function MonthlyYearlyReports() {
                   </div>
                 </CardHeader>
                 <CardContent>
-                  {monthlyReportLoading ? (
+                  {quarterlyReportLoading ? (
                     <Card className="border-l-4 border-l-blue-500">
                       <CardContent className="flex items-center justify-center p-12">
                         <div className="text-center">
                           <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
                             <BarChart3 className="h-5 w-5 text-blue-600 animate-pulse" />
                           </div>
-                          <p className="text-lg font-medium text-gray-900">Loading monthly report...</p>
+                          <p className="text-lg font-medium text-gray-900">Loading quarterly report...</p>
                           <p className="text-sm text-gray-600 mt-2">Please wait while we fetch your financial data</p>
                         </div>
                       </CardContent>
                     </Card>
-                  ) : monthlyReport ? (
+                  ) : quarterlyReport ? (
                     <div className="space-y-6">
                       {/* Enhanced Summary Cards */}
                       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
@@ -458,10 +482,10 @@ export function MonthlyYearlyReports() {
                           </CardHeader>
                           <CardContent>
                             <div className="text-2xl font-bold text-green-600">
-                              {formatCurrency(monthlyReport.totalReceivedCents)}
+                              {formatCurrency(quarterlyReport.totalReceivedCents)}
                             </div>
                             <p className="text-xs text-gray-600 mt-1">
-                              Cash: {formatCurrency(monthlyReport.totalCashReceivedCents)} | Bank: {formatCurrency(monthlyReport.totalBankReceivedCents)}
+                              Cash: {formatCurrency(quarterlyReport.totalCashReceivedCents)} | Bank: {formatCurrency(quarterlyReport.totalBankReceivedCents)}
                             </p>
                           </CardContent>
                         </Card>
@@ -476,10 +500,10 @@ export function MonthlyYearlyReports() {
                           </CardHeader>
                           <CardContent>
                             <div className="text-2xl font-bold text-red-600">
-                              {formatCurrency(monthlyReport.totalExpensesCents)}
+                              {formatCurrency(quarterlyReport.totalExpensesCents)}
                             </div>
                             <p className="text-xs text-gray-600 mt-1">
-                              Cash: {formatCurrency(monthlyReport.totalCashExpensesCents)} | Bank: {formatCurrency(monthlyReport.totalBankExpensesCents)}
+                              Cash: {formatCurrency(quarterlyReport.totalCashExpensesCents)} | Bank: {formatCurrency(quarterlyReport.totalBankExpensesCents)}
                             </p>
                           </CardContent>
                         </Card>
@@ -493,11 +517,11 @@ export function MonthlyYearlyReports() {
                             </CardTitle>
                           </CardHeader>
                           <CardContent>
-                            <div className={`text-2xl font-bold ${monthlyReport.netCashFlowCents >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                              {formatCurrency(monthlyReport.netCashFlowCents)}
+                            <div className={`text-2xl font-bold ${quarterlyReport.netCashFlowCents >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                              {formatCurrency(quarterlyReport.netCashFlowCents)}
                             </div>
                             <p className="text-xs text-gray-600 mt-1">
-                              Avg Daily: {formatCurrency(monthlyReport.averageDailyBalanceCents)}
+                              Avg Daily: {formatCurrency(quarterlyReport.averageDailyBalanceCents)}
                             </p>
                           </CardContent>
                         </Card>
@@ -512,7 +536,7 @@ export function MonthlyYearlyReports() {
                           </CardHeader>
                           <CardContent>
                             <div className="text-2xl font-bold text-purple-600">
-                              {monthlyReport.daysWithTransactions}/{monthlyReport.totalDays}
+                              {quarterlyReport.daysWithTransactions}/{quarterlyReport.totalDays}
                             </div>
                             <p className="text-xs text-gray-600 mt-1">
                               Days with transactions
@@ -544,18 +568,18 @@ export function MonthlyYearlyReports() {
                                     <Banknote className="h-4 w-4" />
                                     Cash Received
                                   </span>
-                                  <span className="font-medium text-green-600">{formatCurrency(monthlyReport.totalCashReceivedCents)}</span>
+                                  <span className="font-medium text-green-600">{formatCurrency(quarterlyReport.totalCashReceivedCents)}</span>
                                 </div>
                                 <div className="flex justify-between items-center">
                                   <span className="flex items-center gap-2 text-sm">
                                     <CreditCard className="h-4 w-4" />
                                     Bank Received
                                   </span>
-                                  <span className="font-medium text-blue-600">{formatCurrency(monthlyReport.totalBankReceivedCents)}</span>
+                                  <span className="font-medium text-blue-600">{formatCurrency(quarterlyReport.totalBankReceivedCents)}</span>
                                 </div>
                                 <div className="border-t border-green-300 pt-3 flex justify-between items-center font-semibold">
                                   <span>Total Received</span>
-                                  <span className="text-green-600">{formatCurrency(monthlyReport.totalReceivedCents)}</span>
+                                  <span className="text-green-600">{formatCurrency(quarterlyReport.totalReceivedCents)}</span>
                                 </div>
                               </div>
                             </div>
@@ -570,18 +594,18 @@ export function MonthlyYearlyReports() {
                                     <Banknote className="h-4 w-4" />
                                     Cash Expenses
                                   </span>
-                                  <span className="font-medium text-red-600">{formatCurrency(monthlyReport.totalCashExpensesCents)}</span>
+                                  <span className="font-medium text-red-600">{formatCurrency(quarterlyReport.totalCashExpensesCents)}</span>
                                 </div>
                                 <div className="flex justify-between items-center">
                                   <span className="flex items-center gap-2 text-sm">
                                     <CreditCard className="h-4 w-4" />
                                     Bank Expenses
                                   </span>
-                                  <span className="font-medium text-orange-600">{formatCurrency(monthlyReport.totalBankExpensesCents)}</span>
+                                  <span className="font-medium text-orange-600">{formatCurrency(quarterlyReport.totalBankExpensesCents)}</span>
                                 </div>
                                 <div className="border-t border-red-300 pt-3 flex justify-between items-center font-semibold">
                                   <span>Total Expenses</span>
-                                  <span className="text-red-600">{formatCurrency(monthlyReport.totalExpensesCents)}</span>
+                                  <span className="text-red-600">{formatCurrency(quarterlyReport.totalExpensesCents)}</span>
                                 </div>
                               </div>
                             </div>
@@ -590,7 +614,7 @@ export function MonthlyYearlyReports() {
                       </Card>
                     </div>
                   ) : (
-                    <Card className="border-l-4 border-l-blue-500">
+                    <Card className="">
                       <CardContent className="flex flex-col items-center justify-center py-12">
                         <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
                           <Calendar className="h-8 w-8 text-blue-600" />
@@ -796,7 +820,7 @@ export function MonthlyYearlyReports() {
                       </Card>
                     </div>
                   ) : (
-                    <Card className="border-l-4 border-l-blue-500">
+                    <Card className="">
                       <CardContent className="flex flex-col items-center justify-center py-12">
                         <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
                           <Calendar className="h-8 w-8 text-blue-600" />
@@ -810,7 +834,7 @@ export function MonthlyYearlyReports() {
               </Card>
             </TabsContent>
           </div>
-        </Tabs>
+        </FinanceTabs>
       </div>
     </div>
   );

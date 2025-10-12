@@ -5,7 +5,7 @@ ADD COLUMN IF NOT EXISTS login_count INTEGER DEFAULT 0,
 ADD COLUMN IF NOT EXISTS last_login_ip INET,
 ADD COLUMN IF NOT EXISTS last_login_user_agent TEXT,
 ADD COLUMN IF NOT EXISTS last_login_location_json JSONB DEFAULT '{}',
-ADD COLUMN IF NOT EXISTS timezone TEXT DEFAULT 'UTC',
+ADD COLUMN IF NOT EXISTS timezone TEXT DEFAULT 'Asia/Kolkata',
 ADD COLUMN IF NOT EXISTS locale TEXT DEFAULT 'en-US';
 
 -- Create index for better query performance

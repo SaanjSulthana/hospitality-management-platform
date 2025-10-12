@@ -49,3 +49,4 @@ export { createSalaryComponent } from "./salary_components";
 export { listSalaryComponents } from "./salary_components";
 export { getLeaveBalance } from "./leave_balance";
 export { updateLeaveBalance } from "./leave_balance";
+export { fixSchema } from "./fix_schema_endpoint";

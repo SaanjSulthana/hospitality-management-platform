@@ -97,7 +97,8 @@ export const getMonthlyYearlyReport = api<MonthlyYearlyReportRequest, MonthlyYea
           JOIN properties p ON r.property_id = p.id
           WHERE r.org_id = $1 
             AND p.org_id = $1
-            AND r.occurred_at >= $2 AND r.occurred_at <= $3
+            AND DATE(r.occurred_at AT TIME ZONE 'Asia/Kolkata') >= DATE($2::timestamptz AT TIME ZONE 'Asia/Kolkata') 
+            AND DATE(r.occurred_at AT TIME ZONE 'Asia/Kolkata') <= DATE($3::timestamptz AT TIME ZONE 'Asia/Kolkata')
             ${propertyFilter}
         `;
         
@@ -138,7 +139,8 @@ export const getMonthlyYearlyReport = api<MonthlyYearlyReportRequest, MonthlyYea
           JOIN properties p ON e.property_id = p.id
           WHERE e.org_id = $1 
             AND p.org_id = $1
-            AND e.expense_date >= $2 AND e.expense_date <= $3
+            AND e.expense_date >= DATE($2::timestamptz AT TIME ZONE 'Asia/Kolkata') 
+            AND e.expense_date <= DATE($3::timestamptz AT TIME ZONE 'Asia/Kolkata')
             ${propertyFilter}
           GROUP BY e.category
           ORDER BY category_total_cents DESC
@@ -250,7 +252,8 @@ export const getMonthlySummary = api<{
 
   const { year, month, propertyId } = req;
 
-  try {
+    try {
+    // Create date range in IST timezone
     const startDate = `${year}-${month.padStart(2, '0')}-01`;
     const endDate = new Date(parseInt(year), parseInt(month), 0).toISOString().split('T')[0];
 
@@ -277,12 +280,13 @@ export const getMonthlySummary = api<{
     const revenueQuery = `
       SELECT 
         COALESCE(SUM(CAST(r.amount_cents AS INTEGER)), 0) as total_revenue_cents,
-        COUNT(DISTINCT DATE(r.occurred_at)) as days_with_revenue
+        COUNT(DISTINCT DATE(r.occurred_at AT TIME ZONE 'Asia/Kolkata')) as days_with_revenue
       FROM revenues r
       JOIN properties p ON r.property_id = p.id
       WHERE r.org_id = $1 
         AND p.org_id = $1
-        AND r.occurred_at >= $2 AND r.occurred_at <= $3
+        AND DATE(r.occurred_at AT TIME ZONE 'Asia/Kolkata') >= $2::date 
+        AND DATE(r.occurred_at AT TIME ZONE 'Asia/Kolkata') <= $3::date
         ${propertyFilter}
     `;
 
@@ -292,12 +296,12 @@ export const getMonthlySummary = api<{
     const expensesQuery = `
       SELECT 
         COALESCE(SUM(CAST(e.amount_cents AS INTEGER)), 0) as total_expenses_cents,
-        COUNT(DISTINCT DATE(e.expense_date)) as days_with_expenses
+        COUNT(DISTINCT e.expense_date) as days_with_expenses
       FROM expenses e
       JOIN properties p ON e.property_id = p.id
       WHERE e.org_id = $1 
         AND p.org_id = $1
-        AND e.expense_date >= $2 AND e.expense_date <= $3
+        AND e.expense_date >= $2::date AND e.expense_date <= $3::date
         ${propertyFilter}
     `;
 
@@ -413,15 +417,16 @@ export const getYearlySummary = api<{
     // Get monthly revenue breakdown
     const revenueQuery = `
       SELECT 
-        EXTRACT(MONTH FROM r.occurred_at) as month,
+        CAST(EXTRACT(MONTH FROM r.occurred_at AT TIME ZONE 'Asia/Kolkata') AS INTEGER) as month,
         COALESCE(SUM(CAST(r.amount_cents AS INTEGER)), 0) as total_revenue_cents
       FROM revenues r
       JOIN properties p ON r.property_id = p.id
       WHERE r.org_id = $1 
         AND p.org_id = $1
-        AND r.occurred_at >= $2 AND r.occurred_at <= $3
+        AND DATE(r.occurred_at AT TIME ZONE 'Asia/Kolkata') >= $2::date 
+        AND DATE(r.occurred_at AT TIME ZONE 'Asia/Kolkata') <= $3::date
         ${propertyFilter}
-      GROUP BY EXTRACT(MONTH FROM r.occurred_at)
+      GROUP BY EXTRACT(MONTH FROM r.occurred_at AT TIME ZONE 'Asia/Kolkata')
       ORDER BY month
     `;
 
@@ -430,13 +435,13 @@ export const getYearlySummary = api<{
     // Get monthly expenses breakdown
     const expensesQuery = `
       SELECT 
-        EXTRACT(MONTH FROM e.expense_date) as month,
+        CAST(EXTRACT(MONTH FROM e.expense_date) AS INTEGER) as month,
         COALESCE(SUM(CAST(e.amount_cents AS INTEGER)), 0) as total_expenses_cents
       FROM expenses e
       JOIN properties p ON e.property_id = p.id
       WHERE e.org_id = $1 
         AND p.org_id = $1
-        AND e.expense_date >= $2 AND e.expense_date <= $3
+        AND e.expense_date >= $2::date AND e.expense_date <= $3::date
         ${propertyFilter}
       GROUP BY EXTRACT(MONTH FROM e.expense_date)
       ORDER BY month
@@ -513,5 +518,187 @@ export const getYearlySummary = api<{
   } catch (error) {
     console.error('Get yearly summary error:', error);
     throw APIError.internal("Failed to get yearly summary");
+  }
+});
+
+// Get quarterly summary report
+export const getQuarterlySummary = api<{
+  year: string;
+  quarter: number; // 1, 2, 3, or 4
+  propertyId?: number;
+}, {
+  year: string;
+  quarter: number;
+  quarterName: string;
+  propertyId?: number;
+  propertyName?: string;
+  totalRevenue: number;
+  totalExpenses: number;
+  netIncome: number;
+  profitMargin: number;
+  monthsWithTransactions: number;
+  totalMonths: number;
+  averageMonthlyRevenue: number;
+  averageMonthlyExpenses: number;
+  monthlyBreakdown: Array<{
+    month: string;
+    monthNumber: number;
+    revenue: number;
+    expenses: number;
+    netIncome: number;
+  }>;
+}>({
+  auth: true, expose: true, method: "GET", path: "/reports/quarterly-summary"
+}, async (req) => {
+  const authData = getAuthData();
+  if (!authData) {
+    throw APIError.unauthenticated("Authentication required");
+  }
+  requireRole("ADMIN", "MANAGER")(authData);
+
+  const { year, quarter, propertyId } = req;
+
+  // Validate quarter
+  if (quarter < 1 || quarter > 4) {
+    throw APIError.invalidArgument("Quarter must be 1, 2, 3, or 4");
+  }
+
+  try {
+    // Calculate start and end months for the quarter
+    const startMonth = (quarter - 1) * 3 + 1;
+    const endMonth = quarter * 3;
+    
+    const startDate = `${year}-${startMonth.toString().padStart(2, '0')}-01`;
+    const endDate = new Date(parseInt(year), endMonth, 0).toISOString().split('T')[0];
+
+    // Build property filter
+    let propertyFilter = "";
+    const params: any[] = [authData.orgId, startDate, endDate];
+    let paramIndex = 4;
+
+    if (propertyId) {
+      propertyFilter += ` AND p.id = $${paramIndex}`;
+      params.push(propertyId);
+      paramIndex++;
+    }
+
+    if (authData.role === "MANAGER") {
+      propertyFilter += ` AND p.id IN (
+        SELECT property_id FROM user_properties WHERE user_id = $${paramIndex}
+      )`;
+      params.push(parseInt(authData.userID));
+      paramIndex++;
+    }
+
+    // Get monthly revenue breakdown for the quarter
+    const revenueQuery = `
+      SELECT 
+        CAST(EXTRACT(MONTH FROM r.occurred_at AT TIME ZONE 'Asia/Kolkata') AS INTEGER) as month,
+        COALESCE(SUM(CAST(r.amount_cents AS INTEGER)), 0) as total_revenue_cents
+      FROM revenues r
+      JOIN properties p ON r.property_id = p.id
+      WHERE r.org_id = $1 
+        AND p.org_id = $1
+        AND DATE(r.occurred_at AT TIME ZONE 'Asia/Kolkata') >= $2::date 
+        AND DATE(r.occurred_at AT TIME ZONE 'Asia/Kolkata') <= $3::date
+        ${propertyFilter}
+      GROUP BY EXTRACT(MONTH FROM r.occurred_at AT TIME ZONE 'Asia/Kolkata')
+      ORDER BY month
+    `;
+
+    const revenueResults = await reportsDB.rawQueryAll(revenueQuery, ...params);
+
+    // Get monthly expenses breakdown for the quarter
+    const expensesQuery = `
+      SELECT 
+        CAST(EXTRACT(MONTH FROM e.expense_date) AS INTEGER) as month,
+        COALESCE(SUM(CAST(e.amount_cents AS INTEGER)), 0) as total_expenses_cents
+      FROM expenses e
+      JOIN properties p ON e.property_id = p.id
+      WHERE e.org_id = $1 
+        AND p.org_id = $1
+        AND e.expense_date >= $2::date AND e.expense_date <= $3::date
+        ${propertyFilter}
+      GROUP BY EXTRACT(MONTH FROM e.expense_date)
+      ORDER BY month
+    `;
+
+    const expensesResults = await reportsDB.rawQueryAll(expensesQuery, ...params);
+
+    // Create monthly breakdown for the quarter
+    const monthlyBreakdown = [];
+    const monthNames = [
+      'January', 'February', 'March', 'April', 'May', 'June',
+      'July', 'August', 'September', 'October', 'November', 'December'
+    ];
+
+    let totalRevenue = 0;
+    let totalExpenses = 0;
+    let monthsWithTransactions = 0;
+
+    for (let month = startMonth; month <= endMonth; month++) {
+      const monthRevenue = revenueResults.find((r: any) => parseInt(r.month) === month);
+      const monthExpenses = expensesResults.find((e: any) => parseInt(e.month) === month);
+      
+      const revenue = monthRevenue ? parseInt(monthRevenue.total_revenue_cents) / 100 : 0;
+      const expenses = monthExpenses ? parseInt(monthExpenses.total_expenses_cents) / 100 : 0;
+      const netIncome = revenue - expenses;
+
+      if (revenue > 0 || expenses > 0) {
+        monthsWithTransactions++;
+      }
+
+      totalRevenue += revenue;
+      totalExpenses += expenses;
+
+      monthlyBreakdown.push({
+        month: monthNames[month - 1],
+        monthNumber: month,
+        revenue,
+        expenses,
+        netIncome,
+      });
+    }
+
+    const netIncome = totalRevenue - totalExpenses;
+    const profitMargin = totalRevenue > 0 ? (netIncome / totalRevenue) * 100 : 0;
+    const averageMonthlyRevenue = monthsWithTransactions > 0 ? totalRevenue / monthsWithTransactions : 0;
+    const averageMonthlyExpenses = monthsWithTransactions > 0 ? totalExpenses / monthsWithTransactions : 0;
+
+    // Get property name if propertyId is specified
+    let propertyName: string | undefined;
+    if (propertyId) {
+      try {
+        const propertyResult = await reportsDB.queryRow`
+          SELECT name FROM properties WHERE id = ${propertyId} AND org_id = ${authData.orgId}
+        `;
+        propertyName = propertyResult?.name;
+      } catch (error) {
+        console.error('Property name query error:', error);
+      }
+    }
+
+    const quarterNames = ['Q1', 'Q2', 'Q3', 'Q4'];
+    const quarterName = quarterNames[quarter - 1];
+
+    return {
+      year,
+      quarter,
+      quarterName,
+      propertyId,
+      propertyName,
+      totalRevenue,
+      totalExpenses,
+      netIncome,
+      profitMargin,
+      monthsWithTransactions,
+      totalMonths: 3,
+      averageMonthlyRevenue,
+      averageMonthlyExpenses,
+      monthlyBreakdown,
+    };
+  } catch (error) {
+    console.error('Get quarterly summary error:', error);
+    throw APIError.internal("Failed to get quarterly summary");
   }
 });

@@ -279,7 +279,14 @@ export const listAttendance = api<ListAttendanceRequest, ListAttendanceResponse>
       };
     } catch (error) {
       console.error('List attendance error:', error);
-      throw APIError.internal("Failed to fetch attendance records");
+      
+      // Check if it's a column missing error
+      if (error instanceof Error && error.message.includes('column') && error.message.includes('does not exist')) {
+        console.error('Database schema issue detected:', error.message);
+        throw APIError.internal("Database schema issue: Missing required columns. Please run schema fix.");
+      }
+      
+      throw APIError.internal(`Failed to fetch attendance records: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }
 );

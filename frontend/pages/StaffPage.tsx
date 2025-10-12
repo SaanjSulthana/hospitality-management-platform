@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../contexts/AuthContext';
+import { useTheme } from '../contexts/ThemeContext';
 import { usePageTitle } from '../contexts/PageTitleContext';
 import { getCurrentDateString } from '../lib/date-utils';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -11,6 +12,7 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { FinanceTabs, FinanceTabsList, FinanceTabsTrigger } from '@/components/ui/finance-tabs';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { useToast } from '@/components/ui/use-toast';
 import { 
@@ -46,6 +48,7 @@ import {
 
 export default function StaffPage() {
   const { getAuthenticatedBackend, user } = useAuth();
+  const { theme } = useTheme();
   const { setPageTitle } = usePageTitle();
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -772,10 +775,10 @@ export default function StaffPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="w-full min-h-screen bg-gray-50">
     <div className="space-y-6">
         {/* Enhanced Live Status Indicator */}
-        <Card className="border-l-4 border-l-green-500 shadow-sm hover:shadow-md transition-shadow duration-200">
+        <Card className=" shadow-sm hover:shadow-md transition-shadow duration-200">
           <CardContent className="p-4">
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
               <div className="flex items-center gap-3">
@@ -801,61 +804,34 @@ export default function StaffPage() {
           </CardContent>
         </Card>
 
-        {/* Enhanced Staff Management Tabs */}
-        <Tabs defaultValue="staff" className="space-y-0" value={activeTab} onValueChange={setActiveTab}>
-          <div className="sticky top-20 z-30 bg-gradient-to-br from-orange-500 via-orange-600 to-orange-700 border-b-2 border-orange-400 -mx-6 px-4 py-3 shadow-2xl rounded-b-xl">
-            <div className="overflow-x-auto">
-              <div className="bg-white/10 backdrop-blur-sm rounded-lg p-1 border border-white/20 shadow-inner">
-                <TabsList className="grid w-full grid-cols-5 min-w-max bg-transparent h-auto p-0 gap-2">
-                  <TabsTrigger 
-                    value="staff" 
-                    className="text-xs sm:text-sm px-4 sm:px-8 py-4 data-[state=active]:bg-white data-[state=active]:text-orange-600 data-[state=active]:shadow-xl data-[state=active]:border-2 data-[state=active]:border-orange-300 data-[state=inactive]:text-white data-[state=inactive]:bg-gradient-to-r data-[state=inactive]:from-orange-500/30 data-[state=inactive]:to-orange-600/30 data-[state=inactive]:hover:from-orange-500/50 data-[state=inactive]:hover:to-orange-600/50 data-[state=inactive]:hover:shadow-lg data-[state=inactive]:border data-[state=inactive]:border-white/30 transition-all duration-500 flex items-center gap-2 rounded-xl font-semibold relative overflow-hidden group"
-                  >
-                    <div className="absolute inset-0 bg-gradient-to-r from-white/0 via-white/10 to-white/0 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700"></div>
-                    <Users className="h-4 w-4 relative z-10" />
-                    <span className="hidden sm:inline relative z-10">Staff</span>
-                  </TabsTrigger>
-                  <TabsTrigger 
-                    value="schedules" 
-                    className="text-xs sm:text-sm px-4 sm:px-8 py-4 data-[state=active]:bg-white data-[state=active]:text-orange-600 data-[state=active]:shadow-xl data-[state=active]:border-2 data-[state=active]:border-orange-300 data-[state=inactive]:text-white data-[state=inactive]:bg-gradient-to-r data-[state=inactive]:from-orange-500/30 data-[state=inactive]:to-orange-600/30 data-[state=inactive]:hover:from-orange-500/50 data-[state=inactive]:hover:to-orange-600/50 data-[state=inactive]:hover:shadow-lg data-[state=inactive]:border data-[state=inactive]:border-white/30 transition-all duration-500 flex items-center gap-2 rounded-xl font-semibold relative overflow-hidden group"
-                  >
-                    <div className="absolute inset-0 bg-gradient-to-r from-white/0 via-white/10 to-white/0 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700"></div>
-                    <CalendarCheck className="h-4 w-4 relative z-10" />
-                    <span className="hidden sm:inline relative z-10">Schedules</span>
-                  </TabsTrigger>
-                  <TabsTrigger 
-                    value="attendance" 
-                    className="text-xs sm:text-sm px-4 sm:px-8 py-4 data-[state=active]:bg-white data-[state=active]:text-orange-600 data-[state=active]:shadow-xl data-[state=active]:border-2 data-[state=active]:border-orange-300 data-[state=inactive]:text-white data-[state=inactive]:bg-gradient-to-r data-[state=inactive]:from-orange-500/30 data-[state=inactive]:to-orange-600/30 data-[state=inactive]:hover:from-orange-500/50 data-[state=inactive]:hover:to-orange-600/50 data-[state=inactive]:hover:shadow-lg data-[state=inactive]:border data-[state=inactive]:border-white/30 transition-all duration-500 flex items-center gap-2 rounded-xl font-semibold relative overflow-hidden group"
-                  >
-                    <div className="absolute inset-0 bg-gradient-to-r from-white/0 via-white/10 to-white/0 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700"></div>
-                    <Clock4 className="h-4 w-4 relative z-10" />
-                    <span className="hidden sm:inline relative z-10">Attendance</span>
-                  </TabsTrigger>
-                  <TabsTrigger 
-                    value="salary" 
-                    className="text-xs sm:text-sm px-4 sm:px-8 py-4 data-[state=active]:bg-white data-[state=active]:text-orange-600 data-[state=active]:shadow-xl data-[state=active]:border-2 data-[state=active]:border-orange-300 data-[state=inactive]:text-white data-[state=inactive]:bg-gradient-to-r data-[state=inactive]:from-orange-500/30 data-[state=inactive]:to-orange-600/30 data-[state=inactive]:hover:from-orange-500/50 data-[state=inactive]:hover:to-orange-600/50 data-[state=inactive]:hover:shadow-lg data-[state=inactive]:border data-[state=inactive]:border-white/30 transition-all duration-500 flex items-center gap-2 rounded-xl font-semibold relative overflow-hidden group"
-                  >
-                    <div className="absolute inset-0 bg-gradient-to-r from-white/0 via-white/10 to-white/0 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700"></div>
-                    <Banknote className="h-4 w-4 relative z-10" />
-                    <span className="hidden sm:inline relative z-10">Salary</span>
-                  </TabsTrigger>
-                  <TabsTrigger 
-                    value="reports" 
-                    className="text-xs sm:text-sm px-4 sm:px-8 py-4 data-[state=active]:bg-white data-[state=active]:text-orange-600 data-[state=active]:shadow-xl data-[state=active]:border-2 data-[state=active]:border-orange-300 data-[state=inactive]:text-white data-[state=inactive]:bg-gradient-to-r data-[state=inactive]:from-orange-500/30 data-[state=inactive]:to-orange-600/30 data-[state=inactive]:hover:from-orange-500/50 data-[state=inactive]:hover:to-orange-600/50 data-[state=inactive]:hover:shadow-lg data-[state=inactive]:border data-[state=inactive]:border-white/30 transition-all duration-500 flex items-center gap-2 rounded-xl font-semibold relative overflow-hidden group"
-                  >
-                    <div className="absolute inset-0 bg-gradient-to-r from-white/0 via-white/10 to-white/0 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700"></div>
-                    <BarChart3 className="h-4 w-4 relative z-10" />
-                    <span className="hidden sm:inline relative z-10">Reports</span>
-                  </TabsTrigger>
-                </TabsList>
-              </div>
-            </div>
-          </div>
+        <FinanceTabs defaultValue="staff" theme={theme}>
+          <FinanceTabsList className="grid-cols-5" theme={theme}>
+            <FinanceTabsTrigger value="staff" theme={theme}>
+              <Users className="h-4 w-4 mr-2" />
+              Staff
+            </FinanceTabsTrigger>
+            <FinanceTabsTrigger value="schedules" theme={theme}>
+              <CalendarCheck className="h-4 w-4 mr-2" />
+              Schedules
+            </FinanceTabsTrigger>
+            <FinanceTabsTrigger value="attendance" theme={theme}>
+              <Clock4 className="h-4 w-4 mr-2" />
+              Attendance
+            </FinanceTabsTrigger>
+            <FinanceTabsTrigger value="salary" theme={theme}>
+              <Banknote className="h-4 w-4 mr-2" />
+              Salary
+            </FinanceTabsTrigger>
+            <FinanceTabsTrigger value="reports" theme={theme}>
+              <BarChart3 className="h-4 w-4 mr-2" />
+              Reports
+            </FinanceTabsTrigger>
+          </FinanceTabsList>
 
           {/* Content Container */}
           <div className="px-6 py-6">
             <TabsContent value="staff" className="space-y-6 mt-0">
-              <Card className="border-l-4 border-l-blue-500 shadow-sm hover:shadow-md transition-shadow duration-200">
+              <Card className=" shadow-sm hover:shadow-md transition-shadow duration-200">
                 <CardHeader className="pb-4">
                   <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
                     <div className="flex items-center gap-3">
@@ -881,7 +857,7 @@ export default function StaffPage() {
             </CardHeader>
             <CardContent>
               {staffLoading ? (
-                    <Card className="border-l-4 border-l-blue-500">
+                    <Card className="">
                       <CardContent className="flex items-center justify-center p-12">
                         <div className="text-center">
                           <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
@@ -893,7 +869,7 @@ export default function StaffPage() {
                       </CardContent>
                     </Card>
               ) : staff?.staff.length === 0 ? (
-                    <Card className="border-l-4 border-l-blue-500">
+                    <Card className="">
                       <CardContent className="flex flex-col items-center justify-center py-12">
                         <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
                           <UserCheck className="h-8 w-8 text-blue-600" />
@@ -914,7 +890,7 @@ export default function StaffPage() {
               ) : (
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
                   {staff?.staff.map((member: any) => (
-                        <Card key={member.id} className="border-l-4 border-l-blue-500 shadow-sm hover:shadow-md transition-all duration-200">
+                        <Card key={member.id} className="shadow-sm hover:shadow-md transition-all duration-200">
                           <CardHeader className="pb-4">
                         <div className="flex items-start justify-between">
                               <div className="flex items-center gap-3">
@@ -996,7 +972,7 @@ export default function StaffPage() {
         </TabsContent>
 
             <TabsContent value="schedules" className="space-y-6 mt-0">
-              <Card className="border-l-4 border-l-green-500 shadow-sm hover:shadow-md transition-shadow duration-200">
+              <Card className=" shadow-sm hover:shadow-md transition-shadow duration-200">
                 <CardHeader className="pb-4">
                   <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
                     <div className="flex items-center gap-3">
@@ -1022,7 +998,7 @@ export default function StaffPage() {
             </CardHeader>
             <CardContent>
               {schedulesLoading ? (
-                    <Card className="border-l-4 border-l-blue-500">
+                    <Card className="">
                       <CardContent className="flex items-center justify-center p-12">
                         <div className="text-center">
                           <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
@@ -1034,7 +1010,7 @@ export default function StaffPage() {
                       </CardContent>
                     </Card>
               ) : schedules?.schedules.length === 0 ? (
-                    <Card className="border-l-4 border-l-blue-500">
+                    <Card className="">
                       <CardContent className="flex flex-col items-center justify-center py-12">
                         <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
                           <Calendar className="h-8 w-8 text-blue-600" />
@@ -1055,7 +1031,7 @@ export default function StaffPage() {
               ) : (
                 <div className="space-y-4">
                   {schedules?.schedules.map((schedule: any) => (
-                        <Card key={schedule.id} className="border-l-4 border-l-green-500 shadow-sm hover:shadow-md transition-all duration-200">
+                        <Card key={schedule.id} className=" shadow-sm hover:shadow-md transition-all duration-200">
                           <CardContent className="p-4">
                             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                               <div className="flex-1 min-w-0">
@@ -1094,7 +1070,7 @@ export default function StaffPage() {
         </TabsContent>
 
             <TabsContent value="leave" className="space-y-6 mt-0">
-              <Card className="border-l-4 border-l-orange-500 shadow-sm hover:shadow-md transition-shadow duration-200">
+              <Card className=" shadow-sm hover:shadow-md transition-shadow duration-200">
                 <CardHeader className="pb-4">
                   <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
                     <div className="flex items-center gap-3">
@@ -1118,7 +1094,7 @@ export default function StaffPage() {
             </CardHeader>
             <CardContent>
               {leaveLoading ? (
-                    <Card className="border-l-4 border-l-blue-500">
+                    <Card className="">
                       <CardContent className="flex items-center justify-center p-12">
                         <div className="text-center">
                           <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
@@ -1130,7 +1106,7 @@ export default function StaffPage() {
                       </CardContent>
                     </Card>
               ) : leaveRequests?.leaveRequests.length === 0 ? (
-                    <Card className="border-l-4 border-l-blue-500">
+                    <Card className="">
                       <CardContent className="flex flex-col items-center justify-center py-12">
                         <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
                           <CalendarDays className="h-8 w-8 text-blue-600" />
@@ -1149,7 +1125,7 @@ export default function StaffPage() {
               ) : (
                 <div className="space-y-4">
                   {leaveRequests?.leaveRequests.map((request: any) => (
-                        <Card key={request.id} className="border-l-4 border-l-orange-500 shadow-sm hover:shadow-md transition-all duration-200">
+                        <Card key={request.id} className=" shadow-sm hover:shadow-md transition-all duration-200">
                           <CardContent className="p-4">
                             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                               <div className="flex-1 min-w-0">
@@ -1211,7 +1187,7 @@ export default function StaffPage() {
         </TabsContent>
 
             <TabsContent value="attendance" className="space-y-6 mt-0">
-              <Card className="border-l-4 border-l-purple-500 shadow-sm hover:shadow-md transition-shadow duration-200">
+              <Card className=" shadow-sm hover:shadow-md transition-shadow duration-200">
                 <CardHeader className="pb-4">
               <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
                     <div className="flex items-center gap-3">
@@ -1251,7 +1227,7 @@ export default function StaffPage() {
             </CardHeader>
             <CardContent>
               {attendanceLoading ? (
-                    <Card className="border-l-4 border-l-blue-500">
+                    <Card className="">
                       <CardContent className="flex items-center justify-center p-12">
                         <div className="text-center">
                           <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
@@ -1263,7 +1239,7 @@ export default function StaffPage() {
                       </CardContent>
                     </Card>
               ) : attendance?.attendance.length === 0 ? (
-                    <Card className="border-l-4 border-l-blue-500">
+                    <Card className="">
                       <CardContent className="flex flex-col items-center justify-center py-12">
                         <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
                           <LogIn className="h-8 w-8 text-blue-600" />
@@ -1282,7 +1258,7 @@ export default function StaffPage() {
               ) : (
                 <div className="space-y-4">
                   {attendance?.attendance.map((record: any) => (
-                        <Card key={record.id} className="border-l-4 border-l-purple-500 shadow-sm hover:shadow-md transition-all duration-200">
+                        <Card key={record.id} className=" shadow-sm hover:shadow-md transition-all duration-200">
                           <CardContent className="p-4">
                             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                               <div className="flex-1 min-w-0">
@@ -1320,7 +1296,7 @@ export default function StaffPage() {
         </TabsContent>
 
             <TabsContent value="salary" className="space-y-6 mt-0">
-              <Card className="border-l-4 border-l-green-500 shadow-sm hover:shadow-md transition-shadow duration-200">
+              <Card className=" shadow-sm hover:shadow-md transition-shadow duration-200">
                 <CardHeader className="pb-4">
               <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
                     <div className="flex items-center gap-3">
@@ -1362,7 +1338,7 @@ export default function StaffPage() {
             </CardHeader>
             <CardContent>
               {salaryLoading ? (
-                    <Card className="border-l-4 border-l-blue-500">
+                    <Card className="">
                       <CardContent className="flex items-center justify-center p-12">
                         <div className="text-center">
                           <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
@@ -1374,7 +1350,7 @@ export default function StaffPage() {
                       </CardContent>
                     </Card>
               ) : salaryComponents?.salaryComponents.length === 0 ? (
-                    <Card className="border-l-4 border-l-blue-500">
+                    <Card className="">
                       <CardContent className="flex flex-col items-center justify-center py-12">
                         <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
                           <Banknote className="h-8 w-8 text-blue-600" />
@@ -1395,7 +1371,7 @@ export default function StaffPage() {
               ) : (
                 <div className="space-y-4">
                   {salaryComponents?.salaryComponents.map((component: any) => (
-                        <Card key={component.id} className="border-l-4 border-l-green-500 shadow-sm hover:shadow-md transition-all duration-200">
+                        <Card key={component.id} className=" shadow-sm hover:shadow-md transition-all duration-200">
                           <CardContent className="p-4">
                             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                               <div className="flex-1 min-w-0">
@@ -1429,7 +1405,7 @@ export default function StaffPage() {
         </TabsContent>
 
             <TabsContent value="reports" className="space-y-6 mt-0">
-              <Card className="border-l-4 border-l-purple-500 shadow-sm hover:shadow-md transition-shadow duration-200">
+              <Card className=" shadow-sm hover:shadow-md transition-shadow duration-200">
                 <CardHeader className="pb-4">
               <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
                     <div className="flex items-center gap-3">
@@ -1464,7 +1440,7 @@ export default function StaffPage() {
             </CardHeader>
             <CardContent>
               {statsLoading ? (
-                    <Card className="border-l-4 border-l-blue-500">
+                    <Card className="">
                       <CardContent className="flex items-center justify-center p-12">
                         <div className="text-center">
                           <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
@@ -1479,7 +1455,7 @@ export default function StaffPage() {
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
                   {staffStatistics && (
                     <>
-                          <Card className="border-l-4 border-l-blue-500 shadow-sm hover:shadow-md transition-shadow duration-200">
+                          <Card className=" shadow-sm hover:shadow-md transition-shadow duration-200">
                             <CardHeader className="pb-4">
                               <CardTitle className="text-sm font-medium flex items-center gap-2">
                                 <div className="p-2 bg-blue-100 rounded-lg shadow-sm">
@@ -1496,7 +1472,7 @@ export default function StaffPage() {
                         </CardContent>
                       </Card>
                       
-                          <Card className="border-l-4 border-l-green-500 shadow-sm hover:shadow-md transition-shadow duration-200">
+                          <Card className=" shadow-sm hover:shadow-md transition-shadow duration-200">
                             <CardHeader className="pb-4">
                               <CardTitle className="text-sm font-medium flex items-center gap-2">
                                 <div className="p-2 bg-green-100 rounded-lg shadow-sm">
@@ -1513,7 +1489,7 @@ export default function StaffPage() {
                         </CardContent>
                       </Card>
                       
-                          <Card className="border-l-4 border-l-orange-500 shadow-sm hover:shadow-md transition-shadow duration-200">
+                          <Card className=" shadow-sm hover:shadow-md transition-shadow duration-200">
                             <CardHeader className="pb-4">
                               <CardTitle className="text-sm font-medium flex items-center gap-2">
                                 <div className="p-2 bg-orange-100 rounded-lg shadow-sm">
@@ -1537,7 +1513,7 @@ export default function StaffPage() {
           </Card>
         </TabsContent>
           </div>
-      </Tabs>
+        </FinanceTabs>
       </div>
 
       {/* Create Staff Dialog */}

@@ -2,6 +2,7 @@ import { api, APIError } from "encore.dev/api";
 import { getAuthData } from "~encore/auth";
 import { financeDB } from "./db";
 import { requireRole } from "../auth/middleware";
+import { handleFinanceError, executeWithRetry, generateFallbackQuery, isSchemaError } from "./error_handling";
 
 interface ListExpensesRequest {
   propertyId?: number;
@@ -49,14 +50,39 @@ export const listExpenses = api<ListExpensesRequest, ListExpensesResponse>(
 
     console.log('List expenses request:', { propertyId, category, status, startDate, endDate, orgId: authData.orgId });
 
+    // Check if new columns exist and build query dynamically
+    let hasNewColumns = false;
     try {
-      let query = `
+      const columnCheck = await financeDB.queryRow`
+        SELECT column_name 
+        FROM information_schema.columns 
+        WHERE table_name = 'expenses' AND column_name IN ('status', 'payment_mode', 'bank_reference', 'receipt_file_id', 'approved_by_user_id', 'approved_at')
+      `;
+      hasNewColumns = !!columnCheck;
+    } catch (error) {
+      console.log('Column check failed, using fallback query:', error);
+    }
+
+    let query = `
+      SELECT
+        e.id, e.property_id, p.name as property_name, e.category, e.amount_cents, e.currency,
+        e.description, e.receipt_url, e.expense_date,
+        e.created_by_user_id, e.created_at,
+        u.display_name as created_by_name
+      FROM expenses e
+      JOIN properties p ON e.property_id = p.id AND p.org_id = $1
+      JOIN users u ON e.created_by_user_id = u.id AND u.org_id = $1
+      WHERE e.org_id = $1
+    `;
+
+    // Add new columns if they exist
+    if (hasNewColumns) {
+      query = `
         SELECT
           e.id, e.property_id, p.name as property_name, e.category, e.amount_cents, e.currency,
           e.description, e.receipt_url, e.receipt_file_id, e.expense_date,
-          e.payment_mode,
-          e.bank_reference,
-          e.status, e.created_by_user_id, e.approved_by_user_id, e.approved_at, e.created_at,
+          e.payment_mode, e.bank_reference,
+          COALESCE(e.status, 'pending') as status, e.created_by_user_id, e.approved_by_user_id, e.approved_at, e.created_at,
           u.display_name as created_by_name,
           au.display_name as approved_by_name
         FROM expenses e
@@ -65,8 +91,11 @@ export const listExpenses = api<ListExpensesRequest, ListExpensesResponse>(
         LEFT JOIN users au ON e.approved_by_user_id = au.id AND au.org_id = $1
         WHERE e.org_id = $1
       `;
-      const params: any[] = [authData.orgId];
-      let paramIndex = 2;
+    }
+    const params: any[] = [authData.orgId];
+    let paramIndex = 2;
+
+    try {
 
       // Managers can only see expenses for properties they have access to
       if (authData.role === "MANAGER") {
@@ -97,20 +126,16 @@ export const listExpenses = api<ListExpensesRequest, ListExpensesResponse>(
       }
 
       if (startDate) {
-        // Start of day: 00:00:00 in local timezone
-        const [year, month, day] = startDate.split('-').map(Number);
-        const startOfDay = new Date(year, month - 1, day, 0, 0, 0, 0);
+        // Use date string directly for PostgreSQL date comparison
         query += ` AND e.expense_date >= $${paramIndex}`;
-        params.push(startOfDay);
+        params.push(startDate);
         paramIndex++;
       }
 
       if (endDate) {
-        // End of day: 23:59:59.999 in local timezone
-        const [year, month, day] = endDate.split('-').map(Number);
-        const endOfDay = new Date(year, month - 1, day, 23, 59, 59, 999);
+        // Use date string directly for PostgreSQL date comparison
         query += ` AND e.expense_date <= $${paramIndex}`;
-        params.push(endOfDay);
+        params.push(endDate);
         paramIndex++;
       }
 
@@ -118,7 +143,14 @@ export const listExpenses = api<ListExpensesRequest, ListExpensesResponse>(
 
       console.log('Executing expenses query:', query);
       console.log('Query params:', params);
-      const expenses = await financeDB.rawQueryAll(query, ...params);
+      
+      // Execute query with retry logic for connection issues
+      const expenses = await executeWithRetry(
+        () => financeDB.rawQueryAll(query, ...params),
+        3, // max retries
+        1000 // delay between retries
+      );
+      
       console.log('Query result count:', expenses.length);
 
       // Calculate total amount for all expenses (including pending)
@@ -135,23 +167,81 @@ export const listExpenses = api<ListExpensesRequest, ListExpensesResponse>(
           currency: expense.currency,
           description: expense.description,
           receiptUrl: expense.receipt_url,
-          receiptFileId: expense.receipt_file_id,
+          receiptFileId: hasNewColumns ? expense.receipt_file_id : null,
           expenseDate: expense.expense_date,
-          paymentMode: expense.payment_mode,
-          bankReference: expense.bank_reference,
-          status: expense.status,
+          paymentMode: hasNewColumns ? (expense.payment_mode || 'cash') : 'cash',
+          bankReference: hasNewColumns ? expense.bank_reference : null,
+          status: hasNewColumns ? (expense.status || 'pending') : 'pending',
           createdByUserId: expense.created_by_user_id,
           createdByName: expense.created_by_name,
-          approvedByUserId: expense.approved_by_user_id,
-          approvedByName: expense.approved_by_name,
-          approvedAt: expense.approved_at,
+          approvedByUserId: hasNewColumns ? expense.approved_by_user_id : null,
+          approvedByName: hasNewColumns ? expense.approved_by_name : null,
+          approvedAt: hasNewColumns ? expense.approved_at : null,
           createdAt: expense.created_at,
         })),
         totalAmount,
       };
     } catch (error) {
-      console.error('List expenses error:', error);
-      throw new Error('Failed to fetch expenses');
+      // Handle schema errors with fallback query
+      if (isSchemaError(error as Error)) {
+        console.log('Schema error detected, attempting fallback query...');
+        try {
+          // Try with a simplified query without new columns
+          const fallbackQuery = generateFallbackQuery(query, ['status', 'payment_mode', 'bank_reference', 'receipt_file_id', 'approved_by_user_id', 'approved_at']);
+          console.log('Executing fallback query:', fallbackQuery);
+          
+          const fallbackExpenses = await executeWithRetry(
+            () => financeDB.rawQueryAll(fallbackQuery, params[0]), // Only pass orgId parameter
+            3,
+            1000
+          );
+          
+          const totalAmount = fallbackExpenses
+            .reduce((sum, expense) => sum + (parseInt(expense.amount_cents) || 0), 0);
+
+          return {
+            expenses: fallbackExpenses.map((expense) => ({
+              id: expense.id,
+              propertyId: expense.property_id,
+              propertyName: expense.property_name,
+              category: expense.category,
+              amountCents: parseInt(expense.amount_cents),
+              currency: expense.currency,
+              description: expense.description,
+              receiptUrl: expense.receipt_url,
+              receiptFileId: null, // Not available in fallback
+              expenseDate: expense.expense_date,
+              paymentMode: 'cash', // Default value
+              bankReference: null, // Not available in fallback
+              status: 'pending', // Default value
+              createdByUserId: expense.created_by_user_id,
+              createdByName: expense.created_by_name,
+              approvedByUserId: null, // Not available in fallback
+              approvedByName: null, // Not available in fallback
+              approvedAt: null, // Not available in fallback
+              createdAt: expense.created_at,
+            })),
+            totalAmount,
+          };
+        } catch (fallbackError) {
+          console.error('Fallback query also failed:', fallbackError);
+          // If fallback also fails, use enhanced error handling
+          throw handleFinanceError(fallbackError as Error, 'list_expenses', {
+            userId: authData.userId,
+            orgId: authData.orgId,
+            query: fallbackQuery,
+            table: 'expenses'
+          });
+        }
+      }
+      
+      // Use enhanced error handling for all other errors
+      throw handleFinanceError(error as Error, 'list_expenses', {
+        userId: authData.userId,
+        orgId: authData.orgId,
+        query,
+        table: 'expenses'
+      });
     }
   }
 );

@@ -108,6 +108,7 @@ export function DailyApprovalManager({ className, propertyId, startDate, endDate
       queryClient.invalidateQueries({ queryKey: ['expenses'] });
       queryClient.invalidateQueries({ queryKey: ['revenues'] });
       queryClient.invalidateQueries({ queryKey: ['profit-loss'] });
+      queryClient.invalidateQueries({ queryKey: ['monthly-report'] }); // Invalidate monthly reports for real-time updates
     },
     onError: (error: any) => {
       toast({
@@ -193,7 +194,7 @@ export function DailyApprovalManager({ className, propertyId, startDate, endDate
             <Button 
               variant="outline" 
               onClick={() => window.location.reload()}
-              className="border-red-300 text-red-700 hover:bg-red-50"
+              className="bg-white border-rose-200 text-red-700 hover:bg-rose-50 hover:border-rose-300 font-semibold"
             >
               <RefreshCw className="h-4 w-4 mr-2" />
               Try Again

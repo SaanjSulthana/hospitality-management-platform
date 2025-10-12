@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Test Image Compression</title>
+</head>
+<body>
+    <h1>Image Compression Test</h1>
+    <input type="file" id="fileInput" accept="image/*">
+    <div id="results"></div>
+
+    <script>
+        // Simple compression test
+        function compressImage(file, maxSizeMB = 5) {
+            return new Promise((resolve, reject) => {
+                const canvas = document.createElement('canvas');
+                const ctx = canvas.getContext('2d');
+                const img = new Image();
+
+                img.onload = () => {
+                    // Calculate new dimensions
+                    let { width, height } = img;
+                    const maxDimension = 2048;
+                    
+                    if (width > maxDimension || height > maxDimension) {
+                        const aspectRatio = width / height;
+                        if (width > height) {
+                            width = maxDimension;
+                            height = width / aspectRatio;
+                        } else {
+                            height = maxDimension;
+                            width = height * aspectRatio;
+                        }
+                    }
+
+                    canvas.width = width;
+                    canvas.height = height;
+
+                    // Draw and compress
+                    ctx.drawImage(img, 0, 0, width, height);
+                    
+                    canvas.toBlob((blob) => {
+                        if (!blob) {
+                            reject(new Error('Compression failed'));
+                            return;
+                        }
+                        
+                        const compressedFile = new File([blob], file.name, {
+                            type: 'image/jpeg',
+                            lastModified: Date.now()
+                        });
+                        
+                        resolve({
+                            compressedFile,
+                            originalSize: file.size,
+                            compressedSize: blob.size,
+                            compressionRatio: (1 - blob.size / file.size) * 100
+                        });
+                    }, 'image/jpeg', 0.8);
+                };
+
+                img.onerror = () => reject(new Error('Failed to load image'));
+                img.src = URL.createObjectURL(file);
+            });
+        }
+
+        document.getElementById('fileInput').addEventListener('change', async (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            const results = document.getElementById('results');
+            results.innerHTML = `<p>Testing compression for: ${file.name} (${(file.size / 1024 / 1024).toFixed(2)}MB)</p>`;
+
+            try {
+                const result = await compressImage(file);
+                const originalMB = (result.originalSize / 1024 / 1024).toFixed(2);
+                const compressedMB = (result.compressedSize / 1024 / 1024).toFixed(2);
+                const ratio = result.compressionRatio.toFixed(1);
+                
+                results.innerHTML += `
+                    <p><strong>Compression Results:</strong></p>
+                    <p>Original: ${originalMB}MB</p>
+                    <p>Compressed: ${compressedMB}MB</p>
+                    <p>Reduction: ${ratio}%</p>
+                    <p>Status: ${result.compressedSize < 10 * 1024 * 1024 ? '✅ Within 10MB limit' : '❌ Still too large'}</p>
+                `;
+            } catch (error) {
+                results.innerHTML += `<p style="color: red;">Error: ${error.message}</p>`;
+            }
+        });
+    </script>
+</body>
+</html>

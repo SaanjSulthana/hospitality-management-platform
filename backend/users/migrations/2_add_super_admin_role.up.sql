@@ -32,7 +32,7 @@ BEGIN
     
     -- Add timezone column if it doesn't exist
     IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'users' AND column_name = 'timezone') THEN
-        ALTER TABLE users ADD COLUMN timezone TEXT DEFAULT 'UTC';
+        ALTER TABLE users ADD COLUMN timezone TEXT DEFAULT 'Asia/Kolkata';
     END IF;
     
     -- Add locale column if it doesn't exist

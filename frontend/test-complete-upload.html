@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Complete Upload Test</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .test-section { margin: 20px 0; padding: 15px; border: 1px solid #ddd; border-radius: 5px; }
+        .success { background-color: #d4edda; border-color: #c3e6cb; }
+        .error { background-color: #f8d7da; border-color: #f5c6cb; }
+        .info { background-color: #d1ecf1; border-color: #bee5eb; }
+        .results { margin-top: 10px; }
+        .step { margin: 10px 0; padding: 10px; background: #f8f9fa; border-radius: 3px; }
+        button { padding: 10px 20px; margin: 5px; background: #007bff; color: white; border: none; border-radius: 3px; cursor: pointer; }
+        button:hover { background: #0056b3; }
+        input[type="file"] { margin: 10px 0; }
+        .progress { width: 100%; height: 20px; background: #f0f0f0; border-radius: 10px; overflow: hidden; }
+        .progress-bar { height: 100%; background: #007bff; transition: width 0.3s; }
+    </style>
+</head>
+<body>
+    <h1>🔧 Complete Document Upload Test</h1>
+    
+    <div class="test-section info">
+        <h3>📋 Test Instructions</h3>
+        <p>This test will verify the complete document upload solution:</p>
+        <ol>
+            <li>Select a large document image (PAN card, Aadhaar, Passport, etc.)</li>
+            <li>Watch the compression process</li>
+            <li>Verify the upload succeeds without "length limit exceeded" errors</li>
+            <li>Check that text extraction works on compressed images</li>
+        </ol>
+    </div>
+
+    <div class="test-section">
+        <h3>📁 File Selection</h3>
+        <input type="file" id="fileInput" accept="image/*">
+        <div id="fileInfo" class="results"></div>
+    </div>
+
+    <div class="test-section">
+        <h3>🔄 Compression Test</h3>
+        <button onclick="testCompression()" id="compressBtn" disabled>Test Compression</button>
+        <div id="compressionResults" class="results"></div>
+    </div>
+
+    <div class="test-section">
+        <h3>📤 Upload Test</h3>
+        <button onclick="testUpload()" id="uploadBtn" disabled>Test Upload</button>
+        <div id="uploadResults" class="results"></div>
+    </div>
+
+    <div class="test-section">
+        <h3>📊 Summary</h3>
+        <div id="summary" class="results"></div>
+    </div>
+
+    <script>
+        let selectedFile = null;
+        let compressedFile = null;
+        let uploadToken = null;
+
+        // Get auth token
+        async function getAuthToken() {
+            try {
+                const response = await fetch('http://localhost:4000/auth/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email: 'shreya@gmail.com', password: '123456789' })
+                });
+                const data = await response.json();
+                return data.accessToken;
+            } catch (error) {
+                console.error('Auth failed:', error);
+                return null;
+            }
+        }
+
+        // Compression function (same as in the app)
+        function compressImage(file, targetSizeMB = 5) {
+            return new Promise((resolve, reject) => {
+                const canvas = document.createElement('canvas');
+                const ctx = canvas.getContext('2d');
+                const img = new Image();
+
+                img.onload = () => {
+                    let { width, height } = img;
+                    const maxDimension = 1600;
+                    
+                    if (width > maxDimension || height > maxDimension) {
+                        const aspectRatio = width / height;
+                        if (width > height) {
+                            width = maxDimension;
+                            height = width / aspectRatio;
+                        } else {
+                            height = maxDimension;
+                            width = height * aspectRatio;
+                        }
+                    }
+
+                    canvas.width = width;
+                    canvas.height = height;
+                    ctx.drawImage(img, 0, 0, width, height);
+                    
+                    let quality = 0.7;
+                    const tryCompress = () => {
+                        canvas.toBlob((blob) => {
+                            if (!blob) {
+                                reject(new Error('Compression failed'));
+                                return;
+                            }
+                            
+                            const compressedSizeMB = blob.size / (1024 * 1024);
+                            
+                            if (compressedSizeMB > targetSizeMB && quality > 0.3) {
+                                quality -= 0.1;
+                                tryCompress();
+                                return;
+                            }
+                            
+                            const compressedFile = new File([blob], file.name, {
+                                type: 'image/jpeg',
+                                lastModified: Date.now()
+                            });
+                            
+                            resolve({
+                                compressedFile,
+                                originalSize: file.size,
+                                compressedSize: blob.size,
+                                compressionRatio: (1 - blob.size / file.size) * 100,
+                                quality
+                            });
+                        }, 'image/jpeg', quality);
+                    };
+                    
+                    tryCompress();
+                };
+
+                img.onerror = () => reject(new Error('Failed to load image'));
+                img.src = URL.createObjectURL(file);
+            });
+        }
+
+        // File selection handler
+        document.getElementById('fileInput').addEventListener('change', (e) => {
+            selectedFile = e.target.files[0];
+            if (selectedFile) {
+                const fileSizeMB = (selectedFile.size / 1024 / 1024).toFixed(2);
+                document.getElementById('fileInfo').innerHTML = `
+                    <div class="step">
+                        <strong>Selected File:</strong> ${selectedFile.name}<br>
+                        <strong>Size:</strong> ${fileSizeMB}MB<br>
+                        <strong>Type:</strong> ${selectedFile.type}
+                    </div>
+                `;
+                document.getElementById('compressBtn').disabled = false;
+            }
+        });
+
+        // Test compression
+        async function testCompression() {
+            if (!selectedFile) return;
+            
+            const results = document.getElementById('compressionResults');
+            results.innerHTML = '<div class="step">🔄 Compressing image...</div>';
+            
+            try {
+                const result = await compressImage(selectedFile, 5);
+                compressedFile = result.compressedFile;
+                
+                const originalMB = (result.originalSize / 1024 / 1024).toFixed(2);
+                const compressedMB = (result.compressedSize / 1024 / 1024).toFixed(2);
+                const ratio = result.compressionRatio.toFixed(1);
+                
+                results.innerHTML = `
+                    <div class="step success">
+                        ✅ <strong>Compression Successful!</strong><br>
+                        Original: ${originalMB}MB → Compressed: ${compressedMB}MB<br>
+                        Reduction: ${ratio}%<br>
+                        Quality: ${(result.quality * 100).toFixed(0)}%
+                    </div>
+                `;
+                
+                document.getElementById('uploadBtn').disabled = false;
+                updateSummary();
+            } catch (error) {
+                results.innerHTML = `<div class="step error">❌ Compression failed: ${error.message}</div>`;
+            }
+        }
+
+        // Test upload
+        async function testUpload() {
+            if (!compressedFile) return;
+            
+            const results = document.getElementById('uploadResults');
+            results.innerHTML = '<div class="step">🔄 Uploading to backend...</div>';
+            
+            try {
+                // Get auth token
+                if (!uploadToken) {
+                    uploadToken = await getAuthToken();
+                    if (!uploadToken) {
+                        throw new Error('Failed to authenticate');
+                    }
+                }
+                
+                // Convert to base64
+                const base64String = await new Promise((resolve, reject) => {
+                    const reader = new FileReader();
+                    reader.onload = () => resolve(reader.result.split(',')[1]);
+                    reader.onerror = reject;
+                    reader.readAsDataURL(compressedFile);
+                });
+                
+                const base64SizeMB = (base64String.length * 0.75) / (1024 * 1024);
+                
+                // Upload
+                const response = await fetch('http://localhost:4000/guest-checkin/documents/upload', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${uploadToken}`
+                    },
+                    body: JSON.stringify({
+                        documentType: 'passport',
+                        fileData: base64String,
+                        filename: compressedFile.name,
+                        mimeType: compressedFile.type,
+                        performExtraction: true
+                    })
+                });
+                
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    throw new Error(`Upload failed: ${response.status} ${errorText}`);
+                }
+                
+                const result = await response.json();
+                
+                results.innerHTML = `
+                    <div class="step success">
+                        ✅ <strong>Upload Successful!</strong><br>
+                        Document ID: ${result.document.id}<br>
+                        Base64 Size: ${base64SizeMB.toFixed(2)}MB<br>
+                        Extraction Status: ${result.extraction.status}<br>
+                        Overall Confidence: ${result.extraction.overallConfidence}%
+                    </div>
+                `;
+                
+                updateSummary();
+            } catch (error) {
+                results.innerHTML = `<div class="step error">❌ Upload failed: ${error.message}</div>`;
+            }
+        }
+
+        // Update summary
+        function updateSummary() {
+            const summary = document.getElementById('summary');
+            let html = '<div class="step"><strong>📊 Test Summary:</strong><br>';
+            
+            if (selectedFile) {
+                const originalMB = (selectedFile.size / 1024 / 1024).toFixed(2);
+                html += `• Original file: ${originalMB}MB<br>`;
+            }
+            
+            if (compressedFile) {
+                const compressedMB = (compressedFile.size / 1024 / 1024).toFixed(2);
+                html += `• Compressed file: ${compressedMB}MB<br>`;
+            }
+            
+            const compressionResults = document.getElementById('compressionResults').innerHTML;
+            const uploadResults = document.getElementById('uploadResults').innerHTML;
+            
+            if (compressionResults.includes('✅')) {
+                html += '• Compression: ✅ Success<br>';
+            } else if (compressionResults.includes('❌')) {
+                html += '• Compression: ❌ Failed<br>';
+            } else {
+                html += '• Compression: ⏳ Not tested<br>';
+            }
+            
+            if (uploadResults.includes('✅')) {
+                html += '• Upload: ✅ Success<br>';
+                html += '• Status: 🎉 Complete solution working!<br>';
+            } else if (uploadResults.includes('❌')) {
+                html += '• Upload: ❌ Failed<br>';
+                html += '• Status: 🔧 Needs investigation<br>';
+            } else {
+                html += '• Upload: ⏳ Not tested<br>';
+                html += '• Status: ⏳ In progress<br>';
+            }
+            
+            html += '</div>';
+            summary.innerHTML = html;
+        }
+    </script>
+</body>
+</html>

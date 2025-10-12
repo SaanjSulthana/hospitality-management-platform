@@ -117,7 +117,7 @@ export default function PropertiesPage() {
       invalidateQueries: [QUERY_KEYS.PROPERTIES, QUERY_KEYS.DASHBOARD, QUERY_KEYS.ANALYTICS],
       refetchQueries: [QUERY_KEYS.PROPERTIES],
       successMessage: "The property has been deleted successfully.",
-      errorMessage: "Failed to delete property. Please try again.",
+      // Remove generic errorMessage to allow backend's specific error message to show
       onSuccess: () => {
         setIsDeleteDialogOpen(false);
         setDeletingProperty(null);
@@ -321,7 +321,7 @@ export default function PropertiesPage() {
                 <Button 
                   onClick={() => refetch()}
                   variant="outline" 
-                  className="border-red-300 text-red-700 hover:bg-red-50"
+                  className="bg-white border-rose-200 text-red-700 hover:bg-rose-50 hover:border-rose-300 font-semibold"
                 >
                   <RefreshCw className="h-4 w-4 mr-2" />
                   Try Again
@@ -643,9 +643,36 @@ export default function PropertiesPage() {
                           <CardTitle className="text-lg font-bold text-gray-900 leading-tight flex-1 min-w-0 break-words">
                             {property.name}
                           </CardTitle>
-                          <Badge className={`${getPropertyTypeColor(property.type)} flex-shrink-0 self-start`}>
-                            {property.type}
-                          </Badge>
+                          <div className="flex items-center gap-2 flex-shrink-0">
+                            <Badge className={`${getPropertyTypeColor(property.type)} self-start`}>
+                              {property.type}
+                            </Badge>
+                            
+                            {/* Action Buttons - Moved to top right */}
+                            <div className="flex items-center gap-1">
+                              <Button 
+                                variant="outline" 
+                                size="sm" 
+                                onClick={() => openEditDialog(property)}
+                                className="h-8 w-8 p-0 bg-white border-gray-300 text-gray-700 hover:bg-gray-50 hover:border-gray-400 transition-all duration-200 rounded-lg shadow-sm"
+                                title="Edit property"
+                              >
+                                <Pencil className="h-4 w-4" />
+                              </Button>
+                              {/* Only ADMIN can delete properties */}
+                              {user?.role === 'ADMIN' && (
+                                <Button 
+                                  variant="outline" 
+                                  size="sm" 
+                                  onClick={() => openDeleteDialog(property)}
+                                  className="h-8 w-8 p-0 bg-white border-gray-300 text-red-600 hover:bg-red-50 hover:border-red-400 transition-all duration-200 rounded-lg shadow-sm"
+                                  title="Delete property"
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                </Button>
+                              )}
+                            </div>
+                          </div>
                         </div>
                         <CardDescription className="flex items-center text-sm text-gray-600 break-words">
                           <MapPin className="h-4 w-4 mr-2 flex-shrink-0" />
@@ -711,31 +738,6 @@ export default function PropertiesPage() {
                         >
                           {property.status}
                         </Badge>
-                      </div>
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                        <Button 
-                          variant="outline" 
-                          size="sm" 
-                          onClick={() => openEditDialog(property)}
-                          className="transition-all duration-200 hover:scale-105 hover:shadow-md flex-shrink-0"
-                        >
-                          <Pencil className="h-4 w-4 mr-2" />
-                          <span className="hidden sm:inline">Edit</span>
-                          <span className="sm:hidden">Edit</span>
-                        </Button>
-                        {/* Only ADMIN can delete properties */}
-                        {user?.role === 'ADMIN' && (
-                          <Button 
-                            variant="outline" 
-                            size="sm" 
-                            onClick={() => openDeleteDialog(property)}
-                            className="text-red-600 border-red-200 hover:bg-red-50 hover:border-red-300 transition-all duration-200 hover:scale-105 hover:shadow-md flex-shrink-0"
-                          >
-                            <Trash2 className="h-4 w-4 mr-2" />
-                            <span className="hidden sm:inline">Delete</span>
-                            <span className="sm:hidden">Delete</span>
-                          </Button>
-                        )}
                       </div>
                     </div>
                   </CardContent>

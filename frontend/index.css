@@ -128,3 +128,20 @@
     @apply bg-background text-foreground;
   }
 }
+
+@layer components {
+  /* Theme-aware tabs styles */
+  .theme-tabs-trigger[data-state="active"] {
+    color: var(--theme-primary, #3b82f6) !important;
+    border-bottom-color: var(--theme-primary, #3b82f6) !important;
+    background-color: var(--theme-primary-10, rgba(59, 130, 246, 0.1)) !important;
+  }
+  
+  .theme-tabs-trigger[data-state="active"]:focus-visible {
+    --tw-ring-color: var(--theme-primary, #3b82f6) !important;
+  }
+  
+  .theme-tabs-trigger[data-state="active"]:hover {
+    background-color: var(--theme-primary-20, rgba(59, 130, 246, 0.2)) !important;
+  }
+}

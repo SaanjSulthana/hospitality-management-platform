@@ -69,7 +69,76 @@ export const deleteProperty = api<DeletePropertyRequest, DeletePropertyResponse>
         throw APIError.notFound("Property not found");
       }
 
-      // Delete the property (CASCADE will handle related data cleanup)
+      // Check if there are staff members assigned to this property
+      const staffCount = await propertiesDB.queryRow`
+        SELECT COUNT(*) as count FROM staff 
+        WHERE property_id = ${propertyId} AND org_id = ${authData.orgId}
+      `;
+      
+      if (staffCount && parseInt(staffCount.count) > 0) {
+        log.warn("Cannot delete property with assigned staff", { 
+          propertyId: propertyId,
+          propertyName: propertyRow.name,
+          staffCount: staffCount.count,
+          orgId: authData.orgId
+        });
+        
+        throw APIError.invalidArgument(
+          `Cannot delete property "${propertyRow.name}" because it has ${staffCount.count} staff member(s) assigned to it. ` +
+          `Please reassign or delete the staff members first, then try deleting the property again.`
+        );
+      }
+
+      // Check if there are any other dependent records (revenues, expenses, tasks, etc.)
+      const revenueCount = await propertiesDB.queryRow`
+        SELECT COUNT(*) as count FROM revenues 
+        WHERE property_id = ${propertyId} AND org_id = ${authData.orgId}
+      `;
+      
+      const expenseCount = await propertiesDB.queryRow`
+        SELECT COUNT(*) as count FROM expenses 
+        WHERE property_id = ${propertyId} AND org_id = ${authData.orgId}
+      `;
+      
+      const taskCount = await propertiesDB.queryRow`
+        SELECT COUNT(*) as count FROM tasks 
+        WHERE property_id = ${propertyId} AND org_id = ${authData.orgId}
+      `;
+
+      const totalDependencies = 
+        (revenueCount ? parseInt(revenueCount.count) : 0) +
+        (expenseCount ? parseInt(expenseCount.count) : 0) +
+        (taskCount ? parseInt(taskCount.count) : 0);
+
+      if (totalDependencies > 0) {
+        log.warn("Cannot delete property with dependent records", { 
+          propertyId: propertyId,
+          propertyName: propertyRow.name,
+          revenueCount: revenueCount?.count || 0,
+          expenseCount: expenseCount?.count || 0,
+          taskCount: taskCount?.count || 0,
+          totalDependencies,
+          orgId: authData.orgId
+        });
+        
+        const dependencyDetails = [];
+        if (revenueCount && parseInt(revenueCount.count) > 0) {
+          dependencyDetails.push(`${revenueCount.count} revenue record(s)`);
+        }
+        if (expenseCount && parseInt(expenseCount.count) > 0) {
+          dependencyDetails.push(`${expenseCount.count} expense record(s)`);
+        }
+        if (taskCount && parseInt(taskCount.count) > 0) {
+          dependencyDetails.push(`${taskCount.count} task(s)`);
+        }
+        
+        throw APIError.invalidArgument(
+          `Cannot delete property "${propertyRow.name}" because it has ${totalDependencies} dependent record(s): ${dependencyDetails.join(', ')}. ` +
+          `Please delete or reassign these records first, then try deleting the property again.`
+        );
+      }
+
+      // Delete the property (no dependent records exist)
       await propertiesDB.exec`
         DELETE FROM properties WHERE id = ${propertyId} AND org_id = ${authData.orgId}
       `;

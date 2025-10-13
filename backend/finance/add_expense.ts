@@ -3,6 +3,8 @@ import { getAuthData } from "~encore/auth";
 import { financeDB } from "./db";
 import { requireRole } from "../auth/middleware";
 import { checkDailyApprovalInternal } from "./check_daily_approval";
+import { handleFinanceError } from "./error_handling";
+import { executeQueryWithStability } from "./connection_stability";
 
 export interface AddExpenseRequest {
   propertyId: number;
@@ -71,68 +73,107 @@ export const addExpense = api<AddExpenseRequest, AddExpenseResponse>(
     try {
       console.log('Starting expense insertion process');
       // First check if the expenses table exists
-      const expensesTableExists = await financeDB.queryRow`
-        SELECT EXISTS (
-          SELECT FROM information_schema.tables 
-          WHERE table_schema = 'public' 
-          AND table_name = 'expenses'
-        )
-      `;
+      const expensesTableExists = await executeQueryWithStability(
+        () => financeDB.queryRow`
+          SELECT EXISTS (
+            SELECT FROM information_schema.tables 
+            WHERE table_schema = 'public' 
+            AND table_name = 'expenses'
+          )
+        `,
+        'check_expenses_table_exists'
+      );
       
       if (!expensesTableExists?.exists) {
         throw APIError.internal("Database not initialized. Please run database setup first.");
       }
 
-      // Check property access with org scoping
-      const propertyRow = await financeDB.queryRow`
-        SELECT p.id, p.org_id
-        FROM properties p
-        WHERE p.id = ${propertyId} AND p.org_id = ${authData.orgId}
-      `;
+      // Check property access with org scoping using connection stability
+      const propertyRow = await executeQueryWithStability(
+        () => financeDB.queryRow`
+          SELECT p.id, p.org_id
+          FROM properties p
+          WHERE p.id = ${propertyId} AND p.org_id = ${authData.orgId}
+        `,
+        'check_property_access'
+      );
 
       if (!propertyRow) {
         throw APIError.notFound("Property not found");
       }
 
       if (authData.role === "MANAGER") {
-        const accessCheck = await financeDB.queryRow`
-          SELECT 1 FROM user_properties 
-          WHERE user_id = ${parseInt(authData.userID)} AND property_id = ${propertyId}
-        `;
+        const accessCheck = await executeQueryWithStability(
+          () => financeDB.queryRow`
+            SELECT 1 FROM user_properties 
+            WHERE user_id = ${parseInt(authData.userID)} AND property_id = ${propertyId}
+          `,
+          'check_user_property_access'
+        );
         if (!accessCheck) {
           throw APIError.permissionDenied("No access to this property");
         }
       }
 
-      // Create expense record - handle potential missing columns gracefully
+      // Create expense record with connection stability and graceful column handling
       let expenseRow;
       try {
-        expenseRow = await financeDB.queryRow`
-          INSERT INTO expenses (org_id, property_id, category, amount_cents, currency, description, receipt_url, expense_date, created_by_user_id, status, payment_mode, bank_reference, receipt_file_id, created_at)
-          VALUES (${authData.orgId}, ${propertyId}, ${category}, ${amountCents}, ${currency}, ${description || null}, ${receiptUrl || null}, ${expenseDateValue}, ${parseInt(authData.userID)}, 'pending', ${paymentMode}, ${bankReference || null}, ${receiptFileId || null}, ${currentTimestamp})
-          RETURNING id, property_id, category, amount_cents, currency, description, receipt_url, expense_date, status, created_by_user_id, created_at, payment_mode, bank_reference, receipt_file_id
-        `;
+        // Determine status and approval fields based on user role
+        const isAdmin = authData.role === "ADMIN";
+        const status = isAdmin ? 'approved' : 'pending';
+        const approvedByUserId = isAdmin ? parseInt(authData.userID) : null;
+        const approvedAt = isAdmin ? currentTimestamp : null;
+
+        expenseRow = await executeQueryWithStability(
+          () => financeDB.queryRow`
+            INSERT INTO expenses (org_id, property_id, category, amount_cents, currency, description, receipt_url, expense_date, created_by_user_id, status, payment_mode, bank_reference, receipt_file_id, created_at, approved_by_user_id, approved_at)
+            VALUES (${authData.orgId}, ${propertyId}, ${category}, ${amountCents}, ${currency}, ${description || null}, ${receiptUrl || null}, ${expenseDateValue}, ${parseInt(authData.userID)}, ${status}, ${paymentMode}, ${bankReference || null}, ${receiptFileId || null}, ${currentTimestamp}, ${approvedByUserId}, ${approvedAt})
+            RETURNING id, property_id, category, amount_cents, currency, description, receipt_url, expense_date, status, created_by_user_id, created_at, payment_mode, bank_reference, receipt_file_id, approved_by_user_id, approved_at
+          `,
+          'create_expense_with_new_columns'
+        );
       } catch (dbError: any) {
         console.error('Database error during expense creation:', dbError);
         
-        // If columns are missing, try without the new columns
+        // If columns are missing, try without the new columns using connection stability
         if (dbError.message?.includes('column') && dbError.message?.includes('does not exist')) {
           console.log('Trying fallback insert without new columns...');
-          expenseRow = await financeDB.queryRow`
-            INSERT INTO expenses (org_id, property_id, category, amount_cents, currency, description, receipt_url, expense_date, created_by_user_id, status, created_at)
-            VALUES (${authData.orgId}, ${propertyId}, ${category}, ${amountCents}, ${currency}, ${description || null}, ${receiptUrl || null}, ${expenseDateValue}, ${parseInt(authData.userID)}, 'pending', ${currentTimestamp})
-            RETURNING id, property_id, category, amount_cents, currency, description, receipt_url, expense_date, created_by_user_id, status, created_at
-          `;
-          
-          // Set default values for missing columns
-          if (expenseRow) {
-            expenseRow.status = 'pending';
-            expenseRow.payment_mode = paymentMode;
-            expenseRow.bank_reference = bankReference;
-            expenseRow.receipt_file_id = receiptFileId;
+          try {
+            expenseRow = await executeQueryWithStability(
+              () => financeDB.queryRow`
+                INSERT INTO expenses (org_id, property_id, category, amount_cents, currency, description, receipt_url, expense_date, created_by_user_id, created_at)
+                VALUES (${authData.orgId}, ${propertyId}, ${category}, ${amountCents}, ${currency}, ${description || null}, ${receiptUrl || null}, ${expenseDateValue}, ${parseInt(authData.userID)}, ${currentTimestamp})
+                RETURNING id, property_id, category, amount_cents, currency, description, receipt_url, expense_date, created_by_user_id, created_at
+              `,
+              'create_expense_fallback'
+            );
+            
+            // Set default values for missing columns
+            if (expenseRow) {
+              expenseRow.status = isAdmin ? 'approved' : 'pending';
+              expenseRow.payment_mode = paymentMode;
+              expenseRow.bank_reference = bankReference;
+              expenseRow.receipt_file_id = receiptFileId;
+              expenseRow.approved_by_user_id = approvedByUserId;
+              expenseRow.approved_at = approvedAt;
+            }
+          } catch (fallbackError: any) {
+            // Use enhanced error handling for fallback failure
+            throw handleFinanceError(fallbackError, 'add_expense', {
+              userId: authData.userID,
+              orgId: authData.orgId.toString(),
+              operation: 'create_expense_fallback',
+              table: 'expenses'
+            });
           }
         } else {
-          throw dbError;
+          // Use enhanced error handling for other database errors
+          throw handleFinanceError(dbError, 'add_expense', {
+            userId: authData.userID,
+            orgId: authData.orgId.toString(),
+            operation: 'create_expense',
+            table: 'expenses'
+          });
         }
       }
 
@@ -162,12 +203,13 @@ export const addExpense = api<AddExpenseRequest, AddExpenseResponse>(
         createdAt: expenseRow.created_at,
       };
     } catch (error) {
-      // Error occurred during expense creation
-      console.error('Add expense error:', error);
-      if (error instanceof Error && error.name === 'APIError') {
-        throw error;
-      }
-      throw APIError.internal("Failed to add expense");
+      // Use enhanced error handling for any remaining errors
+      throw handleFinanceError(error as Error, 'add_expense', {
+        userId: authData.userID,
+        orgId: authData.orgId.toString(),
+        operation: 'add_expense',
+        table: 'expenses'
+      });
     }
   }
 );

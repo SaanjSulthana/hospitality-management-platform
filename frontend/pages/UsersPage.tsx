@@ -203,6 +203,16 @@ export default function UsersPage() {
       console.log('User creation mutation settled, invalidating queries...');
       // Always refetch after error or success to ensure we have the latest data
       refetchUsers();
+      
+      // Invalidate related caches since new managers might affect staff visibility
+      queryClient.invalidateQueries({ queryKey: ['staff'] });
+      queryClient.invalidateQueries({ queryKey: ['staff-statistics'] });
+      queryClient.refetchQueries({ queryKey: ['staff'] });
+      queryClient.refetchQueries({ queryKey: ['staff-statistics'] });
+      
+      // Invalidate analytics and dashboard for updated data
+      queryClient.invalidateQueries({ queryKey: ['analytics'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
     },
   });
 
@@ -284,6 +294,16 @@ export default function UsersPage() {
     onSettled: () => {
       console.log('User update mutation settled, invalidating queries...');
       refetchUsers();
+      
+      // Invalidate related caches since user updates might affect staff visibility
+      queryClient.invalidateQueries({ queryKey: ['staff'] });
+      queryClient.invalidateQueries({ queryKey: ['staff-statistics'] });
+      queryClient.refetchQueries({ queryKey: ['staff'] });
+      queryClient.refetchQueries({ queryKey: ['staff-statistics'] });
+      
+      // Invalidate analytics and dashboard for updated data
+      queryClient.invalidateQueries({ queryKey: ['analytics'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
     },
   });
 
@@ -311,6 +331,20 @@ export default function UsersPage() {
     onSettled: () => {
       console.log('Property assignment mutation settled, invalidating queries...');
       refetchUsers();
+      
+      // Invalidate staff cache since manager property assignments affect staff visibility
+      queryClient.invalidateQueries({ queryKey: ['staff'] });
+      queryClient.invalidateQueries({ queryKey: ['staff-statistics'] });
+      queryClient.refetchQueries({ queryKey: ['staff'] });
+      queryClient.refetchQueries({ queryKey: ['staff-statistics'] });
+      
+      // Also invalidate tasks cache since task assignments might be affected
+      queryClient.invalidateQueries({ queryKey: ['tasks'] });
+      queryClient.refetchQueries({ queryKey: ['tasks'] });
+      
+      // Invalidate analytics and dashboard for updated data
+      queryClient.invalidateQueries({ queryKey: ['analytics'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
     },
   });
 
@@ -344,6 +378,16 @@ export default function UsersPage() {
     onSettled: () => {
       console.log('Role promotion mutation settled, invalidating queries...');
       refetchUsers();
+      
+      // Invalidate related caches since role changes affect staff visibility
+      queryClient.invalidateQueries({ queryKey: ['staff'] });
+      queryClient.invalidateQueries({ queryKey: ['staff-statistics'] });
+      queryClient.refetchQueries({ queryKey: ['staff'] });
+      queryClient.refetchQueries({ queryKey: ['staff-statistics'] });
+      
+      // Invalidate analytics and dashboard for updated data
+      queryClient.invalidateQueries({ queryKey: ['analytics'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
     },
   });
 
@@ -377,6 +421,16 @@ export default function UsersPage() {
     onSettled: () => {
       console.log('Role demotion mutation settled, invalidating queries...');
       refetchUsers();
+      
+      // Invalidate related caches since role changes affect staff visibility
+      queryClient.invalidateQueries({ queryKey: ['staff'] });
+      queryClient.invalidateQueries({ queryKey: ['staff-statistics'] });
+      queryClient.refetchQueries({ queryKey: ['staff'] });
+      queryClient.refetchQueries({ queryKey: ['staff-statistics'] });
+      
+      // Invalidate analytics and dashboard for updated data
+      queryClient.invalidateQueries({ queryKey: ['analytics'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
     },
   });
 
@@ -435,6 +489,16 @@ export default function UsersPage() {
     onSettled: () => {
       console.log('User deletion mutation settled, invalidating queries...');
       refetchUsers();
+      
+      // Invalidate related caches since user deletion affects staff visibility
+      queryClient.invalidateQueries({ queryKey: ['staff'] });
+      queryClient.invalidateQueries({ queryKey: ['staff-statistics'] });
+      queryClient.refetchQueries({ queryKey: ['staff'] });
+      queryClient.refetchQueries({ queryKey: ['staff-statistics'] });
+      
+      // Invalidate analytics and dashboard for updated data
+      queryClient.invalidateQueries({ queryKey: ['analytics'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
     },
   });
 
@@ -498,7 +562,8 @@ export default function UsersPage() {
 
     try {
       const backend = getAuthenticatedBackend();
-      const details = await backend.users.get({ id: u.id });
+      // Pass the ID as the first parameter, not as an object property
+      const details = await backend.users.get(u.id);
       setEditingPropertyIds(details.propertyIds);
     } catch (err) {
       console.error('Failed to load user details:', err);
@@ -966,11 +1031,41 @@ export default function UsersPage() {
                     </AvatarFallback>
                   </Avatar>
                   <div className="flex-1 min-w-0">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex-1 min-w-0">
                         <CardTitle className="text-lg font-bold text-gray-900 truncate">{u.displayName}</CardTitle>
-                    <CardDescription className="flex items-center mt-1">
-                          <Mail className="h-3 w-3 mr-1 flex-shrink-0" />
-                          <span className="truncate text-sm text-gray-600">{u.email}</span>
-                    </CardDescription>
+                        <CardDescription className="flex items-center mt-1">
+                              <Mail className="h-3 w-3 mr-1 flex-shrink-0" />
+                              <span className="truncate text-sm text-gray-600">{u.email}</span>
+                        </CardDescription>
+                      </div>
+                      
+                      {/* Action Buttons - Moved to top right */}
+                      <div className="flex items-center gap-1 flex-shrink-0">
+                        <Button 
+                          variant="outline" 
+                          size="sm" 
+                          onClick={() => openEditDialog(u)}
+                          className="h-8 w-8 p-0 bg-white border-gray-300 text-gray-700 hover:bg-gray-50 hover:border-gray-400 transition-all duration-200 rounded-lg shadow-sm"
+                          title="Edit user"
+                        >
+                          <Pencil className="h-4 w-4" />
+                        </Button>
+                        {/* Only show delete button for other users, not current user */}
+                        {u.id !== parseInt(user?.userID || '0') && (
+                          <Button 
+                            variant="outline" 
+                            size="sm" 
+                            onClick={() => handleDeleteUser(u)}
+                            disabled={deleteUserMutation.isPending}
+                            className="h-8 w-8 p-0 bg-white border-gray-300 text-red-600 hover:bg-red-50 hover:border-red-400 transition-all duration-200 rounded-lg shadow-sm"
+                            title="Delete user"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        )}
+                      </div>
+                    </div>
                   </div>
                 </div>
               </CardHeader>
@@ -1079,36 +1174,7 @@ export default function UsersPage() {
                         Current user (cannot demote)
                       </div>
                     )}
-                      <Button 
-                        variant="outline" 
-                        size="sm" 
-                        onClick={() => openEditDialog(u)}
-                        className="transition-all duration-200 hover:scale-105 hover:shadow-md flex-shrink-0"
-                      >
-                      <Pencil className="mr-2 h-4 w-4" />
-                        <span className="hidden sm:inline">Edit</span>
-                        <span className="sm:hidden">Edit</span>
-                    </Button>
-                    {/* Only show delete button for other users, not current user */}
-                    {u.id !== parseInt(user?.userID || '0') && (
-                      <Button 
-                        variant="outline" 
-                        size="sm" 
-                        onClick={() => handleDeleteUser(u)}
-                        disabled={deleteUserMutation.isPending}
-                        className="bg-red-50 text-red-700 border-red-200 hover:bg-red-100 transition-all duration-200 hover:scale-105 hover:shadow-md flex-shrink-0"
-                      >
-                        <Trash2 className="mr-2 h-4 w-4" />
-                        <span className="hidden sm:inline">Delete</span>
-                        <span className="sm:hidden">Delete</span>
-                      </Button>
-                    )}
-                    {u.id === parseInt(user?.userID || '0') && (
-                      <div className="text-xs text-gray-500 italic px-2 py-1 bg-gray-100 rounded">
-                        Current user (cannot delete)
-                      </div>
-                    )}
-                </div>
+                  </div>
               </CardContent>
             </Card>
             );

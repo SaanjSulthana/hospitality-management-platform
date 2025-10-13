@@ -211,6 +211,31 @@ AWSAccessKeyId=<aws-access-key>
 AWSSecretAccessKey=<aws-secret-key>
 ```
 
+## Documentation
+
+### 📚 **Available Documentation:**
+
+- **[TESTING_STATUS.md](./TESTING_STATUS.md)** - Detailed testing report for guest check-in document upload feature
+- **[GUEST_CHECKIN_SUMMARY.md](./GUEST_CHECKIN_SUMMARY.md)** - Executive summary of Indian ID document upload implementation
+- **[QUICK_DEBUG_GUIDE.md](./QUICK_DEBUG_GUIDE.md)** - Quick reference for debugging document listing endpoints
+- **[FILE_UPLOAD_SIZE_LIMITS.md](./FILE_UPLOAD_SIZE_LIMITS.md)** - Configuration guide for file upload size limits
+- **[DEVELOPMENT_GUIDE.md](./DEVELOPMENT_GUIDE.md)** - General development guidelines
+- **[API_DOCUMENTATION.md](./docs/API_DOCUMENTATION.md)** - Complete API reference
+- **[GUEST_CHECKIN_GUIDE.md](./docs/GUEST_CHECKIN_GUIDE.md)** - Guest check-in workflow guide
+
+### 🔍 **Recent Feature: Guest Check-In Document Upload**
+
+The platform now supports uploading and processing Indian government ID documents during guest check-in:
+
+**Status:** ⚠️ Partially functional (70% complete)
+- ✅ **Working:** Document upload, auto-detection, LLM extraction framework
+- ❌ **Broken:** Document listing endpoints (requires backend log analysis)
+
+**Quick Links:**
+- [View Testing Report](./TESTING_STATUS.md) - Comprehensive testing results
+- [Read Executive Summary](./GUEST_CHECKIN_SUMMARY.md) - High-level overview
+- [Debug Guide](./QUICK_DEBUG_GUIDE.md) - Fix listing endpoint failures
+
 ## Testing
 
 Run the test suite:

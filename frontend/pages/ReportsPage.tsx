@@ -11,6 +11,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { FinanceTabs, FinanceTabsList, FinanceTabsTrigger } from '@/components/ui/finance-tabs';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { useToast } from '@/components/ui/use-toast';
 import { API_CONFIG } from '../src/config/api';
@@ -24,7 +25,8 @@ import {
   Edit3,
   Save,
   X,
-  Building2
+  Building2,
+  Check
 } from 'lucide-react';
 import { DailyReportsManager } from '@/components/ui/daily-reports';
 import { MonthlyYearlyReports } from '@/components/ui/monthly-yearly-reports';
@@ -148,7 +150,8 @@ function DailyReportPopup({ date, propertyId, orgId, isOpen, onClose }: DailyRep
       });
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['daily-transactions'] });
+      queryClient.invalidateQueries({ queryKey: ['daily-report'] });
+      queryClient.invalidateQueries({ queryKey: ['monthly-report'] }); // Invalidate monthly reports for real-time updates
       toast({
         title: "Balance Updated",
         description: "Daily cash balance has been updated successfully.",
@@ -221,12 +224,7 @@ function DailyReportPopup({ date, propertyId, orgId, isOpen, onClose }: DailyRep
                   <span className="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded-full font-medium">Live Data</span>
                 </DialogTitle>
                 <DialogDescription className="text-lg text-gray-600 mt-1">
-                  {new Date(date).toLocaleDateString('en-US', { 
-                    weekday: 'long', 
-                    year: 'numeric', 
-                    month: 'long', 
-                    day: 'numeric' 
-                  })}
+                  {new Date(date).toLocaleDateString()}
                 </DialogDescription>
               </div>
             </div>
@@ -475,9 +473,7 @@ function DailyReportManagerContent({ selectedPropertyId, selectedDate, onPropert
   const { toast } = useToast();
   const queryClient = useQueryClient();
   
-  // State for the manager
-  const [openingBalance, setOpeningBalance] = useState<number>(0);
-  const [isEditingOpeningBalance, setIsEditingOpeningBalance] = useState<boolean>(false);
+  // State for the manager (removed - using backend API data now)
 
   const propertyId = parseInt(selectedPropertyId);
   const orgId = user?.orgId || 0;
@@ -502,117 +498,39 @@ function DailyReportManagerContent({ selectedPropertyId, selectedDate, onPropert
     }
   }, [propertiesData, selectedPropertyId, selectedDate, onPropertyDateChange]);
 
-  // Fetch previous day's closing balance for carry forward
-  const { data: previousDayData } = useQuery({
-    queryKey: ['previous-day-closing', propertyId, selectedDate, orgId],
+  // Fetch daily report data from backend API
+  const { data: dailyReportData, isLoading: isLoadingTransactions, error: transactionsError } = useQuery({
+    queryKey: ['daily-report', propertyId, selectedDate, orgId],
     queryFn: async () => {
       const backend = getAuthenticatedBackend();
-      const yesterday = new Date(selectedDate);
-      yesterday.setDate(yesterday.getDate() - 1);
-      const yesterdayStr = yesterday.toISOString().split('T')[0];
+      console.log('DailyReportManagerContent: Fetching daily report from backend API for:', { propertyId, selectedDate, orgId });
       
-      try {
-        console.log('DailyReportManagerContent: Calculating previous day balance for:', yesterdayStr);
-        
-        // Get previous day's transactions to calculate closing balance
-        const [prevRevenuesResponse, prevExpensesResponse] = await Promise.all([
-          backend.finance.listRevenues({
-            propertyId,
-            startDate: yesterdayStr,
-            endDate: yesterdayStr,
-            orgId
-          }),
-          backend.finance.listExpenses({
-            propertyId,
-            startDate: yesterdayStr,
-            endDate: yesterdayStr,
-            orgId
-          })
-        ]);
-        
-        // Calculate previous day's closing balance
-        const prevCashRevenue = (prevRevenuesResponse.revenues || [])
-          .filter((r: any) => r.paymentMode === 'cash')
-          .reduce((sum: number, r: any) => sum + r.amountCents, 0);
-        
-        const prevCashExpenses = (prevExpensesResponse.expenses || [])
-          .filter((e: any) => e.paymentMode === 'cash')
-          .reduce((sum: number, e: any) => sum + e.amountCents, 0);
-        
-        // Get previous day's opening balance (if any)
-        const prevOpeningBalance = 0; // For now, assume 0. In future, this could be stored in database
-        
-        const prevClosingBalance = prevOpeningBalance + prevCashRevenue - prevCashExpenses;
-        
-        console.log('DailyReportManagerContent: Previous day closing balance:', prevClosingBalance);
-        return { closingBalanceCents: prevClosingBalance };
-      } catch (error) {
-        console.error('DailyReportManagerContent: Error calculating previous day balance:', error);
-        return { closingBalanceCents: 0 };
-      }
+      const response = await backend.reports.getDailyReport({
+        propertyId,
+        date: selectedDate
+      });
+      
+      console.log('DailyReportManagerContent: Daily report response:', response);
+      return response;
     },
     enabled: !!propertyId && !!selectedDate && !!orgId,
-    staleTime: 300000, // 5 minutes
+    staleTime: 30000, // 30 seconds
     gcTime: 600000, // 10 minutes
+    refetchInterval: 30000, // Auto-refresh every 30 seconds for live data
+    refetchOnWindowFocus: true, // Refresh when user returns to tab
+    refetchOnMount: true, // Refresh when component mounts
   });
 
-  // Fetch all transactions for the selected date
-  const { data: transactionsData, isLoading: isLoadingTransactions, error: transactionsError } = useQuery({
-    queryKey: ['daily-transactions', propertyId, selectedDate, orgId],
-    queryFn: async () => {
-      const backend = getAuthenticatedBackend();
-      console.log('DailyReportManager: Fetching transactions for:', { propertyId, selectedDate, orgId });
-      
-      // Fetch revenues for the date
-      const revenuesResponse = await backend.finance.listRevenues({
-        propertyId,
-        startDate: selectedDate,
-        endDate: selectedDate,
-        orgId
-      });
-      
-      // Fetch expenses for the date
-      const expensesResponse = await backend.finance.listExpenses({
-        propertyId,
-        startDate: selectedDate,
-        endDate: selectedDate,
-        orgId
-      });
-      
-      return {
-        revenues: revenuesResponse.revenues || [],
-        expenses: expensesResponse.expenses || []
-      };
-    },
-    enabled: !!propertyId && !!selectedDate && !!orgId,
-    staleTime: 30000,
-    gcTime: 600000,
-  });
-
-  // Calculate values from transactions
-  const cashRevenue = (transactionsData?.revenues || [])
-    .filter((r: any) => r.paymentMode === 'cash')
-    .reduce((sum: number, r: any) => sum + r.amountCents, 0);
-  
-  const bankRevenue = (transactionsData?.revenues || [])
-    .filter((r: any) => r.paymentMode === 'bank')
-    .reduce((sum: number, r: any) => sum + r.amountCents, 0);
-  
-  const cashExpenses = (transactionsData?.expenses || [])
-    .filter((e: any) => e.paymentMode === 'cash')
-    .reduce((sum: number, e: any) => sum + e.amountCents, 0);
-  
-  const bankExpenses = (transactionsData?.expenses || [])
-    .filter((e: any) => e.paymentMode === 'bank')
-    .reduce((sum: number, e: any) => sum + e.amountCents, 0);
-  
-  // Calculate opening balance with carry-forward logic
-  const isFirstDay = !previousDayData?.closingBalanceCents || previousDayData.closingBalanceCents === 0;
-  const autoCalculatedOpeningBalance = previousDayData?.closingBalanceCents || 0;
-  const currentOpeningBalance = openingBalance || autoCalculatedOpeningBalance;
-  
+  // Use values from backend API
+  const cashRevenue = dailyReportData?.cashReceivedCents || 0;
+  const bankRevenue = dailyReportData?.bankReceivedCents || 0;
+  const cashExpenses = dailyReportData?.cashExpensesCents || 0;
+  const bankExpenses = dailyReportData?.bankExpensesCents || 0;
+  const currentOpeningBalance = dailyReportData?.openingBalanceCents || 0;
+  const closingBalance = dailyReportData?.closingBalanceCents || 0;
+  const isFirstDay = currentOpeningBalance === 0;
+  const autoCalculatedOpeningBalance = currentOpeningBalance;
   const totalCash = currentOpeningBalance + cashRevenue;
-  const closingBalance = totalCash - cashExpenses;
 
   const formatCurrency = (amountCents: number) => {
     return formatCurrencyUtil(amountCents, 'INR');
@@ -805,7 +723,7 @@ function DailyReportManagerContent({ selectedPropertyId, selectedDate, onPropert
   }
 
   return (
-    <div className="space-y-6">
+    <div className="w-full space-y-6">
       {/* Enhanced Property Selection and Report Header */}
       <Card className="border-l-4 border-l-blue-500 shadow-sm hover:shadow-md transition-shadow duration-200">
         <CardHeader className="pb-4">
@@ -819,20 +737,41 @@ function DailyReportManagerContent({ selectedPropertyId, selectedDate, onPropert
                   Daily Cash Balance Report
                 </CardTitle>
                 <CardDescription className="text-sm lg:text-base text-gray-600 mt-1">
-                  {new Date(selectedDate).toLocaleDateString('en-US', { 
-                    weekday: 'long', 
-                    year: 'numeric', 
-                    month: 'long', 
-                    day: 'numeric' 
-                  })}
+                  {new Date(selectedDate).toLocaleDateString()}
                 </CardDescription>
               </div>
             </div>
-            <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
-              <div className="text-right">
-                <p className="text-sm text-gray-500">Property ID</p>
-                <p className="font-semibold text-gray-900">#{propertyId}</p>
-              </div>
+            <div className="flex items-center gap-2">
+              <Button 
+                variant="outline"
+                size="sm"
+                onClick={handleExportPDF}
+                disabled={!propertyId || !selectedDate || isExportingPDF}
+                className="transition-all duration-200 hover:scale-105 hover:shadow-md flex-shrink-0"
+              >
+                {isExportingPDF ? (
+                  <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                ) : (
+                  <Receipt className="h-4 w-4 mr-2" />
+                )}
+                <span className="hidden sm:inline">{isExportingPDF ? 'Generating PDF...' : 'Export PDF'}</span>
+                <span className="sm:hidden">PDF</span>
+              </Button>
+              <Button 
+                variant="outline"
+                size="sm"
+                onClick={handleExportExcel}
+                disabled={!propertyId || !selectedDate || isExportingExcel}
+                className="transition-all duration-200 hover:scale-105 hover:shadow-md flex-shrink-0"
+              >
+                {isExportingExcel ? (
+                  <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                ) : (
+                  <BarChart3 className="h-4 w-4 mr-2" />
+                )}
+                <span className="hidden sm:inline">{isExportingExcel ? 'Generating Excel...' : 'Export Excel'}</span>
+                <span className="sm:hidden">Excel</span>
+              </Button>
             </div>
           </div>
         </CardHeader>
@@ -937,43 +876,26 @@ function DailyReportManagerContent({ selectedPropertyId, selectedDate, onPropert
             </CardHeader>
             <CardContent>
               <div className="space-y-4">
-                <div className="flex items-center gap-4">
-                  <div className="flex-1">
-                    <Label htmlFor="opening-balance" className="text-sm font-medium text-gray-700">Manual Override (Optional)</Label>
-                    <Input
-                      id="opening-balance"
-                      type="number"
-                      value={openingBalance / 100}
-                      onChange={(e) => setOpeningBalance(parseFloat(e.target.value) * 100)}
-                      className="w-full h-11 border-gray-300 focus:border-blue-500 focus:ring-blue-500"
-                      step="0.01"
-                      placeholder="0.00"
-                    />
-                  </div>
-                  <div className="flex flex-col gap-2">
-                    <Button 
-                      size="sm" 
-                      variant="outline"
-                      onClick={() => setOpeningBalance(autoCalculatedOpeningBalance)}
-                      disabled={isFirstDay}
-                      className="transition-all duration-200 hover:scale-105 hover:shadow-md"
-                    >
-                      Auto-fill
-                    </Button>
-                    <Button 
-                      size="sm" 
-                      variant="outline"
-                      onClick={() => setOpeningBalance(0)}
-                      className="transition-all duration-200 hover:scale-105 hover:shadow-md"
-                    >
-                      Reset
-                    </Button>
+                <div className="p-4 bg-blue-50 rounded-lg border border-blue-200">
+                  <div className="flex justify-between items-center">
+                    <div>
+                      <span className="text-gray-700 font-medium">Auto-Calculated Value</span>
+                      <div className="text-xs text-blue-600 mt-1">
+                        {isFirstDay 
+                          ? 'Based on all cash transactions before this date'
+                          : 'Equals previous day\'s closing balance'}
+                      </div>
+                    </div>
+                    <span className="font-bold text-2xl text-blue-600">
+                      {formatCurrency(currentOpeningBalance)}
+                    </span>
                   </div>
                 </div>
-                {!isFirstDay && (
-                  <div className="p-3 bg-blue-50 rounded-lg">
-                    <div className="text-sm text-blue-700">
-                      <strong>Previous Day Closing:</strong> {formatCurrency(autoCalculatedOpeningBalance)}
+                {dailyReportData?.isOpeningBalanceAutoCalculated && (
+                  <div className="p-3 bg-green-50 rounded-lg border border-green-200">
+                    <div className="flex items-center gap-2 text-sm text-green-700">
+                      <Check className="h-4 w-4" />
+                      <span><strong>Live Data:</strong> Calculated from Finance transactions</span>
                     </div>
                   </div>
                 )}
@@ -1101,43 +1023,13 @@ function DailyReportManagerContent({ selectedPropertyId, selectedDate, onPropert
                   <Button 
                     variant="outline"
                     size="sm"
-                    onClick={() => queryClient.invalidateQueries({ queryKey: ['daily-transactions'] })} 
+                    onClick={() => queryClient.invalidateQueries({ queryKey: ['daily-report'] })} 
                     disabled={isLoadingTransactions}
                     className="transition-all duration-200 hover:scale-105 hover:shadow-md flex-shrink-0"
                   >
                     <RefreshCw className={`h-4 w-4 mr-2 ${isLoadingTransactions ? 'animate-spin' : ''}`} />
                     <span className="hidden sm:inline">Refresh</span>
                     <span className="sm:hidden">Refresh</span>
-                  </Button>
-                  <Button 
-                    variant="outline"
-                    size="sm"
-                    onClick={handleExportPDF}
-                    disabled={!propertyId || !selectedDate || isExportingPDF}
-                    className="transition-all duration-200 hover:scale-105 hover:shadow-md flex-shrink-0"
-                  >
-                    {isExportingPDF ? (
-                      <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
-                    ) : (
-                      <Receipt className="h-4 w-4 mr-2" />
-                    )}
-                    <span className="hidden sm:inline">{isExportingPDF ? 'Generating PDF...' : 'Export PDF'}</span>
-                    <span className="sm:hidden">PDF</span>
-                  </Button>
-                  <Button 
-                    variant="outline"
-                    size="sm"
-                    onClick={handleExportExcel}
-                    disabled={!propertyId || !selectedDate || isExportingExcel}
-                    className="transition-all duration-200 hover:scale-105 hover:shadow-md flex-shrink-0"
-                  >
-                    {isExportingExcel ? (
-                      <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
-                    ) : (
-                      <BarChart3 className="h-4 w-4 mr-2" />
-                    )}
-                    <span className="hidden sm:inline">{isExportingExcel ? 'Generating Excel...' : 'Export Excel'}</span>
-                    <span className="sm:hidden">Excel</span>
                   </Button>
                   <Button 
                     size="sm"
@@ -1190,66 +1082,71 @@ export default function ReportsPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <Tabs defaultValue="daily-manager" className="space-y-0">
-        {/* Enhanced Sticky Tabs Navigation */}
-        <div className="sticky top-20 z-30 bg-gradient-to-br from-orange-500 via-orange-600 to-orange-700 border-b-2 border-orange-400 -mx-6 px-4 py-3 shadow-2xl rounded-b-xl">
-          <div className="overflow-x-auto">
-            <div className="bg-white/10 backdrop-blur-sm rounded-lg p-1 border border-white/20 shadow-inner">
-              <TabsList className="grid w-full grid-cols-3 min-w-max bg-transparent h-auto p-0 gap-2">
-                <TabsTrigger 
-                  value="daily-manager" 
-                  className="text-xs sm:text-sm px-4 sm:px-8 py-4 data-[state=active]:bg-white data-[state=active]:text-orange-600 data-[state=active]:shadow-xl data-[state=active]:border-2 data-[state=active]:border-orange-300 data-[state=inactive]:text-white data-[state=inactive]:bg-gradient-to-r data-[state=inactive]:from-orange-500/30 data-[state=inactive]:to-orange-600/30 data-[state=inactive]:hover:from-orange-500/50 data-[state=inactive]:hover:to-orange-600/50 data-[state=inactive]:hover:shadow-lg data-[state=inactive]:border data-[state=inactive]:border-white/30 transition-all duration-500 flex items-center gap-2 rounded-xl font-semibold relative overflow-hidden group"
-                >
-                  <div className="absolute inset-0 bg-gradient-to-r from-white/0 via-white/10 to-white/0 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700"></div>
-                  <span className="relative z-10">Daily Report Manager</span>
-                </TabsTrigger>
-                <TabsTrigger 
-                  value="daily-spreadsheet" 
-                  className="text-xs sm:text-sm px-4 sm:px-8 py-4 data-[state=active]:bg-white data-[state=active]:text-orange-600 data-[state=active]:shadow-xl data-[state=active]:border-2 data-[state=active]:border-orange-300 data-[state=inactive]:text-white data-[state=inactive]:bg-gradient-to-r data-[state=inactive]:from-orange-500/30 data-[state=inactive]:to-orange-600/30 data-[state=inactive]:hover:from-orange-500/50 data-[state=inactive]:hover:to-orange-600/50 data-[state=inactive]:hover:shadow-lg data-[state=inactive]:border data-[state=inactive]:border-white/30 transition-all duration-500 flex items-center gap-2 rounded-xl font-semibold relative overflow-hidden group"
-                >
-                  <div className="absolute inset-0 bg-gradient-to-r from-white/0 via-white/10 to-white/0 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700"></div>
-                  <span className="relative z-10">Daily Report Spreadsheet</span>
-                </TabsTrigger>
-                <TabsTrigger 
-                  value="monthly-yearly" 
-                  className="text-xs sm:text-sm px-4 sm:px-8 py-4 data-[state=active]:bg-white data-[state=active]:text-orange-600 data-[state=active]:shadow-xl data-[state=active]:border-2 data-[state=active]:border-orange-300 data-[state=inactive]:text-white data-[state=inactive]:bg-gradient-to-r data-[state=inactive]:from-orange-500/30 data-[state=inactive]:to-orange-600/30 data-[state=inactive]:hover:from-orange-500/50 data-[state=inactive]:hover:to-orange-600/50 data-[state=inactive]:hover:shadow-lg data-[state=inactive]:border data-[state=inactive]:border-white/30 transition-all duration-500 flex items-center gap-2 rounded-xl font-semibold relative overflow-hidden group"
-                >
-                  <div className="absolute inset-0 bg-gradient-to-r from-white/0 via-white/10 to-white/0 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700"></div>
-                  <span className="relative z-10">Monthly & Yearly</span>
-                </TabsTrigger>
-              </TabsList>
+    <div className="w-full min-h-screen bg-gray-50">
+      <div className="px-6 py-6">
+        {/* Header Section */}
+        <div className="flex items-center justify-between mb-6">
+          <div className="flex items-center gap-4">
+            <div className="p-3 bg-blue-100 rounded-xl">
+              <BarChart3 className="h-6 w-6 text-blue-600" />
             </div>
+            <div>
+              <h1 className="text-2xl font-bold text-gray-900">Reports & Analytics</h1>
+              <p className="text-sm text-gray-600">Generate comprehensive reports and insights</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
+            <span className="text-sm text-gray-600">Live Data</span>
           </div>
         </div>
 
-        {/* Enhanced Tab Content Container */}
+        <FinanceTabs defaultValue="daily-manager" theme={theme}>
+          <FinanceTabsList className="grid-cols-3" theme={theme}>
+            <FinanceTabsTrigger value="daily-manager" theme={theme}>
+              <Receipt className="h-4 w-4 mr-2" />
+              Daily Report Manager
+            </FinanceTabsTrigger>
+            <FinanceTabsTrigger value="daily-spreadsheet" theme={theme}>
+              <BarChart3 className="h-4 w-4 mr-2" />
+              Monthly Spreadsheet
+            </FinanceTabsTrigger>
+            <FinanceTabsTrigger value="monthly-yearly" theme={theme}>
+              <TrendingUp className="h-4 w-4 mr-2" />
+              Quarterly & Yearly
+            </FinanceTabsTrigger>
+          </FinanceTabsList>
+
+        {/* Tab Content Container */}
         <div className="px-6 py-6">
-          <TabsContent value="daily-manager" className="space-y-6 mt-0">
-            <DailyReportManagerContent 
-              selectedPropertyId={selectedPropertyId}
-              selectedDate={selectedDate}
-              onPropertyDateChange={(propertyId: number, date: string) => {
-                setSelectedPropertyId(propertyId.toString());
-                setSelectedDate(date);
-              }}
-            />
-          </TabsContent>
+          <div className="max-w-7xl mx-auto">
+            <TabsContent value="daily-manager" className="space-y-6 mt-0">
+              <DailyReportManagerContent 
+                selectedPropertyId={selectedPropertyId}
+                selectedDate={selectedDate}
+                onPropertyDateChange={(propertyId: number, date: string) => {
+                  setSelectedPropertyId(propertyId.toString());
+                  setSelectedDate(date);
+                }}
+              />
+            </TabsContent>
 
-          <TabsContent value="daily-spreadsheet" className="space-y-6 mt-0">
-            <DailyReportsManager 
-              onOpenDailyReportManager={(propertyId: number, date: string) => {
-                setSelectedPropertyId(propertyId.toString());
-                setSelectedDate(date);
-              }}
-            />
-          </TabsContent>
+            <TabsContent value="daily-spreadsheet" className="space-y-6 mt-0">
+              <DailyReportsManager 
+                onOpenDailyReportManager={(propertyId: number, date: string) => {
+                  setSelectedPropertyId(propertyId.toString());
+                  setSelectedDate(date);
+                }}
+              />
+            </TabsContent>
 
-          <TabsContent value="monthly-yearly" className="space-y-6 mt-0">
-            <MonthlyYearlyReports />
-          </TabsContent>
+            <TabsContent value="monthly-yearly" className="space-y-6 mt-0">
+              <MonthlyYearlyReports />
+            </TabsContent>
+          </div>
         </div>
-      </Tabs>
+        </FinanceTabs>
+      </div>
     </div>
   );
 }

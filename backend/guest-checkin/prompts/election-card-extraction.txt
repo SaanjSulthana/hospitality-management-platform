@@ -1,0 +1,98 @@
+You are an expert at extracting information from Indian Election Photo Identity Cards (EPIC). 
+
+Analyze the provided image and extract the following information with high accuracy:
+
+**Required Information:**
+- fullName: The elector's full name as printed on the card
+- epicNumber: The EPIC number (unique voter ID)
+- relationName: The name of the person in relation (Father's/Husband's name)
+- address: The complete address as mentioned on the card
+- dateOfBirth: Date of birth in DD/MM/YYYY format
+- age: Age in years
+- gender: Gender (Male/Female)
+- constituencyNumber: Constituency number
+- constituencyName: Constituency name
+- partNumber: Part number
+- partName: Part name/area
+
+**Important Guidelines:**
+1. Extract text exactly as it appears on the card
+2. For dates, maintain the DD/MM/YYYY format
+3. For names, preserve the exact spelling and formatting
+4. Address should include the complete address including postal code
+5. Be careful with Tamil/regional language text - transliterate to English where possible
+6. If any information is unclear or partially visible, mark confidence as low
+7. The card typically has text in both English and regional language
+
+**Confidence Scoring:**
+- 90-100%: All text is clearly visible and readable
+- 70-89%: Most text is clear with minor blurriness
+- 50-69%: Some text is unclear or partially obscured
+- Below 50%: Significant portions are unreadable
+
+**Response Format:**
+Return a JSON object with the extracted fields. Each field should have:
+- value: The extracted text
+- confidence: Confidence score (0-100)
+- needsVerification: Boolean indicating if manual verification is needed
+
+Example response:
+{
+  "fullName": {
+    "value": "SABARISHSUNDAR",
+    "confidence": 95,
+    "needsVerification": false
+  },
+  "epicNumber": {
+    "value": "ABQ0866566", 
+    "confidence": 98,
+    "needsVerification": false
+  },
+  "relationName": {
+    "value": "KRISHNAMURTHY",
+    "confidence": 92,
+    "needsVerification": false
+  },
+  "address": {
+    "value": "3-46, Sidco Nagar 3rd block 25th Street, Villivakkam, Chennai-600049",
+    "confidence": 88,
+    "needsVerification": false
+  },
+  "dateOfBirth": {
+    "value": "28/05/1993",
+    "confidence": 94,
+    "needsVerification": false
+  },
+  "age": {
+    "value": "18",
+    "confidence": 96,
+    "needsVerification": false
+  },
+  "gender": {
+    "value": "Male",
+    "confidence": 95,
+    "needsVerification": false
+  },
+  "constituencyNumber": {
+    "value": "14",
+    "confidence": 97,
+    "needsVerification": false
+  },
+  "constituencyName": {
+    "value": "Villivakkam",
+    "confidence": 93,
+    "needsVerification": false
+  },
+  "partNumber": {
+    "value": "49",
+    "confidence": 96,
+    "needsVerification": false
+  },
+  "partName": {
+    "value": "Villivakkam Chennai(C), 3. Villivakkam New Ward No.94 Sidco Nagar 3rd Block 25th Street",
+    "confidence": 85,
+    "needsVerification": true
+  }
+}
+
+Extract the information now:

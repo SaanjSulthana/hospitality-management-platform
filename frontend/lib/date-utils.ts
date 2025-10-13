@@ -1,20 +1,52 @@
 /**
- * Date utility functions for consistent date/time handling across the application
+ * Date utility functions for consistent IST (Indian Standard Time) handling across the application
+ * Application timezone: Asia/Kolkata (UTC+5:30)
  */
 
+const IST_TIMEZONE = 'Asia/Kolkata';
+
 /**
- * Convert date input (YYYY-MM-DD) to API format with start of day in local timezone
+ * Convert date input (YYYY-MM-DD) to API format with start of day in IST
  * @param dateString - Date string in YYYY-MM-DD format
- * @returns ISO string with start of day in local timezone
+ * @returns ISO string with start of day in IST
  */
 export const formatDateForAPI = (dateString: string): string => {
-  if (!dateString) return new Date().toISOString();
+  // Add comprehensive null/undefined checks
+  if (!dateString || typeof dateString !== 'string') {
+    console.error('formatDateForAPI received invalid input:', dateString, 'Type:', typeof dateString);
+    return new Date().toISOString();
+  }
   
-  // Create date in local timezone to avoid timezone shift issues
-  const [year, month, day] = dateString.split('-').map(Number);
-  const localDate = new Date(year, month - 1, day, 0, 0, 0, 0); // month is 0-indexed
+  // Validate date format before splitting
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dateString)) {
+    console.error('formatDateForAPI received invalid date format:', dateString);
+    return new Date().toISOString();
+  }
   
-  return localDate.toISOString();
+  try {
+    // Create date in IST timezone to avoid timezone shift issues
+    const [year, month, day] = dateString.split('-').map(Number);
+    
+    // Validate the parsed numbers
+    if (isNaN(year) || isNaN(month) || isNaN(day)) {
+      console.error('formatDateForAPI failed to parse date components:', { year, month, day });
+      return new Date().toISOString();
+    }
+    
+    // Create date in IST (Asia/Kolkata timezone)
+    const istDate = new Date(year, month - 1, day, 0, 0, 0, 0);
+    
+    // Validate the resulting date
+    if (isNaN(istDate.getTime())) {
+      console.error('formatDateForAPI created invalid date:', istDate);
+      return new Date().toISOString();
+    }
+    
+    return istDate.toISOString();
+  } catch (error) {
+    console.error('formatDateForAPI error:', error, 'Input:', dateString);
+    return new Date().toISOString();
+  }
 };
 
 /**
@@ -33,6 +65,69 @@ export const formatDateTimeForAPI = (dateTimeString: string): string => {
  */
 export const getCurrentDateString = (): string => {
   return new Date().toISOString().split('T')[0];
+};
+
+/**
+ * Convert a date string to YYYY-MM-DD format without timezone conversion
+ * This prevents timezone-related date shifts
+ * @param dateString - Date string (ISO or any format)
+ * @returns Date string in YYYY-MM-DD format
+ */
+export const formatDateForInput = (dateString: string): string => {
+  // Add comprehensive null/undefined checks
+  if (!dateString || typeof dateString !== 'string') {
+    console.error('formatDateForInput received invalid input:', dateString, 'Type:', typeof dateString);
+    return new Date().toISOString().split('T')[0];
+  }
+  
+  // If it's already in YYYY-MM-DD format, return as is
+  if (/^\d{4}-\d{2}-\d{2}$/.test(dateString)) {
+    return dateString;
+  }
+  
+  try {
+    // Parse the date and format it without timezone conversion
+    const date = new Date(dateString);
+    
+    // Validate the parsed date
+    if (isNaN(date.getTime())) {
+      console.error('formatDateForInput failed to parse date:', dateString);
+      return new Date().toISOString().split('T')[0];
+    }
+    
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    
+    return `${year}-${month}-${day}`;
+  } catch (error) {
+    console.error('formatDateForInput error:', error, 'Input:', dateString);
+    return new Date().toISOString().split('T')[0];
+  }
+};
+
+/**
+ * Format date for display in IST
+ * @param dateString - Date string
+ * @returns Formatted date string for display in IST
+ */
+export const formatDateForDisplay = (dateString: string): string => {
+  if (!dateString) return '';
+  try {
+    const date = new Date(dateString);
+    if (isNaN(date.getTime())) {
+      return 'Invalid Date';
+    }
+    return date.toLocaleDateString('en-IN', {
+      timeZone: IST_TIMEZONE,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit'
+    });
+  } catch (error) {
+    console.error('Error formatting date:', error);
+    return 'Invalid Date';
+  }
 };
 
 /**
@@ -88,20 +183,6 @@ export const getDateRangeForFiltering = (startDate?: string, endDate?: string) =
   };
 };
 
-/**
- * Format date for display
- * @param dateString - Date string
- * @returns Formatted date string for display
- */
-export const formatDateForDisplay = (dateString: string): string => {
-  if (!dateString) return '';
-  const date = new Date(dateString);
-  return date.toLocaleDateString('en-US', {
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric',
-  });
-};
 
 /**
  * Format datetime for display
@@ -110,12 +191,73 @@ export const formatDateForDisplay = (dateString: string): string => {
  */
 export const formatDateTimeForDisplay = (dateTimeString: string): string => {
   if (!dateTimeString) return '';
-  const date = new Date(dateTimeString);
-  return date.toLocaleString('en-US', {
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  });
+  try {
+    const date = new Date(dateTimeString);
+    if (isNaN(date.getTime())) {
+      return 'Invalid Date';
+    }
+    return date.toLocaleString('en-IN', {
+      timeZone: IST_TIMEZONE,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false
+    });
+  } catch (error) {
+    console.error('Error formatting datetime:', error);
+    return 'Invalid Date';
+  }
+};
+
+/**
+ * Format date in DD/MM/YYYY format
+ * @param dateInput - Date string, Date object, null, or undefined
+ * @returns Formatted date string in DD/MM/YYYY format or 'N/A' for invalid inputs
+ */
+export const formatDateDDMMYYYY = (dateInput: string | Date | null | undefined): string => {
+  if (!dateInput) return 'N/A';
+  
+  try {
+    const date = dateInput instanceof Date ? dateInput : new Date(dateInput);
+    if (isNaN(date.getTime())) {
+      return 'N/A';
+    }
+    return date.toLocaleDateString('en-IN', {
+      timeZone: IST_TIMEZONE,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit'
+    });
+  } catch (error) {
+    console.error('Error formatting date DD/MM/YYYY:', error);
+    return 'N/A';
+  }
+};
+
+/**
+ * Format date with day name
+ * @param dateInput - Date string, Date object, null, or undefined
+ * @returns Formatted date string with day name or 'N/A' for invalid inputs
+ */
+export const formatDateWithDayName = (dateInput: string | Date | null | undefined): string => {
+  if (!dateInput) return 'N/A';
+  
+  try {
+    const date = dateInput instanceof Date ? dateInput : new Date(dateInput);
+    if (isNaN(date.getTime())) {
+      return 'N/A';
+    }
+    return date.toLocaleDateString('en-IN', {
+      timeZone: IST_TIMEZONE,
+      weekday: 'long',
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric'
+    });
+  } catch (error) {
+    console.error('Error formatting date with day name:', error);
+    return 'N/A';
+  }
 };

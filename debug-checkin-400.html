@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Debug Check-in 400 Error</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .form-group { margin-bottom: 15px; }
+        label { display: block; margin-bottom: 5px; font-weight: bold; }
+        input, select { width: 300px; padding: 8px; border: 1px solid #ccc; border-radius: 4px; }
+        button { padding: 10px 20px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; }
+        button:hover { background: #0056b3; }
+        .error { color: red; margin-top: 10px; }
+        .success { color: green; margin-top: 10px; }
+        .debug { background: #f8f9fa; padding: 10px; border-radius: 4px; margin-top: 10px; font-family: monospace; white-space: pre-wrap; }
+    </style>
+</head>
+<body>
+    <h1>Debug Guest Check-in 400 Error</h1>
+    
+    <form id="checkinForm">
+        <div class="form-group">
+            <label for="propertyId">Property ID:</label>
+            <input type="number" id="propertyId" value="1" required>
+        </div>
+        
+        <div class="form-group">
+            <label for="fullName">Full Name:</label>
+            <input type="text" id="fullName" value="Test Guest" required>
+        </div>
+        
+        <div class="form-group">
+            <label for="email">Email:</label>
+            <input type="email" id="email" value="test@example.com" required>
+        </div>
+        
+        <div class="form-group">
+            <label for="phone">Phone:</label>
+            <input type="text" id="phone" value="+919876543210" required>
+        </div>
+        
+        <div class="form-group">
+            <label for="address">Address:</label>
+            <input type="text" id="address" value="123 Test Street, Test City" required>
+        </div>
+        
+        <div class="form-group">
+            <label for="aadharNumber">Aadhar Number:</label>
+            <input type="text" id="aadharNumber" value="123456789012" required>
+        </div>
+        
+        <div class="form-group">
+            <label for="panNumber">PAN Number (Optional):</label>
+            <input type="text" id="panNumber" value="ABCDE1234F">
+        </div>
+        
+        <div class="form-group">
+            <label for="roomNumber">Room Number (Optional):</label>
+            <input type="text" id="roomNumber" value="101">
+        </div>
+        
+        <div class="form-group">
+            <label for="numberOfGuests">Number of Guests:</label>
+            <input type="number" id="numberOfGuests" value="1" min="1">
+        </div>
+        
+        <button type="submit">Test Check-in</button>
+    </form>
+    
+    <div id="result"></div>
+    <div id="debug"></div>
+
+    <script>
+        document.getElementById('checkinForm').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            
+            const resultDiv = document.getElementById('result');
+            const debugDiv = document.getElementById('debug');
+            
+            // Get form data
+            const formData = {
+                propertyId: parseInt(document.getElementById('propertyId').value),
+                guestType: 'indian',
+                fullName: document.getElementById('fullName').value,
+                email: document.getElementById('email').value,
+                phone: document.getElementById('phone').value,
+                address: document.getElementById('address').value,
+                aadharNumber: document.getElementById('aadharNumber').value,
+                panNumber: document.getElementById('panNumber').value,
+                roomNumber: document.getElementById('roomNumber').value,
+                numberOfGuests: parseInt(document.getElementById('numberOfGuests').value)
+            };
+            
+            // Debug output
+            debugDiv.innerHTML = `<div class="debug">Request Data:
+${JSON.stringify(formData, null, 2)}
+
+URL: http://localhost:4000/guest-checkin/create
+Method: POST
+Content-Type: application/json</div>`;
+            
+            try {
+                const response = await fetch('http://localhost:4000/guest-checkin/create', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${localStorage.getItem('accessToken') || 'your-token-here'}`
+                    },
+                    body: JSON.stringify(formData)
+                });
+                
+                const responseText = await response.text();
+                
+                debugDiv.innerHTML += `<div class="debug">Response Status: ${response.status} ${response.statusText}
+Response Headers:
+${Array.from(response.headers.entries()).map(([key, value]) => `${key}: ${value}`).join('\n')}
+
+Response Body:
+${responseText}</div>`;
+                
+                if (response.ok) {
+                    resultDiv.innerHTML = '<div class="success">✅ Check-in successful!</div>';
+                    try {
+                        const data = JSON.parse(responseText);
+                        resultDiv.innerHTML += `<div class="debug">Success Data: ${JSON.stringify(data, null, 2)}</div>`;
+                    } catch (e) {
+                        resultDiv.innerHTML += `<div class="debug">Raw Response: ${responseText}</div>`;
+                    }
+                } else {
+                    resultDiv.innerHTML = `<div class="error">❌ Error ${response.status}: ${response.statusText}</div>`;
+                    try {
+                        const errorData = JSON.parse(responseText);
+                        resultDiv.innerHTML += `<div class="debug">Error Details: ${JSON.stringify(errorData, null, 2)}</div>`;
+                    } catch (e) {
+                        resultDiv.innerHTML += `<div class="debug">Raw Error: ${responseText}</div>`;
+                    }
+                }
+                
+            } catch (error) {
+                resultDiv.innerHTML = `<div class="error">❌ Network Error: ${error.message}</div>`;
+                debugDiv.innerHTML += `<div class="debug">Network Error: ${error.message}</div>`;
+            }
+        });
+    </script>
+</body>
+</html>

@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Finance Migration Fix Tool</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 40px; background: #f5f5f5; }
+        .container { max-width: 800px; margin: 0 auto; background: white; padding: 30px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+        .header { text-align: center; margin-bottom: 30px; }
+        .header h1 { color: #2c3e50; margin-bottom: 10px; }
+        .header p { color: #7f8c8d; }
+        .button { 
+            background: #3498db; color: white; padding: 12px 24px; 
+            border: none; border-radius: 5px; cursor: pointer; margin: 10px 5px;
+            font-size: 14px; transition: background 0.3s;
+        }
+        .button:hover { background: #2980b9; }
+        .button.danger { background: #e74c3c; }
+        .button.danger:hover { background: #c0392b; }
+        .button.success { background: #27ae60; }
+        .button.success:hover { background: #229954; }
+        .button:disabled { background: #bdc3c7; cursor: not-allowed; }
+        .output { 
+            background: #2c3e50; color: #ecf0f1; padding: 20px; margin: 20px 0; 
+            border-radius: 5px; white-space: pre-wrap; font-family: 'Courier New', monospace;
+            max-height: 400px; overflow-y: auto; border: 1px solid #34495e;
+        }
+        .error { color: #e74c3c; }
+        .success { color: #27ae60; }
+        .warning { color: #f39c12; }
+        .info { color: #3498db; }
+        .section { margin: 20px 0; padding: 15px; border: 1px solid #ecf0f1; border-radius: 5px; }
+        .section h3 { margin-top: 0; color: #2c3e50; }
+        .status { padding: 10px; margin: 10px 0; border-radius: 5px; }
+        .status.error { background: #fdf2f2; border: 1px solid #fecaca; color: #dc2626; }
+        .status.success { background: #f0fdf4; border: 1px solid #bbf7d0; color: #16a34a; }
+        .status.warning { background: #fffbeb; border: 1px solid #fed7aa; color: #d97706; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🔧 Finance Migration Fix Tool</h1>
+            <p>Fix database migration issues in the finance service</p>
+        </div>
+        
+        <div class="section">
+            <h3>🚨 Current Issue</h3>
+            <div class="status error">
+                <strong>Migration Error:</strong> The finance database migration is failing because the `revenues` and `expenses` tables don't exist when migration 3 tries to alter them.
+            </div>
+        </div>
+        
+        <div class="section">
+            <h3>🔧 Fix Options</h3>
+            <button class="button" onclick="fixMigrationIssues(false)">Fix Migration Issues (Keep Data)</button>
+            <button class="button danger" onclick="fixMigrationIssues(true)">Reset & Fix (⚠️ Will Delete All Finance Data)</button>
+            <button class="button" onclick="checkMigrationStatus()">Check Migration Status</button>
+            <button class="button" onclick="testFinanceEndpoints()">Test Finance Endpoints</button>
+        </div>
+        
+        <div class="section">
+            <h3>📋 What This Tool Does</h3>
+            <ul>
+                <li><strong>Fix Migration Issues:</strong> Creates missing base tables and adds required columns</li>
+                <li><strong>Reset & Fix:</strong> Clears all finance data and recreates the schema from scratch</li>
+                <li><strong>Check Status:</strong> Verifies the current state of migrations and tables</li>
+                <li><strong>Test Endpoints:</strong> Tests if finance API endpoints are working correctly</li>
+            </ul>
+        </div>
+        
+        <div id="output" class="output">Ready to fix finance migration issues...\n</div>
+    </div>
+
+    <script>
+        function log(message, type = 'info') {
+            const output = document.getElementById('output');
+            const timestamp = new Date().toLocaleTimeString();
+            const className = type;
+            output.innerHTML += `<span class="${className}">[${timestamp}] ${message}</span>\n`;
+            output.scrollTop = output.scrollHeight;
+        }
+
+        async function makeRequest(endpoint, method = 'GET', body = null) {
+            try {
+                const options = {
+                    method,
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${localStorage.getItem('authToken')}`
+                    }
+                };
+                
+                if (body) {
+                    options.body = JSON.stringify(body);
+                }
+                
+                const response = await fetch(endpoint, options);
+                
+                if (response.ok) {
+                    return { success: true, data: await response.json() };
+                } else {
+                    const error = await response.text();
+                    return { success: false, error };
+                }
+            } catch (error) {
+                return { success: false, error: error.message };
+            }
+        }
+
+        async function fixMigrationIssues(reset = false) {
+            if (reset) {
+                if (!confirm('⚠️ WARNING: This will delete ALL finance data including revenues, expenses, and approvals. Are you sure?')) {
+                    return;
+                }
+            }
+            
+            log(`🔧 ${reset ? 'Resetting and fixing' : 'Fixing'} migration issues...`, 'info');
+            
+            const result = await makeRequest('/finance/fix-migration-issues', 'POST', { reset });
+            
+            if (result.success) {
+                log('✅ Migration issues fixed successfully!', 'success');
+                log(`Message: ${result.data.message}`, 'success');
+                if (result.data.details) {
+                    log(`Details: ${JSON.stringify(result.data.details, null, 2)}`, 'info');
+                }
+            } else {
+                log(`❌ Failed to fix migration issues: ${result.error}`, 'error');
+            }
+        }
+
+        async function checkMigrationStatus() {
+            log('🔍 Checking migration status...', 'info');
+            
+            try {
+                // Check if basic tables exist
+                const tables = ['revenues', 'expenses', 'files', 'daily_approvals'];
+                
+                for (const table of tables) {
+                    const result = await makeRequest(`/finance/test-db-schema`);
+                    
+                    if (result.success) {
+                        log(`✅ Database schema check successful`, 'success');
+                        break;
+                    } else {
+                        log(`❌ Table ${table} check failed: ${result.error}`, 'error');
+                    }
+                }
+                
+                // Check migration status
+                const migrationResult = await makeRequest('/finance/migration-status');
+                if (migrationResult.success) {
+                    log(`📊 Migration Status: ${JSON.stringify(migrationResult.data, null, 2)}`, 'info');
+                } else {
+                    log(`⚠️ Could not get migration status: ${migrationResult.error}`, 'warning');
+                }
+                
+            } catch (error) {
+                log(`❌ Migration status check failed: ${error.message}`, 'error');
+            }
+        }
+
+        async function testFinanceEndpoints() {
+            log('🧪 Testing finance endpoints...', 'info');
+            
+            const endpoints = [
+                { name: 'List Revenues', url: '/finance/revenues', method: 'GET' },
+                { name: 'List Expenses', url: '/finance/expenses', method: 'GET' },
+                { name: 'Financial Summary', url: '/finance/summary', method: 'GET' }
+            ];
+            
+            for (const endpoint of endpoints) {
+                log(`Testing ${endpoint.name}...`, 'info');
+                
+                const result = await makeRequest(endpoint.url, endpoint.method);
+                
+                if (result.success) {
+                    log(`✅ ${endpoint.name}: Working`, 'success');
+                } else {
+                    log(`❌ ${endpoint.name}: ${result.error}`, 'error');
+                }
+            }
+        }
+
+        // Check authentication on load
+        if (!localStorage.getItem('authToken')) {
+            log('⚠️ Please log in first to use this tool', 'warning');
+            document.querySelectorAll('.button').forEach(btn => {
+                btn.disabled = true;
+                btn.textContent = 'Login Required';
+            });
+        }
+
+        // Show current status on load
+        log('🔍 Checking current status...', 'info');
+        setTimeout(checkMigrationStatus, 1000);
+    </script>
+</body>
+</html>

@@ -12,6 +12,7 @@ interface Theme {
   currency: string;
   dateFormat: string;
   timeFormat: string;
+  timezone: string;
 }
 
 interface ThemeContextType {
@@ -27,9 +28,10 @@ const defaultTheme: Theme = {
   accentColor: '#10b981',
   backgroundColor: '#ffffff',
   textColor: '#1f2937',
-  currency: 'USD',
-  dateFormat: 'MM/DD/YYYY',
-  timeFormat: '12h',
+  currency: 'INR',
+  dateFormat: 'DD/MM/YYYY',
+  timeFormat: '24h',
+  timezone: 'Asia/Kolkata',
 };
 
 const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
@@ -207,6 +209,7 @@ export function ThemeProvider({ children }: ThemeProviderProps) {
             currency: response.theme.currency || defaultTheme.currency,
             dateFormat: response.theme.dateFormat || defaultTheme.dateFormat,
             timeFormat: response.theme.timeFormat || defaultTheme.timeFormat,
+            timezone: response.theme.timezone || defaultTheme.timezone,
           };
           
           console.log('Setting validated theme:', validTheme);
@@ -260,6 +263,7 @@ export function ThemeProvider({ children }: ThemeProviderProps) {
           currency: "USD",
           dateFormat: "MM/DD/YYYY",
           timeFormat: "12h",
+          timezone: "Asia/Kolkata",
         };
         
         console.log('Using safe default theme due to error');

@@ -3,6 +3,123 @@ import { getAuthData } from "~encore/auth";
 import { financeDB } from "./db";
 import { requireRole } from "../auth/middleware";
 
+// Helper function to update daily cash balance when a transaction is approved
+async function updateDailyCashBalanceForTransaction(tx: any, params: {
+  orgId: number;
+  propertyId: number;
+  date: string;
+  transactionType: 'revenue' | 'expense';
+  amountCents: number;
+  paymentMode: string;
+}) {
+  const { orgId, propertyId, date, transactionType, amountCents, paymentMode } = params;
+  
+  try {
+    // Get current daily cash balance record
+    const existingBalance = await tx.queryRow`
+      SELECT * FROM daily_cash_balances
+      WHERE org_id = ${orgId} 
+        AND property_id = ${propertyId} 
+        AND balance_date = ${date}
+    `;
+
+    if (existingBalance) {
+      // Update existing record
+      if (transactionType === 'revenue') {
+        if (paymentMode === 'cash') {
+          await tx.exec`
+            UPDATE daily_cash_balances
+            SET cash_received_cents = cash_received_cents + ${amountCents},
+                updated_at = NOW()
+            WHERE org_id = ${orgId} 
+              AND property_id = ${propertyId} 
+              AND balance_date = ${date}
+          `;
+        } else {
+          await tx.exec`
+            UPDATE daily_cash_balances
+            SET bank_received_cents = bank_received_cents + ${amountCents},
+                updated_at = NOW()
+            WHERE org_id = ${orgId} 
+              AND property_id = ${propertyId} 
+              AND balance_date = ${date}
+          `;
+        }
+      } else {
+        if (paymentMode === 'cash') {
+          await tx.exec`
+            UPDATE daily_cash_balances
+            SET cash_expenses_cents = cash_expenses_cents + ${amountCents},
+                updated_at = NOW()
+            WHERE org_id = ${orgId} 
+              AND property_id = ${propertyId} 
+              AND balance_date = ${date}
+          `;
+        } else {
+          await tx.exec`
+            UPDATE daily_cash_balances
+            SET bank_expenses_cents = bank_expenses_cents + ${amountCents},
+                updated_at = NOW()
+            WHERE org_id = ${orgId} 
+              AND property_id = ${propertyId} 
+              AND balance_date = ${date}
+          `;
+        }
+      }
+    } else {
+      // Create new record - calculate opening balance from previous day
+      let openingBalanceCents = 0;
+      
+      // Get previous day's closing balance
+      const previousDate = new Date(date);
+      previousDate.setDate(previousDate.getDate() - 1);
+      const previousDateStr = previousDate.toISOString().split('T')[0];
+      
+      const previousBalance = await tx.queryRow`
+        SELECT closing_balance_cents 
+        FROM daily_cash_balances 
+        WHERE org_id = ${orgId} 
+          AND property_id = ${propertyId} 
+          AND balance_date = ${previousDateStr}
+      `;
+      
+      if (previousBalance) {
+        openingBalanceCents = previousBalance.closing_balance_cents;
+      }
+
+      // Initialize new record with the transaction
+      const cashReceivedCents = transactionType === 'revenue' && paymentMode === 'cash' ? amountCents : 0;
+      const bankReceivedCents = transactionType === 'revenue' && paymentMode === 'bank' ? amountCents : 0;
+      const cashExpensesCents = transactionType === 'expense' && paymentMode === 'cash' ? amountCents : 0;
+      const bankExpensesCents = transactionType === 'expense' && paymentMode === 'bank' ? amountCents : 0;
+      
+      const closingBalanceCents = openingBalanceCents + cashReceivedCents - cashExpensesCents;
+
+      await tx.exec`
+        INSERT INTO daily_cash_balances (
+          org_id, property_id, balance_date, opening_balance_cents,
+          cash_received_cents, bank_received_cents, cash_expenses_cents,
+          bank_expenses_cents, closing_balance_cents,
+          is_opening_balance_auto_calculated, calculated_closing_balance_cents,
+          balance_discrepancy_cents, created_by_user_id
+        )
+        VALUES (
+          ${orgId}, ${propertyId}, ${date}, ${openingBalanceCents},
+          ${cashReceivedCents}, ${bankReceivedCents}, ${cashExpensesCents},
+          ${bankExpensesCents}, ${closingBalanceCents}, 
+          ${!!previousBalance}, ${closingBalanceCents}, 
+          0, ${1} -- Default created_by_user_id
+        )
+      `;
+    }
+
+    console.log(`Updated daily cash balance for property ${propertyId} on ${date} with ${transactionType} of ${amountCents} cents (${paymentMode})`);
+  } catch (error) {
+    console.error('Error updating daily cash balance:', error);
+    // Don't throw error to avoid breaking the approval process
+  }
+}
+
 export interface ApproveRevenueRequest {
   id: number;
   approved: boolean;
@@ -120,7 +237,7 @@ export const approveRevenue = api<ApproveRevenueRequest, ApproveRevenueResponse>
       // Auto-grant daily approval for the manager if this is an approval
       if (newStatus === 'approved') {
         const revenue = await tx.queryRow`
-          SELECT created_by_user_id, created_at
+          SELECT created_by_user_id, created_at, property_id, amount_cents, payment_mode
           FROM revenues
           WHERE id = ${id}
         `;
@@ -152,6 +269,16 @@ export const approveRevenue = api<ApproveRevenueRequest, ApproveRevenueResponse>
             
             console.log(`Auto-granted daily approval for manager ${revenue.created_by_user_id} on ${revenueDate}`);
           }
+
+          // Update daily cash balance record for this property and date
+          await updateDailyCashBalanceForTransaction(tx, {
+            orgId: authData.orgId,
+            propertyId: revenue.property_id,
+            date: revenueDate,
+            transactionType: 'revenue',
+            amountCents: revenue.amount_cents,
+            paymentMode: revenue.payment_mode
+          });
         }
       }
 

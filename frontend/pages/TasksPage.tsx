@@ -1,6 +1,7 @@
 import React, { useMemo, useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/contexts/AuthContext';
+import { useTheme } from '@/contexts/ThemeContext';
 import { usePageTitle } from '@/contexts/PageTitleContext';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -10,6 +11,7 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { FinanceTabs, FinanceTabsList, FinanceTabsTrigger } from '@/components/ui/finance-tabs';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { useToast } from '@/components/ui/use-toast';
 import { LoadingCard, LoadingPage } from '@/components/ui/loading-spinner';
@@ -25,9 +27,11 @@ import { TaskImage } from '../lib/api/task-images';
 import { useTaskImageManagement } from '../hooks/use-task-image-management';
 import { ERROR_MESSAGES } from '../src/config/api';
 import { useStandardQuery, useStandardMutation, QUERY_KEYS, STANDARD_QUERY_CONFIGS } from '../src/utils/api-standardizer';
+import { CreateTaskDialog } from '@/components/ui/create-task-dialog';
 
 export default function TasksPage() {
   const { getAuthenticatedBackend, user } = useAuth();
+  const { theme } = useTheme();
   const { setPageTitle } = usePageTitle();
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -46,16 +50,6 @@ export default function TasksPage() {
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [selectedTask, setSelectedTask] = useState<any>(null);
-  const [taskForm, setTaskForm] = useState({
-    propertyId: '',
-    type: 'maintenance' as 'maintenance' | 'housekeeping' | 'service',
-    title: '',
-    description: '',
-    priority: 'med' as 'low' | 'med' | 'high',
-    dueAt: '',
-    estimatedHours: '',
-    assigneeStaffId: 'none' as string | 'none',
-  });
   const [editForm, setEditForm] = useState({
     propertyId: '',
     type: 'maintenance' as 'maintenance' | 'housekeeping' | 'service',
@@ -66,16 +60,7 @@ export default function TasksPage() {
     estimatedHours: '',
     assigneeStaffId: 'none' as string | 'none',
   });
-  const [taskImages, setTaskImages] = useState<any[]>([]);
-  const [createTaskResetTrigger, setCreateTaskResetTrigger] = useState(0);
 
-  // Form validation
-  const validation = useFormValidation(taskForm, {
-    propertyId: commonValidationRules.required,
-    title: { ...commonValidationRules.required, minLength: 3, maxLength: 100 },
-    description: { maxLength: 500 },
-    dueAt: commonValidationRules.required,
-  });
 
   const { data: tasks, isLoading, error: tasksError } = useStandardQuery(
     QUERY_KEYS.TASKS,
@@ -92,24 +77,7 @@ export default function TasksPage() {
     }
   );
 
-  // Load staff options for selected property in the create dialog
-  const { data: createStaffOptions, isLoading: isCreateStaffLoading } = useStandardQuery(
-    ['staff', 'by-property', taskForm.propertyId || 'none'],
-    `/staff?propertyId=${taskForm.propertyId}`,
-    {
-      enabled: !!taskForm.propertyId,
-    }
-  );
 
-  const createTaskMutation = useStandardMutation(
-    '/tasks',
-    'POST',
-    {
-      invalidateQueries: [QUERY_KEYS.TASKS, QUERY_KEYS.STAFF, QUERY_KEYS.ANALYTICS, QUERY_KEYS.DASHBOARD, QUERY_KEYS.PROPERTIES],
-      successMessage: "Task created successfully",
-      errorMessage: "Failed to create task. Please try again.",
-    }
-  );
 
   const updateTaskStatusMutation = useStandardMutation(
     '/tasks/:id/status',
@@ -212,56 +180,6 @@ export default function TasksPage() {
     done: filteredTasks.filter((task: any) => task.status === 'done'),
   };
 
-  const handleCreateTask = async () => {
-    if (!taskForm.propertyId || !taskForm.title) {
-      toast({
-        variant: "destructive",
-        title: "Missing fields",
-        description: "Please fill in the required fields.",
-      });
-      return;
-    }
-    
-    const taskData = {
-      propertyId: parseInt(taskForm.propertyId),
-      type: taskForm.type,
-      title: taskForm.title,
-      description: taskForm.description || undefined,
-      priority: taskForm.priority,
-      dueAt: taskForm.dueAt ? formatDateTimeForAPI(taskForm.dueAt) : undefined,
-      estimatedHours: taskForm.estimatedHours ? parseFloat(taskForm.estimatedHours) : undefined,
-      assigneeStaffId: taskForm.assigneeStaffId && taskForm.assigneeStaffId !== 'none' ? parseInt(taskForm.assigneeStaffId) : undefined,
-    };
-    
-    try {
-      const newTask = await createTaskMutation.mutateAsync(taskData);
-      
-      // Upload images if any
-      if (taskImages.length > 0) {
-        const files = taskImages.map(img => img.file);
-        // Note: In a real implementation, you would upload images here
-        // For now, we'll just clear the images
-        console.log('Images to upload:', files);
-      }
-      
-      // Close dialog and reset form
-      setIsCreateDialogOpen(false);
-      setTaskForm({
-        propertyId: '',
-        type: 'maintenance',
-        title: '',
-        description: '',
-        priority: 'med',
-        dueAt: '',
-        estimatedHours: '',
-        assigneeStaffId: 'none',
-      });
-      setTaskImages([]);
-      setCreateTaskResetTrigger(prev => prev + 1);
-    } catch (error) {
-      console.error('Failed to create task:', error);
-    }
-  };
 
   const handleStatusChange = (taskId: number, newStatus: string) => {
     updateTaskStatusMutation.mutate({ 
@@ -412,7 +330,7 @@ export default function TasksPage() {
 
     return (
       <>
-        <Card className={`border-l-4 border-l-orange-500 shadow-sm hover:shadow-md transition-all duration-200 ${
+        <Card className={`shadow-sm hover:shadow-md transition-all duration-200 ${
           task.dueAt && isOverdue(task.dueAt) && task.status !== 'done' ? 'border-red-200 bg-red-50' : ''
         }`}>
           <CardHeader className="pb-4">
@@ -592,10 +510,10 @@ export default function TasksPage() {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-gray-50">
+      <div className="w-full min-h-screen bg-gray-50">
         <div className="space-y-6">
           {/* Loading Search Section */}
-          <Card className="border-l-4 border-l-blue-500">
+          <Card className="">
             <CardContent className="flex items-center justify-center p-12">
               <div className="text-center">
                 <RefreshCw className="h-8 w-8 animate-spin text-blue-600 mx-auto mb-4" />
@@ -608,7 +526,7 @@ export default function TasksPage() {
           {/* Loading Grid */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 sm:gap-8">
             {[...Array(4)].map((_, i) => (
-              <Card key={i} className="border-l-4 border-l-orange-500 animate-pulse">
+              <Card key={i} className=" animate-pulse">
                 <CardHeader className="pb-4">
                   <div className="flex items-start gap-3">
                     <div className="w-10 h-10 bg-gray-200 rounded-lg"></div>
@@ -660,9 +578,9 @@ export default function TasksPage() {
   // Show error state if data failed to load
   if (tasksError) {
     return (
-      <div className="min-h-screen bg-gray-50">
+      <div className="w-full min-h-screen bg-gray-50">
         <div className="space-y-6">
-          <Card className="border-l-4 border-l-red-500">
+          <Card className="">
             <CardContent className="flex items-center justify-center p-12">
               <div className="text-center">
                 <div className="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
@@ -673,7 +591,7 @@ export default function TasksPage() {
                 <Button 
                   onClick={refreshNow}
                   variant="outline" 
-                  className="border-red-300 text-red-700 hover:bg-red-50"
+                  className="bg-white border-rose-200 text-red-700 hover:bg-rose-50 hover:border-rose-300 font-semibold"
                 >
                   <RefreshCw className="h-4 w-4 mr-2" />
                   Try Again
@@ -687,10 +605,10 @@ export default function TasksPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="w-full min-h-screen bg-gray-50">
       <div className="space-y-6">
         {/* Enhanced Search and Filter Section */}
-        <Card className="border-l-4 border-l-blue-500 shadow-sm">
+        <Card className=" shadow-sm">
           <CardHeader className="pb-4">
             <CardTitle className="text-lg flex items-center gap-2">
               <div className="w-3 h-3 bg-blue-500 rounded-full animate-pulse"></div>
@@ -750,187 +668,16 @@ export default function TasksPage() {
               <div className="text-sm text-gray-600">
                 Showing {filteredTasks.length} task{filteredTasks.length !== 1 ? 's' : ''}
               </div>
-              <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
-                <DialogTrigger asChild>
+              <CreateTaskDialog
+                isOpen={isCreateDialogOpen}
+                onOpenChange={setIsCreateDialogOpen}
+                trigger={
                   <Button className="bg-blue-600 hover:bg-blue-700">
                     <Plus className="mr-2 h-4 w-4" />
                     Create Task
                   </Button>
-                </DialogTrigger>
-                <DialogContent className="max-w-2xl max-h-[95vh] overflow-hidden flex flex-col">
-                  <DialogHeader className="pb-4">
-                    <DialogTitle className="text-xl font-bold text-gray-900 flex items-center gap-2">
-                      <div className="p-2 bg-blue-100 rounded-lg shadow-sm">
-                        <Plus className="h-5 w-5 text-blue-600" />
-                      </div>
-                      Create New Task
-                    </DialogTitle>
-                    <DialogDescription className="text-sm text-gray-600">
-                      Create a new task for your property operations
-                    </DialogDescription>
-                  </DialogHeader>
-                  <div className="flex-1 overflow-y-auto px-1">
-                    <div className="space-y-4">
-                      <div className="space-y-2">
-                        <Label htmlFor="property" className="text-sm font-medium text-gray-700">Property *</Label>
-                        <Select value={taskForm.propertyId} onValueChange={(value) => setTaskForm(prev => ({ ...prev, propertyId: value, assigneeStaffId: 'none' }))}>
-                          <SelectTrigger className="h-11 border-gray-300 focus:border-blue-500 focus:ring-blue-500">
-                            <SelectValue placeholder="Select property" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {properties?.properties.map((property: any) => (
-                              <SelectItem key={property.id} value={property.id.toString()}>
-                                {property.name}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-
-                      {/* Assignee */}
-                      <div className="space-y-2">
-                        <Label className="text-sm font-medium text-gray-700">Assignee</Label>
-                        <Select
-                          value={taskForm.assigneeStaffId}
-                          onValueChange={(value) => setTaskForm(prev => ({ ...prev, assigneeStaffId: value }))}
-                          disabled={!taskForm.propertyId || isCreateStaffLoading}
-                        >
-                          <SelectTrigger className="h-11 border-gray-300 focus:border-blue-500 focus:ring-blue-500">
-                            <SelectValue placeholder={isCreateStaffLoading ? 'Loading staff...' : 'Select assignee (optional)'} />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="none">Unassigned</SelectItem>
-                            {(createStaffOptions?.staff || []).map((s: any) => (
-                              <SelectItem key={s.id} value={s.id.toString()}>
-                                {s.userName} {s.department ? `· ${s.department}` : ''}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div className="space-y-2">
-                          <Label htmlFor="type" className="text-sm font-medium text-gray-700">Type</Label>
-                          <Select value={taskForm.type} onValueChange={(value: any) => setTaskForm(prev => ({ ...prev, type: value }))}>
-                            <SelectTrigger className="h-11 border-gray-300 focus:border-blue-500 focus:ring-blue-500">
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="maintenance">Maintenance</SelectItem>
-                              <SelectItem value="housekeeping">Housekeeping</SelectItem>
-                              <SelectItem value="service">Service</SelectItem>
-                            </SelectContent>
-                          </Select>
-                        </div>
-                        <div className="space-y-2">
-                          <Label htmlFor="priority" className="text-sm font-medium text-gray-700">Priority</Label>
-                          <Select value={taskForm.priority} onValueChange={(value: any) => setTaskForm(prev => ({ ...prev, priority: value }))}>
-                            <SelectTrigger className="h-11 border-gray-300 focus:border-blue-500 focus:ring-blue-500">
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="low">Low</SelectItem>
-                              <SelectItem value="med">Medium</SelectItem>
-                              <SelectItem value="high">High</SelectItem>
-                            </SelectContent>
-                          </Select>
-                        </div>
-                      </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="title" className="text-sm font-medium text-gray-700">Title *</Label>
-                        <Input
-                          id="title"
-                          value={taskForm.title}
-                          onChange={(e) => setTaskForm(prev => ({ ...prev, title: e.target.value }))}
-                          placeholder="Enter task title"
-                          className="h-11 border-gray-300 focus:border-blue-500 focus:ring-blue-500"
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="description" className="text-sm font-medium text-gray-700">Description</Label>
-                        <Textarea
-                          id="description"
-                          value={taskForm.description}
-                          onChange={(e) => setTaskForm(prev => ({ ...prev, description: e.target.value }))}
-                          placeholder="Enter task description"
-                          className="border-gray-300 focus:border-blue-500 focus:ring-blue-500"
-                        />
-                      </div>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div className="space-y-2">
-                          <Label htmlFor="dueAt" className="text-sm font-medium text-gray-700">Due Date</Label>
-                          <Input
-                            id="dueAt"
-                            type="datetime-local"
-                            value={taskForm.dueAt}
-                            onChange={(e) => setTaskForm(prev => ({ ...prev, dueAt: e.target.value }))}
-                            className="h-11 border-gray-300 focus:border-blue-500 focus:ring-blue-500"
-                          />
-                        </div>
-                        <div className="space-y-2">
-                          <Label htmlFor="estimatedHours" className="text-sm font-medium text-gray-700">Estimated Hours</Label>
-                          <Input
-                            id="estimatedHours"
-                            type="number"
-                            step="0.5"
-                            value={taskForm.estimatedHours}
-                            onChange={(e) => setTaskForm(prev => ({ ...prev, estimatedHours: e.target.value }))}
-                            placeholder="0"
-                            className="h-11 border-gray-300 focus:border-blue-500 focus:ring-blue-500"
-                          />
-                        </div>
-                      </div>
-                      
-                      {/* Reference Images Upload */}
-                      <div className="space-y-2">
-                        <Label className="text-sm font-medium text-gray-700">Reference Images</Label>
-                        <TaskImageUpload
-                          taskId={0} // Placeholder for create dialog
-                          existingImages={[]}
-                          onImageUpload={async (taskId, files) => {
-                            // Convert files to ImageFile format for create dialog
-                            const imageFiles = files.map(file => ({
-                              id: Math.random().toString(36).substr(2, 9),
-                              file,
-                              preview: URL.createObjectURL(file),
-                            }));
-                            setTaskImages(imageFiles);
-                          }}
-                          onImageDelete={async () => {
-                            // Not applicable for create dialog
-                          }}
-                          maxImages={5}
-                          maxSize={5}
-                          disabled={createTaskMutation.isPending}
-                          className="!space-y-2"
-                        />
-                      </div>
-                    </div>
-                  </div>
-                  <DialogFooter className="border-t pt-4 mt-6 bg-gray-50 -mx-6 -mb-6 px-6 py-4">
-                    <div className="flex items-center justify-between w-full">
-                      <Button variant="outline" onClick={() => setIsCreateDialogOpen(false)}>
-                        Cancel
-                      </Button>
-                      <Button 
-                        onClick={handleCreateTask}
-                        disabled={createTaskMutation.isPending || !taskForm.propertyId || !taskForm.title}
-                        className="bg-blue-600 hover:bg-blue-700"
-                      >
-                        {createTaskMutation.isPending ? (
-                          <>
-                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                            Creating...
-                          </>
-                        ) : (
-                          'Create Task'
-                        )}
-                      </Button>
-                    </div>
-                  </DialogFooter>
-                </DialogContent>
-              </Dialog>
+                }
+              />
 
               {/* Edit Task Dialog */}
               <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
@@ -1138,57 +885,36 @@ export default function TasksPage() {
         </Card>
 
         {/* Enhanced Sticky Tabs */}
-        <Tabs defaultValue="all" className="space-y-0">
-          <div className="sticky top-20 z-30 bg-gradient-to-br from-orange-500 via-orange-600 to-orange-700 border-b-2 border-orange-400 -mx-6 px-4 py-3 shadow-2xl rounded-b-xl">
-            <div className="overflow-x-auto">
-              <div className="bg-white/10 backdrop-blur-sm rounded-lg p-1 border border-white/20 shadow-inner">
-                <TabsList className="grid w-full grid-cols-5 min-w-max bg-transparent h-auto p-0 gap-2">
-                  <TabsTrigger 
-                    value="all" 
-                    className="text-xs sm:text-sm px-4 sm:px-8 py-4 data-[state=active]:bg-white data-[state=active]:text-orange-600 data-[state=active]:shadow-xl data-[state=active]:border-2 data-[state=active]:border-orange-300 data-[state=inactive]:text-white data-[state=inactive]:bg-gradient-to-r data-[state=inactive]:from-orange-500/30 data-[state=inactive]:to-orange-600/30 data-[state=inactive]:hover:from-orange-500/50 data-[state=inactive]:hover:to-orange-600/50 data-[state=inactive]:hover:shadow-lg data-[state=inactive]:border data-[state=inactive]:border-white/30 transition-all duration-500 flex items-center gap-2 rounded-xl font-semibold relative overflow-hidden group"
-                  >
-                    <div className="absolute inset-0 bg-gradient-to-r from-white/0 via-white/10 to-white/0 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700"></div>
-                    <span className="relative z-10">All ({filteredTasks.length})</span>
-                  </TabsTrigger>
-                  <TabsTrigger 
-                    value="open" 
-                    className="text-xs sm:text-sm px-4 sm:px-8 py-4 data-[state=active]:bg-white data-[state=active]:text-orange-600 data-[state=active]:shadow-xl data-[state=active]:border-2 data-[state=active]:border-orange-300 data-[state=inactive]:text-white data-[state=inactive]:bg-gradient-to-r data-[state=inactive]:from-orange-500/30 data-[state=inactive]:to-orange-600/30 data-[state=inactive]:hover:from-orange-500/50 data-[state=inactive]:hover:to-orange-600/50 data-[state=inactive]:hover:shadow-lg data-[state=inactive]:border data-[state=inactive]:border-white/30 transition-all duration-500 flex items-center gap-2 rounded-xl font-semibold relative overflow-hidden group"
-                  >
-                    <div className="absolute inset-0 bg-gradient-to-r from-white/0 via-white/10 to-white/0 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700"></div>
-                    <span className="relative z-10">Open ({groupedTasks.open.length})</span>
-                  </TabsTrigger>
-                  <TabsTrigger 
-                    value="in_progress" 
-                    className="text-xs sm:text-sm px-4 sm:px-8 py-4 data-[state=active]:bg-white data-[state=active]:text-orange-600 data-[state=active]:shadow-xl data-[state=active]:border-2 data-[state=active]:border-orange-300 data-[state=inactive]:text-white data-[state=inactive]:bg-gradient-to-r data-[state=inactive]:from-orange-500/30 data-[state=inactive]:to-orange-600/30 data-[state=inactive]:hover:from-orange-500/50 data-[state=inactive]:hover:to-orange-600/50 data-[state=inactive]:hover:shadow-lg data-[state=inactive]:border data-[state=inactive]:border-white/30 transition-all duration-500 flex items-center gap-2 rounded-xl font-semibold relative overflow-hidden group"
-                  >
-                    <div className="absolute inset-0 bg-gradient-to-r from-white/0 via-white/10 to-white/0 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700"></div>
-                    <span className="relative z-10">Progress ({groupedTasks.in_progress.length})</span>
-                  </TabsTrigger>
-                  <TabsTrigger 
-                    value="blocked" 
-                    className="text-xs sm:text-sm px-4 sm:px-8 py-4 data-[state=active]:bg-white data-[state=active]:text-orange-600 data-[state=active]:shadow-xl data-[state=active]:border-2 data-[state=active]:border-orange-300 data-[state=inactive]:text-white data-[state=inactive]:bg-gradient-to-r data-[state=inactive]:from-orange-500/30 data-[state=inactive]:to-orange-600/30 data-[state=inactive]:hover:from-orange-500/50 data-[state=inactive]:hover:to-orange-600/50 data-[state=inactive]:hover:shadow-lg data-[state=inactive]:border data-[state=inactive]:border-white/30 transition-all duration-500 flex items-center gap-2 rounded-xl font-semibold relative overflow-hidden group"
-                  >
-                    <div className="absolute inset-0 bg-gradient-to-r from-white/0 via-white/10 to-white/0 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700"></div>
-                    <span className="relative z-10">Blocked ({groupedTasks.blocked.length})</span>
-                  </TabsTrigger>
-                  <TabsTrigger 
-                    value="done" 
-                    className="text-xs sm:text-sm px-4 sm:px-8 py-4 data-[state=active]:bg-white data-[state=active]:text-orange-600 data-[state=active]:shadow-xl data-[state=active]:border-2 data-[state=active]:border-orange-300 data-[state=inactive]:text-white data-[state=inactive]:bg-gradient-to-r data-[state=inactive]:from-orange-500/30 data-[state=inactive]:to-orange-600/30 data-[state=inactive]:hover:from-orange-500/50 data-[state=inactive]:hover:to-orange-600/50 data-[state=inactive]:hover:shadow-lg data-[state=inactive]:border data-[state=inactive]:border-white/30 transition-all duration-500 flex items-center gap-2 rounded-xl font-semibold relative overflow-hidden group"
-                  >
-                    <div className="absolute inset-0 bg-gradient-to-r from-white/0 via-white/10 to-white/0 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700"></div>
-                    <span className="relative z-10">Done ({groupedTasks.done.length})</span>
-                  </TabsTrigger>
-                </TabsList>
-              </div>
-            </div>
-          </div>
+        <FinanceTabs defaultValue="all" theme={theme}>
+          <FinanceTabsList className="grid-cols-5" theme={theme}>
+            <FinanceTabsTrigger value="all" theme={theme}>
+              <CheckSquare className="h-4 w-4 mr-2" />
+              All ({filteredTasks.length})
+            </FinanceTabsTrigger>
+            <FinanceTabsTrigger value="open" theme={theme}>
+              <Clock className="h-4 w-4 mr-2" />
+              Open ({groupedTasks.open.length})
+            </FinanceTabsTrigger>
+            <FinanceTabsTrigger value="in_progress" theme={theme}>
+              <RefreshCw className="h-4 w-4 mr-2" />
+              Progress ({groupedTasks.in_progress.length})
+            </FinanceTabsTrigger>
+            <FinanceTabsTrigger value="blocked" theme={theme}>
+              <AlertCircle className="h-4 w-4 mr-2" />
+              Blocked ({groupedTasks.blocked.length})
+            </FinanceTabsTrigger>
+            <FinanceTabsTrigger value="done" theme={theme}>
+              <CheckSquare className="h-4 w-4 mr-2" />
+              Done ({groupedTasks.done.length})
+            </FinanceTabsTrigger>
+          </FinanceTabsList>
 
           {/* Content Container */}
           <div className="px-6 py-6">
 
             <TabsContent value="all" className="pt-4">
               {filteredTasks.length === 0 ? (
-                <Card className="border-l-4 border-l-blue-500">
+                <Card className="">
                   <CardContent className="flex flex-col items-center justify-center py-12">
                     <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
                       <CheckSquare className="h-8 w-8 text-blue-600" />
@@ -1221,7 +947,7 @@ export default function TasksPage() {
             {Object.entries(groupedTasks).map(([status, statusTasks]) => (
               <TabsContent key={status} value={status} className="pt-4">
                 {statusTasks.length === 0 ? (
-                  <Card className="border-l-4 border-l-blue-500">
+                  <Card className="">
                     <CardContent className="flex flex-col items-center justify-center py-12">
                       <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
                         <CheckSquare className="h-8 w-8 text-blue-600" />
@@ -1244,7 +970,7 @@ export default function TasksPage() {
               </TabsContent>
             ))}
           </div>
-        </Tabs>
+        </FinanceTabs>
       </div>
     </div>
   );

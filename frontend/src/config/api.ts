@@ -21,7 +21,7 @@ export const ERROR_MESSAGES = {
   NETWORK_ERROR: 'Network error. Please check your connection and try again.',
   UPLOAD_FAILED: 'Failed to upload image. Please try again.',
   INVALID_FILE_TYPE: 'Invalid file type. Please upload images (JPG, PNG, WebP) only.',
-  FILE_TOO_LARGE: 'File size too large. Maximum size is 5MB.',
+  FILE_TOO_LARGE: 'File size too large. Maximum size is 50MB.',
   NO_FILE_SELECTED: 'Please select at least one image to upload.',
   UNAUTHORIZED: 'You are not authorized to perform this action.',
   SERVER_ERROR: 'Server error. Please try again later.',

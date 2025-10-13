@@ -63,14 +63,42 @@ export const updateRevenue = api<UpdateRevenueRequest, UpdateRevenueResponse>(
       }
     }
 
+    // Check if status columns exist
+    let hasStatusColumns = false;
+    try {
+      const statusCheck = await financeDB.queryAll`
+        SELECT table_name, column_name FROM information_schema.columns 
+        WHERE table_name IN ('expenses', 'revenues') AND column_name = 'status'
+      `;
+      // Both tables must have the status column
+      hasStatusColumns = statusCheck.length === 2;
+      console.log('Status column check result:', statusCheck, 'hasStatusColumns:', hasStatusColumns);
+    } catch (error) {
+      console.log('Status column check failed:', error);
+    }
+
     const tx = await financeDB.begin();
     try {
       // Get existing revenue and check access with org scoping
-      const revenueRow = await tx.queryRow`
-        SELECT r.id, r.org_id, r.status, r.created_by_user_id, r.property_id
-        FROM revenues r
-        WHERE r.id = ${id} AND r.org_id = ${authData.orgId}
-      `;
+      let revenueRow;
+      if (hasStatusColumns) {
+        revenueRow = await tx.queryRow`
+          SELECT r.id, r.org_id, r.status, r.created_by_user_id, r.property_id
+          FROM revenues r
+          WHERE r.id = ${id} AND r.org_id = ${authData.orgId}
+        `;
+      } else {
+        // Fallback: select without status column
+        revenueRow = await tx.queryRow`
+          SELECT r.id, r.org_id, r.created_by_user_id, r.property_id
+          FROM revenues r
+          WHERE r.id = ${id} AND r.org_id = ${authData.orgId}
+        `;
+        // Add default status in memory
+        if (revenueRow) {
+          revenueRow.status = 'pending';
+        }
+      }
 
       if (!revenueRow) {
         throw APIError.notFound("Revenue not found");
@@ -215,8 +243,8 @@ export const updateRevenue = api<UpdateRevenueRequest, UpdateRevenueResponse>(
         throw APIError.invalidArgument("No fields to update");
       }
 
-      // For managers, reset status to pending when modifying
-      if (authData.role === "MANAGER") {
+      // For managers, reset status to pending when modifying (if status column exists)
+      if (authData.role === "MANAGER" && hasStatusColumns) {
         await tx.exec`
           UPDATE revenues 
           SET status = 'pending', approved_by_user_id = NULL, approved_at = NULL
@@ -269,7 +297,7 @@ export const updateRevenue = api<UpdateRevenueRequest, UpdateRevenueResponse>(
         occurredAt: updatedRevenue.occurred_at,
         paymentMode: updatedRevenue.payment_mode,
         bankReference: updatedRevenue.bank_reference,
-        status: updatedRevenue.status,
+        status: updatedRevenue.status || 'pending',
         createdByUserId: updatedRevenue.created_by_user_id,
         updatedAt: updatedRevenue.updated_at,
       };

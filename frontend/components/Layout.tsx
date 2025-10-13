@@ -22,7 +22,9 @@ import {
   User,
   Shield,
   Receipt,
-  UserCheck
+  UserCheck,
+  Kanban,
+  ClipboardCheck
 } from 'lucide-react';
 
 interface LayoutProps {
@@ -32,7 +34,9 @@ interface LayoutProps {
 const navigation = [
   { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard, roles: ['ADMIN', 'MANAGER'] },
   { name: 'Properties', href: '/properties', icon: Building2, roles: ['ADMIN', 'MANAGER'] },
+  { name: 'Guest Check-in', href: '/guest-checkin', icon: ClipboardCheck, roles: ['ADMIN', 'MANAGER'] },
   { name: 'Tasks', href: '/tasks', icon: CheckSquare, roles: ['ADMIN', 'MANAGER'] },
+  { name: 'Task Board', href: '/task-management', icon: Kanban, roles: ['ADMIN', 'MANAGER'] },
   { name: 'Finance', href: '/finance', icon: Receipt, roles: ['ADMIN', 'MANAGER'] },
   { name: 'Reports', href: '/reports', icon: BarChart3, roles: ['ADMIN', 'MANAGER'] },
   { name: 'Staff', href: '/staff', icon: UserCheck, roles: ['ADMIN', 'MANAGER'] },
@@ -338,8 +342,13 @@ export default function Layout({ children }: LayoutProps) {
   const Sidebar = ({ mobile = false }: { mobile?: boolean }) => (
     <div className="flex flex-col h-full">
       <div className="flex items-center px-4 h-20 border-b">
-        <div className="flex items-center space-x-3">
-                     {(() => {
+        <Link 
+          to="/dashboard" 
+          className="flex items-center space-x-3 hover:opacity-80 transition-opacity duration-200"
+          onClick={() => mobile && setSidebarOpen(false)}
+          title={`Go to Dashboard - ${theme.brandName}`}
+        >
+          {(() => {
              try {
                // Check if logo has failed to load
                const logoFailed = theme.logoUrl && document.querySelector(`img[data-load-failed="true"][src*="${theme.logoUrl}"]`);
@@ -442,7 +451,7 @@ export default function Layout({ children }: LayoutProps) {
           <span className="text-xl font-bold" style={{ color: theme.textColor }}>
             {theme.brandName}
           </span>
-        </div>
+        </Link>
       </div>
 
       <nav className="flex-1 px-4 py-6 space-y-2">
@@ -648,7 +657,7 @@ export default function Layout({ children }: LayoutProps) {
         {/* Page content */}
         <main className="flex-1">
           <div className="py-6">
-            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div className="w-full px-0 sm:px-4 lg:max-w-7xl lg:mx-auto lg:px-8">
               {children}
             </div>
           </div>

@@ -45,10 +45,10 @@ export const uploadFile = api<UploadRequest, UploadResponse>(
     // Decode base64 file data
     const fileBuffer = Buffer.from(req.fileData, 'base64');
     
-    // Validate file size (max 10MB)
-    const maxSize = 10 * 1024 * 1024; // 10MB
+    // Validate file size (max 50MB)
+    const maxSize = 50 * 1024 * 1024; // 50MB
     if (fileBuffer.length > maxSize) {
-      throw APIError.invalidArgument("File size too large. Maximum size is 10MB.");
+      throw APIError.invalidArgument("File size too large. Maximum size is 50MB.");
     }
 
     // Generate unique filename

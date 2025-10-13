@@ -133,11 +133,9 @@ export default function DashboardPage() {
     return 'Good evening';
   };
 
-  // Helper function to format currency based on theme
+  // Helper function to format currency - always use INR for now
   const formatCurrency = (amount: number) => {
-    const currency = theme.currency || 'USD';
-    const symbol = currency === 'INR' ? '₹' : '$';
-    return `${symbol}${amount.toFixed(2)}`;
+    return `₹${amount.toFixed(2)}`;
   };
 
   const urgentTasks = tasks?.tasks.filter((task: any) => 
@@ -283,14 +281,14 @@ export default function DashboardPage() {
   // Show error state only if critical data (properties and tasks) failed to load
   if (propertiesError && tasksError) {
     return (
-      <div className="space-y-6">
+      <div className="w-full space-y-6">
         <div className="text-center py-12">
           <AlertCircle className="h-12 w-12 text-red-500 mx-auto mb-4" />
           <h3 className="text-lg font-medium text-gray-900 mb-2">Failed to load dashboard data</h3>
           <p className="text-gray-500 mb-4">
             There was an error loading your dashboard. Please try refreshing the page.
           </p>
-          <Button onClick={refreshNow} variant="outline">
+          <Button onClick={refreshNow} variant="outline" className="bg-white border-rose-200 text-red-700 hover:bg-rose-50 hover:border-rose-300 font-semibold">
             <RefreshCw className="mr-2 h-4 w-4" />
             Try Again
           </Button>
@@ -302,7 +300,7 @@ export default function DashboardPage() {
 
 
   return (
-    <div className="space-y-6">
+    <div className="w-full space-y-6">
 
       {/* WORKS TO BE DONE - Priority Section */}
       <div className="space-y-4">
@@ -514,17 +512,28 @@ export default function DashboardPage() {
                         
                         console.log('Approved revenues count:', approvedRevenues.length);
                         
-                        // Calculate total from approved revenues only
-                        const totalApprovedRevenue = approvedRevenues.reduce((sum: any, revenue: any) => {
-                          const amount = revenue.amountCents / 100; // Convert cents to currency
-                          return sum + amount;
-                        }, 0);
+                        // Calculate total from approved revenues only, converting all to INR
+                        const currency = 'INR'; // Force INR for now
+                        const symbol = '₹';
                         
-                        console.log('Total approved revenue:', totalApprovedRevenue);
+                        // Group revenues by currency and calculate totals
+                        const revenueByCurrency = approvedRevenues.reduce((acc: any, revenue: any) => {
+                          const revenueCurrency = revenue.currency || 'USD';
+                          if (!acc[revenueCurrency]) {
+                            acc[revenueCurrency] = 0;
+                          }
+                          acc[revenueCurrency] += revenue.amountCents / 100;
+                          return acc;
+                        }, {});
                         
-                        // Use theme currency setting for formatting
-                        const currency = theme.currency || 'USD';
-                        const symbol = currency === 'INR' ? '₹' : '$';
+                        console.log('Revenue by currency:', revenueByCurrency);
+                        
+                        // Convert all currencies to INR for display
+                        // USD to INR conversion rate: 1 USD = 83 INR
+                        const usdToInrRate = 83;
+                        const totalApprovedRevenue = (revenueByCurrency.USD || 0) * usdToInrRate + (revenueByCurrency.INR || 0);
+                        
+                        console.log('Total approved revenue in INR:', totalApprovedRevenue);
                         
                         return `${symbol}${totalApprovedRevenue.toLocaleString()}`;
                       }
@@ -532,21 +541,21 @@ export default function DashboardPage() {
                       // Fallback to analytics data if no real revenue data available
                       if (analytics?.metrics?.totalRevenue) {
                         console.log('Using analytics revenue (fallback):', analytics.metrics.totalRevenue);
-                        const currency = theme.currency || 'USD';
-                        const symbol = currency === 'INR' ? '₹' : '$';
-                        return `${symbol}${analytics.metrics.totalRevenue.toLocaleString()}`;
+                        // Convert analytics revenue to INR (assuming it's in USD)
+                        const usdToInrRate = 83;
+                        const totalInInr = analytics.metrics.totalRevenue * usdToInrRate;
+                        return `₹${totalInInr.toLocaleString()}`;
                       }
                       
                       console.log('No revenue data available');
-                      const currency = theme.currency || 'USD';
-                      const symbol = currency === 'INR' ? '₹' : '$';
-                      return `${symbol}0`;
+                      return `₹0`;
                     })()}
                   </span>
                 )}
               </div>
               <p className="text-xs text-muted-foreground">
-                {revenues?.revenues && revenues.revenues.length > 0 ? 'This month' : 
+                {revenues?.revenues && revenues.revenues.length > 0 ? 
+                  (user?.role === 'ADMIN' ? 'All properties' : 'Assigned properties') : 
                  analytics?.metrics.totalRevenue ? 'Last 30 days' : 'No data'}
               </p>
               {(analytics?.metrics.totalRevenue || (revenues?.revenues && revenues.revenues.length > 0)) && (

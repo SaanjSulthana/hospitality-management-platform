@@ -32,7 +32,8 @@ import {
   Filter,
   Edit3,
   Save,
-  X
+  X,
+  BarChart3
 } from 'lucide-react';
 
 interface DailyReport {
@@ -87,225 +88,250 @@ const generateDateRange = (date: string): string[] => {
   return dateRange;
 };
 
+// Helper function to generate all dates in a month
+const generateAllDatesInMonth = (year: number, month: number): string[] => {
+  const daysInMonth = new Date(year, month, 0).getDate(); // month is 1-based
+  const dates: string[] = [];
+  
+  for (let day = 1; day <= daysInMonth; day++) {
+    const dateStr = new Date(year, month - 1, day).toISOString().split('T')[0]; // month - 1 because Date constructor is 0-based
+    dates.push(dateStr);
+  }
+  
+  return dates;
+};
 
-// Daily Report Spreadsheet Component
-interface DailyReportSpreadsheetProps {
-  date: string;
+// Helper function to check if a date is today
+const isToday = (dateStr: string): boolean => {
+  const today = new Date().toISOString().split('T')[0];
+  return dateStr === today;
+};
+
+// Helper function to format date for display
+const formatDateForDisplay = (dateStr: string): string => {
+  try {
+    const date = new Date(dateStr);
+    if (isNaN(date.getTime())) {
+      return 'Invalid Date';
+    }
+    return date.toLocaleDateString('en-IN', {
+      timeZone: 'Asia/Kolkata',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit'
+    });
+  } catch (error) {
+    return 'Invalid Date';
+  }
+};
+
+
+// Financial Summary Cards Component
+interface FinancialSummaryCardsProps {
+  propertyId: number;
+  startDate: string;
+  endDate: string;
+  orgId: number;
+}
+
+function FinancialSummaryCards({ propertyId, startDate, endDate, orgId }: FinancialSummaryCardsProps) {
+  const { getAuthenticatedBackend } = useAuth();
+  const { theme } = useTheme();
+  
+  const formatCurrency = (amountCents: number) => {
+    return formatCurrencyUtil(amountCents, theme.currency);
+  };
+
+  // Fetch financial summary data using the existing profit-loss API
+  const { data: financialSummary, isLoading: isLoadingSummary } = useQuery({
+    queryKey: ['profit-loss', propertyId, startDate, endDate, orgId],
+    queryFn: async () => {
+      const backend = getAuthenticatedBackend();
+      return backend.reports.getMonthlyYearlyReport({
+        propertyId: propertyId,
+        startDate: startDate,
+        endDate: endDate,
+      });
+    },
+    enabled: !!propertyId && !!startDate && !!endDate && !!orgId,
+    staleTime: 30000,
+    gcTime: 600000,
+  });
+
+  if (isLoadingSummary) {
+    return (
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
+        {[1, 2, 3, 4].map((i) => (
+          <Card key={i} className="border-l-4 border-l-gray-300 shadow-sm">
+            <CardContent className="p-4">
+              <div className="animate-pulse">
+                <div className="h-4 bg-gray-200 rounded w-3/4 mb-2"></div>
+                <div className="h-8 bg-gray-200 rounded w-1/2"></div>
+              </div>
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+    );
+  }
+
+  if (!financialSummary?.data) {
+    return null;
+  }
+
+  const { data } = financialSummary;
+  const profitMargin = data.totalRevenue > 0 
+    ? ((data.netIncome / data.totalRevenue) * 100) 
+    : 0;
+
+  return (
+    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
+      {/* Total Revenue */}
+      <Card className="border-l-4 border-l-green-500 shadow-sm hover:shadow-md transition-shadow duration-200">
+        <CardHeader className="pb-4">
+          <CardTitle className="text-sm font-medium flex items-center gap-2">
+            <div className="p-2 bg-green-100 rounded-lg shadow-sm">
+              <TrendingUp className="h-4 w-4 text-green-600" />
+            </div>
+            Total Revenue
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="text-2xl font-bold text-green-600">
+            {formatCurrency(data.totalRevenue * 100)}
+          </div>
+          <p className="text-xs text-gray-600 mt-1">
+            Total revenue for the period
+          </p>
+        </CardContent>
+      </Card>
+
+      {/* Total Expenses */}
+      <Card className="border-l-4 border-l-red-500 shadow-sm hover:shadow-md transition-shadow duration-200">
+        <CardHeader className="pb-4">
+          <CardTitle className="text-sm font-medium flex items-center gap-2">
+            <div className="p-2 bg-red-100 rounded-lg shadow-sm">
+              <TrendingDown className="h-4 w-4 text-red-600" />
+            </div>
+            Total Expenses
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="text-2xl font-bold text-red-600">
+            {formatCurrency(data.totalExpenses * 100)}
+          </div>
+          <p className="text-xs text-gray-600 mt-1">
+            Total expenses for the period
+          </p>
+        </CardContent>
+      </Card>
+
+      {/* Net Income */}
+      <Card className="border-l-4 border-l-blue-500 shadow-sm hover:shadow-md transition-shadow duration-200">
+        <CardHeader className="pb-4">
+          <CardTitle className="text-sm font-medium flex items-center gap-2">
+            <div className="p-2 bg-blue-100 rounded-lg shadow-sm">
+              <BarChart3 className="h-4 w-4 text-blue-600" />
+            </div>
+            Net Income
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className={`text-2xl font-bold ${data.netIncome >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+            {formatCurrency(data.netIncome * 100)}
+          </div>
+          <p className="text-xs text-gray-600 mt-1">
+            Net income for the period
+          </p>
+        </CardContent>
+      </Card>
+
+      {/* Profit Margin */}
+      <Card className="border-l-4 border-l-purple-500 shadow-sm hover:shadow-md transition-shadow duration-200">
+        <CardHeader className="pb-4">
+          <CardTitle className="text-sm font-medium flex items-center gap-2">
+            <div className="p-2 bg-purple-100 rounded-lg shadow-sm">
+              <Receipt className="h-4 w-4 text-purple-600" />
+            </div>
+            Profit Margin
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className={`text-2xl font-bold ${profitMargin >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+            {profitMargin.toFixed(1)}%
+          </div>
+          <p className="text-xs text-gray-600 mt-1">
+            Based on total revenue and expenses
+          </p>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+// Monthly Report Spreadsheet Component
+interface MonthlyReportSpreadsheetProps {
+  year: number;
+  month: number;
   propertyId: number;
   orgId: number;
 }
 
-function DailyReportSpreadsheet({ date, propertyId, orgId }: DailyReportSpreadsheetProps) {
+function MonthlyReportSpreadsheet({ year, month, propertyId, orgId }: MonthlyReportSpreadsheetProps) {
   const { getAuthenticatedBackend } = useAuth();
   const { toast } = useToast();
   const queryClient = useQueryClient();
   
   // State for refresh control
-  const [refreshInterval, setRefreshInterval] = useState(30000); // 30 seconds default
   const [lastRefreshTime, setLastRefreshTime] = useState<Date>(new Date());
-  const [isManualRefreshing, setIsManualRefreshing] = useState(false);
+  
+  // Manual refresh function
+  const handleManualRefresh = () => {
+    queryClient.invalidateQueries({ queryKey: ['monthly-report', propertyId, year, month, orgId] });
+    setLastRefreshTime(new Date());
+  };
   
 
-  // Live transaction data query - using real Finance data
-  const { data: liveTransactionData, isLoading: isLoadingLiveData, error: liveDataError } = useQuery({
-    queryKey: ['live-transaction-data', propertyId, date, orgId],
-    queryFn: async (): Promise<LiveTransactionData> => {
+  // Monthly report data query with real-time updates
+  const { data: monthlyReportData, isLoading: isLoadingMonthlyData, error: monthlyDataError, dataUpdatedAt } = useQuery({
+    queryKey: ['monthly-report', propertyId, year, month, orgId],
+    queryFn: async () => {
       const backend = getAuthenticatedBackend();
-      console.log('DailyReportSpreadsheet: Fetching real Finance data for:', { propertyId, date, orgId });
+      console.log('MonthlyReportSpreadsheet: Fetching monthly data for:', { propertyId, year, month, orgId });
       
-      // Fetch real Finance data (same as popup)
-      const [revenuesResponse, expensesResponse] = await Promise.all([
-        backend.finance.listRevenues({
-          propertyId,
-          startDate: date,
-          endDate: date,
-          orgId
-        }),
-        backend.finance.listExpenses({
-          propertyId,
-          startDate: date,
-          endDate: date,
-          orgId
-        })
-      ]);
-
-      console.log('DailyReportSpreadsheet: Revenues:', revenuesResponse);
-      console.log('DailyReportSpreadsheet: Expenses:', expensesResponse);
+      // Use the new monthly report API
+      const response = await backend.reports.getMonthlyReport({
+        propertyId,
+        year,
+        month,
+      });
       
-      // Calculate real values from Finance data
-      const cashReceivedCents = (revenuesResponse.revenues || [])
-        .filter((r: any) => r.paymentMode === 'cash')
-        .reduce((sum: number, r: any) => sum + r.amountCents, 0);
-      
-      const bankReceivedCents = (revenuesResponse.revenues || [])
-        .filter((r: any) => r.paymentMode === 'bank')
-        .reduce((sum: number, r: any) => sum + r.amountCents, 0);
-      
-      const cashExpensesCents = (expensesResponse.expenses || [])
-        .filter((e: any) => e.paymentMode === 'cash')
-        .reduce((sum: number, e: any) => sum + e.amountCents, 0);
-      
-      const bankExpensesCents = (expensesResponse.expenses || [])
-        .filter((e: any) => e.paymentMode === 'bank')
-        .reduce((sum: number, e: any) => sum + e.amountCents, 0);
-
-      const result = {
-        cashReceivedCents,
-        bankReceivedCents,
-        cashExpensesCents,
-        bankExpensesCents,
-      };
-      
-      console.log('DailyReportSpreadsheet: Calculated values:', result);
-      return result;
+      console.log('MonthlyReportSpreadsheet: Monthly data:', response);
+      return response;
     },
-    refetchInterval: refreshInterval,
-    staleTime: 30000, // Consider data fresh for 30 seconds
+    staleTime: 0, // Always consider data stale for real-time updates
     gcTime: 600000, // Keep in cache for 10 minutes
-    refetchOnWindowFocus: false,
-    refetchOnMount: false,
-    refetchOnReconnect: false,
+    refetchInterval: 30000, // Refresh every 30 seconds for real-time updates
+    refetchOnWindowFocus: true, // Refresh when user returns to tab
+    refetchOnMount: true, // Refresh when component mounts
+    refetchOnReconnect: true, // Refresh when network reconnects
   });
 
-  // Previous day balance query - using real Finance data
-  const { data: previousDayData } = useQuery({
-    queryKey: ['previous-day-balance', propertyId, date, orgId],
-    queryFn: async () => {
-      const backend = getAuthenticatedBackend();
-      const yesterday = new Date(date);
-      yesterday.setDate(yesterday.getDate() - 1);
-      const yesterdayStr = yesterday.toISOString().split('T')[0];
-      
-      try {
-        console.log('DailyReportSpreadsheet: Calculating previous day balance for:', yesterdayStr);
-        
-        // Get previous day's transactions to calculate closing balance
-        const [prevRevenuesResponse, prevExpensesResponse] = await Promise.all([
-          backend.finance.listRevenues({
-            propertyId,
-            startDate: yesterdayStr,
-            endDate: yesterdayStr,
-            orgId
-          }),
-          backend.finance.listExpenses({
-            propertyId,
-            startDate: yesterdayStr,
-            endDate: yesterdayStr,
-            orgId
-          })
-        ]);
-        
-        // Calculate previous day's closing balance
-        const prevCashRevenue = (prevRevenuesResponse.revenues || [])
-          .filter((r: any) => r.paymentMode === 'cash')
-          .reduce((sum: number, r: any) => sum + r.amountCents, 0);
-        
-        const prevCashExpenses = (prevExpensesResponse.expenses || [])
-          .filter((e: any) => e.paymentMode === 'cash')
-          .reduce((sum: number, e: any) => sum + e.amountCents, 0);
-        
-        // Assume previous day's opening balance was 0 for calculation
-        const prevOpeningBalance = 0;
-        const prevClosingBalance = prevOpeningBalance + prevCashRevenue - prevCashExpenses;
-        
-        console.log('DailyReportSpreadsheet: Previous day closing balance:', prevClosingBalance);
-        return { closingBalanceCents: prevClosingBalance };
-      } catch (error) {
-        console.error('DailyReportSpreadsheet: Error calculating previous day balance:', error);
-        return { closingBalanceCents: 0 };
-      }
-    },
-    staleTime: 300000, // 5 minutes
-    gcTime: 600000, // 10 minutes
-  });
 
-  // Historical data query
-  const { data: historicalData } = useQuery({
-    queryKey: ['historical-daily-data', propertyId, date],
-    queryFn: async () => {
-      const backend = getAuthenticatedBackend();
-      const dateRange = generateDateRange(date);
-      const startDate = dateRange[0];
-      const endDate = dateRange[dateRange.length - 1];
-      
-      const response = await backend.reports.getDailyReports({
-        propertyId,
-        startDate,
-        endDate,
-        orgId
-      });
-      
-      return response.reports || [];
-    },
-    staleTime: 600000, // 10 minutes
-    gcTime: 1800000, // 30 minutes
-    refetchOnWindowFocus: false,
-    refetchOnMount: false,
-    refetchOnReconnect: false,
-  });
-
-  // Calculate values
-  const openingBalanceCents = previousDayData?.closingBalanceCents || 0;
-  const cashReceivedCents = liveTransactionData?.cashReceivedCents || 0;
-  const bankReceivedCents = liveTransactionData?.bankReceivedCents || 0;
+  // Calculate values from monthly data
+  const openingBalanceCents = monthlyReportData?.openingBalanceCents || 0;
+  const cashReceivedCents = monthlyReportData?.totalCashReceivedCents || 0;
+  const bankReceivedCents = monthlyReportData?.totalBankReceivedCents || 0;
   const totalCashCents = openingBalanceCents + cashReceivedCents;
-  const cashExpensesCents = liveTransactionData?.cashExpensesCents || 0;
-  const bankExpensesCents = liveTransactionData?.bankExpensesCents || 0;
-  const closingBalanceCents = totalCashCents - cashExpensesCents;
+  const cashExpensesCents = monthlyReportData?.totalCashExpensesCents || 0;
+  const bankExpensesCents = monthlyReportData?.totalBankExpensesCents || 0;
+  const closingBalanceCents = monthlyReportData?.closingBalanceCents || 0;
 
-  // Update balance mutation
-  const updateBalanceMutation = useMutation({
-    mutationFn: async (data: { openingBalanceCents?: number; closingBalanceCents?: number; remarks?: string }) => {
-      const backend = getAuthenticatedBackend();
-      return await backend.reports.updateDailyCashBalanceSmart({
-        propertyId,
-        date,
-        orgId,
-        openingBalanceCents: data.openingBalanceCents,
-        closingBalanceCents: data.closingBalanceCents,
-        remarks: data.remarks,
-      });
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['live-transaction-data'] });
-      queryClient.invalidateQueries({ queryKey: ['previous-day-balance'] });
-      queryClient.invalidateQueries({ queryKey: ['historical-daily-data'] });
-      toast({
-        title: "Balance Updated",
-        description: "Daily cash balance has been updated successfully.",
-      });
-    },
-    onError: (error: any) => {
-      toast({
-        title: "Update Failed",
-        description: error.message || "Failed to update daily cash balance.",
-        variant: "destructive",
-      });
-    },
-  });
+  const monthlyTotalRevenue = cashReceivedCents + bankReceivedCents;
+  const monthlyTotalExpenses = cashExpensesCents + bankExpensesCents;
+  const monthlyNetIncome = monthlyReportData?.netCashFlowCents || 0;
 
-  // Manual refresh function
-  const handleManualRefresh = async () => {
-    setIsManualRefreshing(true);
-    try {
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ['live-transaction-data'] }),
-        queryClient.invalidateQueries({ queryKey: ['previous-day-balance'] }),
-        queryClient.invalidateQueries({ queryKey: ['historical-daily-data'] }),
-      ]);
-      setLastRefreshTime(new Date());
-    } finally {
-      setIsManualRefreshing(false);
-    }
-  };
 
-  // Handle save balance
-  const handleSaveBalance = async () => {
-    await updateBalanceMutation.mutateAsync({
-      openingBalanceCents,
-      closingBalanceCents,
-    });
-  };
 
   // Handle export to Excel with loading state
   const [isExportingExcel, setIsExportingExcel] = useState(false);
@@ -314,25 +340,30 @@ function DailyReportSpreadsheet({ date, propertyId, orgId }: DailyReportSpreadsh
   const handleExportToExcel = async () => {
     setIsExportingExcel(true);
     try {
-      // Use direct fetch call since the client hasn't been regenerated yet
-      const token = localStorage.getItem('accessToken');
-      const response = await fetch(`${API_CONFIG.BASE_URL}/reports/export-daily-excel`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          propertyId,
-          date,
-        }),
-      });
-
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
+      const backend = getAuthenticatedBackend();
+      console.log('Export Excel - Backend client:', backend);
+      console.log('Export Excel - Backend type:', typeof backend);
+      console.log('Export Excel - Backend reports:', backend?.reports);
+      console.log('Export Excel - Reports type:', typeof backend?.reports);
+      console.log('Export Excel - Export method:', backend?.reports?.exportMonthlyReportExcel);
+      
+      if (!backend) {
+        throw new Error('Backend client not initialized');
       }
-
-      const result = await response.json();
+      
+      if (!backend.reports) {
+        throw new Error('Reports service not available in backend client');
+      }
+      
+      if (!backend.reports.exportMonthlyReportExcel) {
+        throw new Error('Export Excel method not available in reports service');
+      }
+      
+      const result = await backend.reports.exportMonthlyReportExcel({
+        propertyId,
+        year,
+        month,
+      });
       
       // Create download link
       const link = document.createElement('a');
@@ -344,7 +375,7 @@ function DailyReportSpreadsheet({ date, propertyId, orgId }: DailyReportSpreadsh
 
       toast({
         title: "Excel Exported",
-        description: "Daily report Excel file has been downloaded successfully.",
+        description: "Monthly report Excel file has been downloaded successfully.",
       });
     } catch (error: any) {
       console.error('Excel export error:', error);
@@ -362,25 +393,30 @@ function DailyReportSpreadsheet({ date, propertyId, orgId }: DailyReportSpreadsh
   const handleExportToPDF = async () => {
     setIsExportingPDF(true);
     try {
-      // Use direct fetch call since the client hasn't been regenerated yet
-      const token = localStorage.getItem('accessToken');
-      const response = await fetch(`${API_CONFIG.BASE_URL}/reports/export-daily-pdf`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          propertyId,
-          date,
-        }),
-      });
-
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
+      const backend = getAuthenticatedBackend();
+      console.log('Export PDF - Backend client:', backend);
+      console.log('Export PDF - Backend type:', typeof backend);
+      console.log('Export PDF - Backend reports:', backend?.reports);
+      console.log('Export PDF - Reports type:', typeof backend?.reports);
+      console.log('Export PDF - Export method:', backend?.reports?.exportMonthlyReportPDF);
+      
+      if (!backend) {
+        throw new Error('Backend client not initialized');
       }
-
-      const result = await response.json();
+      
+      if (!backend.reports) {
+        throw new Error('Reports service not available in backend client');
+      }
+      
+      if (!backend.reports.exportMonthlyReportPDF) {
+        throw new Error('Export PDF method not available in reports service');
+      }
+      
+      const result = await backend.reports.exportMonthlyReportPDF({
+        propertyId,
+        year,
+        month,
+      });
       
       // Create download link
       const link = document.createElement('a');
@@ -392,7 +428,7 @@ function DailyReportSpreadsheet({ date, propertyId, orgId }: DailyReportSpreadsh
 
       toast({
         title: "PDF Exported",
-        description: "Daily report PDF has been downloaded successfully.",
+        description: "Monthly report PDF has been downloaded successfully.",
       });
     } catch (error: any) {
       console.error('PDF export error:', error);
@@ -406,22 +442,22 @@ function DailyReportSpreadsheet({ date, propertyId, orgId }: DailyReportSpreadsh
     }
   };
 
-  const dateRange = generateDateRange(date);
-  const currentMonth = new Date(date).toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
-  const fullDate = new Date(date).toLocaleDateString('en-US', { 
-    weekday: 'long', 
-    year: 'numeric', 
-    month: 'long', 
-    day: 'numeric' 
-  });
+  const monthNames = [
+    'January', 'February', 'March', 'April', 'May', 'June',
+    'July', 'August', 'September', 'October', 'November', 'December'
+  ];
+  
+  const currentMonth = `${monthNames[month - 1]} ${year}`;
+  const currentDate = new Date();
+  const isCurrentMonth = currentDate.getFullYear() === year && currentDate.getMonth() + 1 === month;
 
-  if (isLoadingLiveData) {
+  if (isLoadingMonthlyData) {
     return (
       <Card className="border-l-4 border-l-blue-500 shadow-sm">
         <CardContent className="flex items-center justify-center p-12">
           <div className="text-center">
             <RefreshCw className="h-8 w-8 animate-spin text-blue-600 mx-auto mb-4" />
-            <p className="text-lg font-medium text-gray-900">Loading daily report data...</p>
+            <p className="text-lg font-medium text-gray-900">Loading monthly report data...</p>
             <p className="text-sm text-gray-600 mt-2">Please wait while we fetch your financial data</p>
           </div>
         </CardContent>
@@ -429,7 +465,7 @@ function DailyReportSpreadsheet({ date, propertyId, orgId }: DailyReportSpreadsh
     );
   }
 
-  if (liveDataError) {
+  if (monthlyDataError) {
     return (
       <Card className="border-l-4 border-l-red-500 shadow-sm">
         <CardContent className="flex items-center justify-center p-12">
@@ -438,10 +474,10 @@ function DailyReportSpreadsheet({ date, propertyId, orgId }: DailyReportSpreadsh
               <AlertTriangle className="h-6 w-6 text-red-600" />
             </div>
             <p className="text-lg font-medium text-red-900 mb-2">Error Loading Data</p>
-            <p className="text-sm text-gray-600 mb-4">{liveDataError.message}</p>
+            <p className="text-sm text-gray-600 mb-4">{monthlyDataError.message}</p>
             <Button 
-              onClick={() => queryClient.invalidateQueries({ queryKey: ['live-transaction-data'] })}
-              className="border-red-300 text-red-700 hover:bg-red-50"
+              onClick={() => queryClient.invalidateQueries({ queryKey: ['monthly-report'] })}
+              className="bg-white border-rose-200 text-red-700 hover:bg-rose-50 hover:border-rose-300 font-semibold"
             >
               <RefreshCw className="h-4 w-4 mr-2" />
               Try Again
@@ -454,7 +490,7 @@ function DailyReportSpreadsheet({ date, propertyId, orgId }: DailyReportSpreadsh
 
   return (
     <div className="space-y-6">
-      {/* Header */}
+      {/* Header with Export Actions */}
       <Card className="border-l-4 border-l-blue-500 shadow-sm hover:shadow-md transition-shadow duration-200">
         <CardHeader className="pb-4">
           <div className="flex items-center justify-between">
@@ -464,45 +500,22 @@ function DailyReportSpreadsheet({ date, propertyId, orgId }: DailyReportSpreadsh
               </div>
               <div>
                 <CardTitle className="text-lg font-bold text-gray-900">
-                  Daily Cash Balance Report
+                  Monthly Cash Balance Report
                 </CardTitle>
                 <CardDescription className="text-sm text-gray-600">
-                  {fullDate} • Property #{propertyId}
+                  {currentMonth}
                 </CardDescription>
               </div>
             </div>
-            <div className="flex items-center gap-2">
-              <Select
-                value={refreshInterval.toString()}
-                onValueChange={(value) => setRefreshInterval(parseInt(value))}
-              >
-                <SelectTrigger className="w-20 h-9 border-gray-300 focus:border-blue-500 focus:ring-blue-500">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="10000">10s</SelectItem>
-                  <SelectItem value="30000">30s</SelectItem>
-                  <SelectItem value="60000">1m</SelectItem>
-                  <SelectItem value="0">Off</SelectItem>
-                </SelectContent>
-              </Select>
-              <Button 
-                variant="outline"
-                size="sm"
-                onClick={handleManualRefresh}
-                disabled={isManualRefreshing}
-                className="h-9 transition-all duration-200 hover:scale-105 hover:shadow-md"
-              >
-                <RefreshCw className={`h-4 w-4 ${isManualRefreshing ? 'animate-spin' : ''}`} />
-              </Button>
+            <div className="flex items-center gap-4">
+              <div className="text-right">
+                <div className="text-sm font-medium text-gray-900">Property ID</div>
+                <div className="text-lg font-bold text-blue-600">#{propertyId}</div>
+              </div>
             </div>
           </div>
         </CardHeader>
-      </Card>
-
-      {/* Quick Actions */}
-      <Card className="border-l-4 border-l-green-500 shadow-sm hover:shadow-md transition-shadow duration-200">
-        <CardContent className="p-4">
+        <CardContent className="pt-0">
           <div className="flex flex-wrap items-center gap-3">
             <Button 
               onClick={handleExportToExcel} 
@@ -532,189 +545,220 @@ function DailyReportSpreadsheet({ date, propertyId, orgId }: DailyReportSpreadsh
               <span className="hidden sm:inline">{isExportingPDF ? 'Generating...' : 'Export PDF'}</span>
               <span className="sm:hidden">PDF</span>
             </Button>
-            <Button 
-              onClick={handleSaveBalance} 
-              disabled={updateBalanceMutation.isPending}
-              className="bg-blue-600 hover:bg-blue-700 transition-all duration-200 hover:scale-105 hover:shadow-md"
-            >
-              {updateBalanceMutation.isPending ? (
-                <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
-              ) : (
-                <Save className="h-4 w-4 mr-2" />
-              )}
-              <span className="hidden sm:inline">Save Balance</span>
-              <span className="sm:hidden">Save</span>
-            </Button>
           </div>
         </CardContent>
       </Card>
 
 
-      {/* Standard Spreadsheet Table */}
+      {/* Monthly Spreadsheet Table */}
       <Card className="border-l-4 border-l-blue-500 shadow-sm hover:shadow-md transition-shadow duration-200">
         <CardHeader className="pb-4">
           <CardTitle className="text-lg flex items-center gap-2">
             <div className="p-2 bg-blue-100 rounded-lg shadow-sm">
               <Receipt className="h-5 w-5 text-blue-600" />
             </div>
-            Daily Cash Balance Spreadsheet
+            Monthly Cash Balance Spreadsheet
             <span className="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded-full font-medium">Live</span>
           </CardTitle>
           <CardDescription className="text-sm text-gray-600">
-            Real-time cash flow tracking with automatic carry-forward calculations
+            Daily cash flow breakdown for {currentMonth} with monthly totals
+            <span className="ml-2 text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded-full">
+              Scroll to view all dates
+            </span>
+            {dataUpdatedAt && (
+              <span className="ml-2 text-xs bg-gray-100 text-gray-600 px-2 py-1 rounded-full">
+                Last updated: {new Date(dataUpdatedAt).toLocaleTimeString()}
+              </span>
+            )}
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="overflow-x-auto">
+          <div className="overflow-x-auto max-h-96 overflow-y-auto border border-gray-200 rounded-lg">
             <table className="w-full border-collapse">
-              <thead className="bg-gray-50">
+              <thead className="bg-gray-50 sticky top-0 z-20 shadow-sm">
                 <tr>
-                  <th className="text-left p-3 border-b font-semibold text-gray-900 text-sm">Date</th>
-                  <th className="text-left p-3 border-b font-semibold text-gray-900 text-sm">Opening</th>
-                  <th className="text-left p-3 border-b font-semibold text-gray-900 text-sm">Cash Rev</th>
-                  <th className="text-left p-3 border-b font-semibold text-gray-900 text-sm">Bank Rev</th>
-                  <th className="text-left p-3 border-b font-semibold text-gray-900 text-sm">Total Cash</th>
-                  <th className="text-left p-3 border-b font-semibold text-gray-900 text-sm">Cash Exp</th>
-                  <th className="text-left p-3 border-b font-semibold text-gray-900 text-sm">Bank Exp</th>
-                  <th className="text-left p-3 border-b font-semibold text-gray-900 text-sm">Closing</th>
+                  <th className="text-left px-2 py-4 border-b-2 border-gray-300 font-semibold text-gray-900 text-sm bg-gray-50 sticky top-0 w-16">Date</th>
+                  <th className="text-right px-3 py-4 border-b-2 border-gray-300 font-semibold text-gray-900 text-sm bg-gray-50 sticky top-0 w-28">Cash Rev</th>
+                  <th className="text-right px-3 py-4 border-b-2 border-gray-300 font-semibold text-gray-900 text-sm bg-gray-50 sticky top-0 w-28">Bank Rev</th>
+                  <th className="text-right px-3 py-4 border-b-2 border-gray-300 font-semibold text-gray-900 text-sm bg-gray-50 sticky top-0 w-28">Total Rev</th>
+                  <th className="text-right px-3 py-4 border-b-2 border-gray-300 font-semibold text-gray-900 text-sm bg-gray-50 sticky top-0 w-28">Cash Exp</th>
+                  <th className="text-right px-3 py-4 border-b-2 border-gray-300 font-semibold text-gray-900 text-sm bg-gray-50 sticky top-0 w-28">Bank Exp</th>
                 </tr>
               </thead>
               <tbody>
-                {/* Current Day Row */}
-                <tr className="bg-blue-50 hover:bg-blue-100 transition-colors">
-                  <td className="p-3 border-b font-medium text-blue-900 text-sm">
-                    {new Date(date).toLocaleDateString('en-US', { 
-                      weekday: 'short', 
-                      month: 'short', 
-                      day: 'numeric' 
-                    })} <span className="text-blue-600 font-semibold">(Today)</span>
-                  </td>
-                  <td className="p-3 border-b text-gray-900 text-sm">
-                    {formatCurrency(openingBalanceCents)}
-                  </td>
-                  <td className="p-3 border-b text-green-600 font-medium text-sm">
-                    {formatCurrency(cashReceivedCents)}
-                  </td>
-                  <td className="p-3 border-b text-blue-600 text-sm">
-                    {formatCurrency(bankReceivedCents)}
-                  </td>
-                  <td className="p-3 border-b text-gray-900 font-medium text-sm">
-                    {formatCurrency(totalCashCents)}
-                  </td>
-                  <td className="p-3 border-b text-red-600 font-medium text-sm">
-                    {formatCurrency(cashExpensesCents)}
-                  </td>
-                  <td className="p-3 border-b text-orange-600 text-sm">
-                    {formatCurrency(bankExpensesCents)}
-                  </td>
-                  <td className="p-3 border-b text-gray-900 font-bold text-sm">
-                    {formatCurrency(closingBalanceCents)}
-                  </td>
-                </tr>
-
-                {/* Historical Data Rows - Show last 7 days only */}
-                {dateRange.filter(d => d !== date).slice(-7).map((historicalDate, index) => {
-                  const report = historicalData?.find((r: any) => r.date === historicalDate);
-                  const isEven = index % 2 === 0;
+                {(() => {
+                  // Generate all dates in the month
+                  const allDates = generateAllDatesInMonth(year, month);
                   
-                  return (
-                    <tr key={historicalDate} className={`${isEven ? 'bg-white' : 'bg-gray-50'} hover:bg-gray-100 transition-colors`}>
-                      <td className="p-3 border-b font-medium text-sm">
-                        {new Date(historicalDate).toLocaleDateString('en-US', { 
-                          weekday: 'short', 
-                          month: 'short', 
-                          day: 'numeric' 
-                        })}
-                      </td>
-                      <td className="p-3 border-b text-gray-900 text-sm">
-                        {formatCurrency(report?.openingBalanceCents || 0)}
-                      </td>
-                      <td className="p-3 border-b text-green-600 text-sm">
-                        {formatCurrency(report?.cashReceivedCents || 0)}
-                      </td>
-                      <td className="p-3 border-b text-blue-600 text-sm">
-                        {formatCurrency(report?.bankReceivedCents || 0)}
-                      </td>
-                      <td className="p-3 border-b text-gray-900 text-sm">
-                        {formatCurrency((report?.openingBalanceCents || 0) + (report?.cashReceivedCents || 0))}
-                      </td>
-                      <td className="p-3 border-b text-red-600 text-sm">
-                        {formatCurrency(report?.cashExpensesCents || 0)}
-                      </td>
-                      <td className="p-3 border-b text-orange-600 text-sm">
-                        {formatCurrency(report?.bankExpensesCents || 0)}
-                      </td>
-                      <td className="p-3 border-b text-gray-900 font-medium text-sm">
-                        {formatCurrency(report?.closingBalanceCents || 0)}
-                      </td>
-                    </tr>
-                  );
-                })}
+                  // Create a map of daily reports by date for quick lookup
+                  const dailyReportsMap = new Map<string, any>();
+                  if (monthlyReportData?.dailyReports) {
+                    monthlyReportData.dailyReports.forEach((report: any) => {
+                      dailyReportsMap.set(report.date, report);
+                    });
+                  }
+                  
+                  return allDates.map((dateStr) => {
+                    const dailyReport = dailyReportsMap.get(dateStr);
+                    const isCurrentDay = isToday(dateStr);
+                    
+                    return (
+                      <tr 
+                        key={dateStr}
+                        className={`${isCurrentDay ? 'bg-green-50 hover:bg-green-100 border-l-4 border-l-green-500' : 'bg-white hover:bg-gray-50'} transition-colors border-b border-gray-200`}
+                      >
+                        <td className="px-2 py-4 border-b font-medium text-sm w-16">
+                          <div className="flex items-center gap-1">
+                            <span className={isCurrentDay ? 'text-green-700 font-semibold' : 'text-gray-900'}>
+                              {formatDateForDisplay(dateStr)}
+                            </span>
+                            {isCurrentDay && (
+                              <span className="text-xs bg-green-600 text-white px-1 py-0.5 rounded-full font-medium">
+                                Today
+                              </span>
+                            )}
+                          </div>
+                        </td>
+                        <td className="px-3 py-4 border-b text-green-600 font-medium text-sm text-right w-28 tabular-nums">
+                          {formatCurrency(dailyReport?.cashReceivedCents || 0)}
+                        </td>
+                        <td className="px-3 py-4 border-b text-blue-600 text-sm text-right w-28 tabular-nums">
+                          {formatCurrency(dailyReport?.bankReceivedCents || 0)}
+                        </td>
+                        <td className="px-3 py-4 border-b text-gray-900 font-medium text-sm text-right w-28 tabular-nums">
+                          {formatCurrency((dailyReport?.cashReceivedCents || 0) + (dailyReport?.bankReceivedCents || 0))}
+                        </td>
+                        <td className="px-3 py-4 border-b text-red-600 font-medium text-sm text-right w-28 tabular-nums">
+                          {formatCurrency(dailyReport?.cashExpensesCents || 0)}
+                        </td>
+                        <td className="px-3 py-4 border-b text-orange-600 text-sm text-right w-28 tabular-nums">
+                          {formatCurrency(dailyReport?.bankExpensesCents || 0)}
+                        </td>
+                      </tr>
+                    );
+                  });
+                })()}
               </tbody>
-              <tfoot className="bg-gray-100">
-                <tr>
-                  <td className="p-3 border-t font-bold text-gray-900 text-sm">TOTALS</td>
-                  <td className="p-3 border-t font-bold text-gray-900 text-sm">
-                    {formatCurrency(openingBalanceCents)}
+              <tfoot className="bg-gray-100 sticky bottom-0 z-20 shadow-lg">
+                <tr className="border-t-2 border-gray-400">
+                  <td className="px-2 py-4 font-bold text-sm text-gray-900 bg-gray-100 sticky bottom-0 w-16">
+                    <div className="flex items-center gap-1">
+                      <span className="text-gray-900 font-bold">
+                        {currentMonth} Total
+                      </span>
+                      <span className="text-xs bg-blue-600 text-white px-1 py-0.5 rounded-full font-medium">
+                        Monthly
+                      </span>
+                    </div>
                   </td>
-                  <td className="p-3 border-t font-bold text-green-600 text-sm">
+                  <td className="px-3 py-4 font-bold text-sm text-green-600 bg-gray-100 sticky bottom-0 text-right w-28 tabular-nums">
                     {formatCurrency(cashReceivedCents)}
                   </td>
-                  <td className="p-3 border-t font-bold text-blue-600 text-sm">
+                  <td className="px-3 py-4 font-bold text-sm text-blue-600 bg-gray-100 sticky bottom-0 text-right w-28 tabular-nums">
                     {formatCurrency(bankReceivedCents)}
                   </td>
-                  <td className="p-3 border-t font-bold text-gray-900 text-sm">
-                    {formatCurrency(totalCashCents)}
+                  <td className="px-3 py-4 font-bold text-sm text-gray-900 bg-gray-100 sticky bottom-0 text-right w-28 tabular-nums">
+                    {formatCurrency(monthlyTotalRevenue)}
                   </td>
-                  <td className="p-3 border-t font-bold text-red-600 text-sm">
+                  <td className="px-3 py-4 font-bold text-sm text-red-600 bg-gray-100 sticky bottom-0 text-right w-28 tabular-nums">
                     {formatCurrency(cashExpensesCents)}
                   </td>
-                  <td className="p-3 border-t font-bold text-orange-600 text-sm">
+                  <td className="px-3 py-4 font-bold text-sm text-orange-600 bg-gray-100 sticky bottom-0 text-right w-28 tabular-nums">
                     {formatCurrency(bankExpensesCents)}
-                  </td>
-                  <td className="p-3 border-t font-bold text-gray-900 text-sm">
-                    {formatCurrency(closingBalanceCents)}
                   </td>
                 </tr>
               </tfoot>
             </table>
           </div>
+          <div className="mt-2 text-center">
+            <div className="inline-flex items-center gap-2 text-xs text-gray-500">
+              <div className="w-2 h-2 bg-gray-300 rounded-full animate-bounce"></div>
+              <span>Scroll to view all {generateAllDatesInMonth(year, month).length} days</span>
+            </div>
+          </div>
         </CardContent>
       </Card>
 
 
-      {/* Summary Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      {/* Enhanced Financial Summary Cards - Monthly Data */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
+        {/* Monthly Total Revenue */}
         <Card className="border-l-4 border-l-green-500 shadow-sm hover:shadow-md transition-shadow duration-200">
-          <CardContent className="p-4 text-center">
-            <p className="text-2xl font-bold text-green-600">
-              {formatCurrency(cashReceivedCents)}
+          <CardHeader className="pb-4">
+            <CardTitle className="text-sm font-medium flex items-center gap-2">
+              <div className="p-2 bg-green-100 rounded-lg shadow-sm">
+                <TrendingUp className="h-4 w-4 text-green-600" />
+              </div>
+              Monthly Revenue
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold text-green-600">
+              {formatCurrency(monthlyTotalRevenue)}
+            </div>
+            <p className="text-xs text-gray-600 mt-1">
+              Total revenue for {currentMonth}
             </p>
-            <p className="text-sm text-gray-600 mt-1">Cash Revenue</p>
           </CardContent>
         </Card>
-        <Card className="border-l-4 border-l-blue-500 shadow-sm hover:shadow-md transition-shadow duration-200">
-          <CardContent className="p-4 text-center">
-            <p className="text-2xl font-bold text-blue-600">
-              {formatCurrency(bankReceivedCents)}
-            </p>
-            <p className="text-sm text-gray-600 mt-1">Bank Revenue</p>
-          </CardContent>
-        </Card>
+
+        {/* Monthly Total Expenses */}
         <Card className="border-l-4 border-l-red-500 shadow-sm hover:shadow-md transition-shadow duration-200">
-          <CardContent className="p-4 text-center">
-            <p className="text-2xl font-bold text-red-600">
-              {formatCurrency(cashExpensesCents)}
+          <CardHeader className="pb-4">
+            <CardTitle className="text-sm font-medium flex items-center gap-2">
+              <div className="p-2 bg-red-100 rounded-lg shadow-sm">
+                <TrendingDown className="h-4 w-4 text-red-600" />
+              </div>
+              Monthly Expenses
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold text-red-600">
+              {formatCurrency(monthlyTotalExpenses)}
+            </div>
+            <p className="text-xs text-gray-600 mt-1">
+              Total expenses for {currentMonth}
             </p>
-            <p className="text-sm text-gray-600 mt-1">Cash Expenses</p>
           </CardContent>
         </Card>
-        <Card className="border-l-4 border-l-orange-500 shadow-sm hover:shadow-md transition-shadow duration-200">
-          <CardContent className="p-4 text-center">
-            <p className="text-2xl font-bold text-orange-600">
-              {formatCurrency(bankExpensesCents)}
+
+        {/* Monthly Net Income */}
+        <Card className="border-l-4 border-l-blue-500 shadow-sm hover:shadow-md transition-shadow duration-200">
+          <CardHeader className="pb-4">
+            <CardTitle className="text-sm font-medium flex items-center gap-2">
+              <div className="p-2 bg-blue-100 rounded-lg shadow-sm">
+                <BarChart3 className="h-4 w-4 text-blue-600" />
+              </div>
+              Monthly Net Income
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className={`text-2xl font-bold ${monthlyNetIncome >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+              {formatCurrency(monthlyNetIncome)}
+            </div>
+            <p className="text-xs text-gray-600 mt-1">
+              Net income for {currentMonth}
             </p>
-            <p className="text-sm text-gray-600 mt-1">Bank Expenses</p>
+          </CardContent>
+        </Card>
+
+        {/* Monthly Profit Margin */}
+        <Card className="border-l-4 border-l-purple-500 shadow-sm hover:shadow-md transition-shadow duration-200">
+          <CardHeader className="pb-4">
+            <CardTitle className="text-sm font-medium flex items-center gap-2">
+              <div className="p-2 bg-purple-100 rounded-lg shadow-sm">
+                <Receipt className="h-4 w-4 text-purple-600" />
+              </div>
+              Monthly Profit Margin
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className={`text-2xl font-bold ${monthlyTotalRevenue > 0 ? (monthlyNetIncome >= 0 ? 'text-green-600' : 'text-red-600') : 'text-gray-600'}`}>
+              {monthlyTotalRevenue > 0 ? ((monthlyNetIncome / monthlyTotalRevenue) * 100).toFixed(1) : '0.0'}%
+            </div>
+            <p className="text-xs text-gray-600 mt-1">
+              Based on monthly revenue and expenses
+            </p>
           </CardContent>
         </Card>
       </div>
@@ -735,7 +779,8 @@ export function DailyReportsManager({ onOpenDailyReportManager }: DailyReportsMa
   const queryClient = useQueryClient();
 
   // State
-  const [selectedDate, setSelectedDate] = useState(() => new Date().toISOString().split('T')[0]);
+  const [selectedYear, setSelectedYear] = useState(() => new Date().getFullYear());
+  const [selectedMonth, setSelectedMonth] = useState(() => new Date().getMonth() + 1);
   const [selectedPropertyId, setSelectedPropertyId] = useState<number | null>(null);
   const [properties, setProperties] = useState<Property[]>([]);
 
@@ -789,7 +834,7 @@ export function DailyReportsManager({ onOpenDailyReportManager }: DailyReportsMa
             <Button 
               variant="outline" 
               onClick={() => window.location.reload()}
-              className="border-red-300 text-red-700 hover:bg-red-50"
+              className="bg-white border-rose-200 text-red-700 hover:bg-rose-50 hover:border-rose-300 font-semibold"
             >
               <RefreshCw className="h-4 w-4 mr-2" />
               Try Again
@@ -823,16 +868,16 @@ export function DailyReportsManager({ onOpenDailyReportManager }: DailyReportsMa
         <CardHeader className="pb-4">
           <CardTitle className="text-lg flex items-center gap-2">
             <div className="w-3 h-3 bg-blue-500 rounded-full animate-pulse"></div>
-            Daily Reports
+            Monthly Spreadsheet
             <span className="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded-full font-medium">Live</span>
           </CardTitle>
           <CardDescription className="text-sm text-gray-600">
-            View and manage daily cash balance reports for your properties
+            View and manage monthly cash balance reports for your properties
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div className="space-y-2">
+          <div className="flex flex-col sm:flex-row gap-3 items-start">
+            <div className="space-y-2 flex-1 min-w-0">
               <Label htmlFor="property-select" className="text-sm font-medium text-gray-700">Property</Label>
               <Select
                 value={selectedPropertyId?.toString() || ''}
@@ -850,24 +895,59 @@ export function DailyReportsManager({ onOpenDailyReportManager }: DailyReportsMa
                 </SelectContent>
               </Select>
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="date-select" className="text-sm font-medium text-gray-700">Date</Label>
-              <Input
-                id="date-select"
-                type="date"
-                value={selectedDate}
-                onChange={(e) => setSelectedDate(e.target.value)}
-                className="h-11 border-gray-300 focus:border-blue-500 focus:ring-blue-500"
-              />
+            <div className="flex gap-1 items-end">
+              <div className="space-y-2">
+                <Label htmlFor="month-select" className="text-sm font-medium text-gray-700">Month</Label>
+                <Select
+                  value={selectedMonth.toString()}
+                  onValueChange={(value) => setSelectedMonth(parseInt(value))}
+                >
+                  <SelectTrigger className="h-11 border-gray-300 focus:border-blue-500 focus:ring-blue-500 w-32">
+                    <SelectValue placeholder="Select month" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {[
+                      'January', 'February', 'March', 'April', 'May', 'June',
+                      'July', 'August', 'September', 'October', 'November', 'December'
+                    ].map((month, index) => (
+                      <SelectItem key={index + 1} value={(index + 1).toString()}>
+                        {month}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="year-select" className="text-sm font-medium text-gray-700">Year</Label>
+                <Select
+                  value={selectedYear.toString()}
+                  onValueChange={(value) => setSelectedYear(parseInt(value))}
+                >
+                  <SelectTrigger className="h-11 border-gray-300 focus:border-blue-500 focus:ring-blue-500 w-24">
+                    <SelectValue placeholder="Select year" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {Array.from({ length: 5 }, (_, i) => {
+                      const year = new Date().getFullYear() - 2 + i;
+                      return (
+                        <SelectItem key={year} value={year.toString()}>
+                          {year}
+                        </SelectItem>
+                      );
+                    })}
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
           </div>
         </CardContent>
       </Card>
 
-      {/* Daily Report Spreadsheet */}
+      {/* Monthly Report Spreadsheet */}
       {selectedPropertyId && (
-        <DailyReportSpreadsheet
-          date={selectedDate}
+        <MonthlyReportSpreadsheet
+          year={selectedYear}
+          month={selectedMonth}
           propertyId={selectedPropertyId}
           orgId={user?.orgId || 0}
         />

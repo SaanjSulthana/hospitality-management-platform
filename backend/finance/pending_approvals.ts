@@ -35,33 +35,79 @@ export const getPendingApprovals = api<{}, PendingApprovalsResponse>(
     }
     requireRole("ADMIN")(authData);
 
+    // Check if status columns exist in both tables
+    let hasStatusColumns = false;
+    try {
+      const statusCheck = await financeDB.queryAll`
+        SELECT table_name, column_name FROM information_schema.columns 
+        WHERE table_name IN ('expenses', 'revenues') AND column_name = 'status'
+      `;
+      // Only consider status columns present if they exist in BOTH tables
+      hasStatusColumns = statusCheck.length === 2;
+      console.log('Status column check result:', statusCheck, 'hasStatusColumns:', hasStatusColumns);
+    } catch (error) {
+      console.log('Status column check failed:', error);
+    }
+
     const tx = await financeDB.begin();
     try {
       // Get pending expenses
-      const pendingExpenses = await tx.queryAll`
-        SELECT 
-          e.id, e.property_id, p.name as property_name, e.category, e.amount_cents, e.currency,
-          e.description, e.created_by_user_id, e.created_at, e.status,
-          u.display_name as created_by_name
-        FROM expenses e
-        JOIN properties p ON e.property_id = p.id AND p.org_id = ${authData.orgId}
-        JOIN users u ON e.created_by_user_id = u.id AND u.org_id = ${authData.orgId}
-        WHERE e.org_id = ${authData.orgId} AND e.status = 'pending'
-        ORDER BY e.created_at ASC
-      `;
+      let pendingExpenses: any[] = [];
+      if (hasStatusColumns) {
+        pendingExpenses = await tx.queryAll`
+          SELECT 
+            e.id, e.property_id, p.name as property_name, e.category, e.amount_cents, e.currency,
+            e.description, e.created_by_user_id, e.created_at, e.status,
+            u.display_name as created_by_name
+          FROM expenses e
+          JOIN properties p ON e.property_id = p.id AND p.org_id = ${authData.orgId}
+          JOIN users u ON e.created_by_user_id = u.id AND u.org_id = ${authData.orgId}
+          WHERE e.org_id = ${authData.orgId} AND e.status = 'pending'
+          ORDER BY e.created_at ASC
+        `;
+      } else {
+        // Fallback: get all expenses (assuming they're all pending if no status column)
+        pendingExpenses = await tx.queryAll`
+          SELECT 
+            e.id, e.property_id, p.name as property_name, e.category, e.amount_cents, e.currency,
+            e.description, e.created_by_user_id, e.created_at,
+            u.display_name as created_by_name
+          FROM expenses e
+          JOIN properties p ON e.property_id = p.id AND p.org_id = ${authData.orgId}
+          JOIN users u ON e.created_by_user_id = u.id AND u.org_id = ${authData.orgId}
+          WHERE e.org_id = ${authData.orgId}
+          ORDER BY e.created_at ASC
+        `;
+      }
 
       // Get pending revenues
-      const pendingRevenues = await tx.queryAll`
-        SELECT 
-          r.id, r.property_id, p.name as property_name, r.source, r.amount_cents, r.currency,
-          r.description, r.created_by_user_id, r.created_at, r.status,
-          u.display_name as created_by_name
-        FROM revenues r
-        JOIN properties p ON r.property_id = p.id AND p.org_id = ${authData.orgId}
-        JOIN users u ON r.created_by_user_id = u.id AND u.org_id = ${authData.orgId}
-        WHERE r.org_id = ${authData.orgId} AND r.status = 'pending'
-        ORDER BY r.created_at ASC
-      `;
+      let pendingRevenues: any[] = [];
+      if (hasStatusColumns) {
+        pendingRevenues = await tx.queryAll`
+          SELECT 
+            r.id, r.property_id, p.name as property_name, r.source, r.amount_cents, r.currency,
+            r.description, r.created_by_user_id, r.created_at, r.status,
+            u.display_name as created_by_name
+          FROM revenues r
+          JOIN properties p ON r.property_id = p.id AND p.org_id = ${authData.orgId}
+          JOIN users u ON r.created_by_user_id = u.id AND u.org_id = ${authData.orgId}
+          WHERE r.org_id = ${authData.orgId} AND r.status = 'pending'
+          ORDER BY r.created_at ASC
+        `;
+      } else {
+        // Fallback: get all revenues (assuming they're all pending if no status column)
+        pendingRevenues = await tx.queryAll`
+          SELECT 
+            r.id, r.property_id, p.name as property_name, r.source, r.amount_cents, r.currency,
+            r.description, r.created_by_user_id, r.created_at,
+            u.display_name as created_by_name
+          FROM revenues r
+          JOIN properties p ON r.property_id = p.id AND p.org_id = ${authData.orgId}
+          JOIN users u ON r.created_by_user_id = u.id AND u.org_id = ${authData.orgId}
+          WHERE r.org_id = ${authData.orgId}
+          ORDER BY r.created_at ASC
+        `;
+      }
 
       // Format expenses
       const expenses: PendingApproval[] = pendingExpenses.map((expense: any) => ({
@@ -76,7 +122,7 @@ export const getPendingApprovals = api<{}, PendingApprovalsResponse>(
         createdByUserId: expense.created_by_user_id,
         createdByName: expense.created_by_name,
         createdAt: expense.created_at,
-        status: expense.status
+        status: expense.status || 'pending'
       }));
 
       // Format revenues
@@ -92,7 +138,7 @@ export const getPendingApprovals = api<{}, PendingApprovalsResponse>(
         createdByUserId: revenue.created_by_user_id,
         createdByName: revenue.created_by_name,
         createdAt: revenue.created_at,
-        status: revenue.status
+        status: revenue.status || 'pending'
       }));
 
       await tx.commit();

@@ -49,9 +49,13 @@ export const login = api<LoginRequest, LoginResponse>(
         throw APIError.unauthenticated("Invalid email or password");
       }
 
-      // Update last login
+      // Update last login and increment login count
       await tx.exec`
-        UPDATE users SET last_login_at = NOW() WHERE id = ${userRow.id}
+        UPDATE users 
+        SET 
+          last_login_at = NOW(),
+          login_count = COALESCE(login_count, 0) + 1
+        WHERE id = ${userRow.id}
       `;
 
       // Map to User type for JWT

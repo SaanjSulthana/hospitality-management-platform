@@ -3,6 +3,8 @@ import { getAuthData } from "~encore/auth";
 import { financeDB } from "./db";
 import { requireRole } from "../auth/middleware";
 import { checkDailyApprovalInternal } from "./check_daily_approval";
+import { handleFinanceError } from "./error_handling";
+import { executeQueryWithStability } from "./connection_stability";
 
 export interface AddRevenueRequest {
   propertyId: number;
@@ -71,68 +73,107 @@ export const addRevenue = api<AddRevenueRequest, AddRevenueResponse>(
     try {
       console.log('Starting revenue insertion process');
       // First check if the revenues table exists
-      const revenuesTableExists = await financeDB.queryRow`
-        SELECT EXISTS (
-          SELECT FROM information_schema.tables 
-          WHERE table_schema = 'public' 
-          AND table_name = 'revenues'
-        )
-      `;
+      const revenuesTableExists = await executeQueryWithStability(
+        () => financeDB.queryRow`
+          SELECT EXISTS (
+            SELECT FROM information_schema.tables 
+            WHERE table_schema = 'public' 
+            AND table_name = 'revenues'
+          )
+        `,
+        'check_revenues_table_exists'
+      );
       
       if (!revenuesTableExists?.exists) {
         throw APIError.internal("Database not initialized. Please run database setup first.");
       }
 
-      // Check property access with org scoping
-      const propertyRow = await financeDB.queryRow`
-        SELECT p.id, p.org_id
-        FROM properties p
-        WHERE p.id = ${propertyId} AND p.org_id = ${authData.orgId}
-      `;
+      // Check property access with org scoping using connection stability
+      const propertyRow = await executeQueryWithStability(
+        () => financeDB.queryRow`
+          SELECT p.id, p.org_id
+          FROM properties p
+          WHERE p.id = ${propertyId} AND p.org_id = ${authData.orgId}
+        `,
+        'check_property_access'
+      );
 
       if (!propertyRow) {
         throw APIError.notFound("Property not found");
       }
 
       if (authData.role === "MANAGER") {
-        const accessCheck = await financeDB.queryRow`
-          SELECT 1 FROM user_properties 
-          WHERE user_id = ${parseInt(authData.userID)} AND property_id = ${propertyId}
-        `;
+        const accessCheck = await executeQueryWithStability(
+          () => financeDB.queryRow`
+            SELECT 1 FROM user_properties 
+            WHERE user_id = ${parseInt(authData.userID)} AND property_id = ${propertyId}
+          `,
+          'check_user_property_access'
+        );
         if (!accessCheck) {
           throw APIError.permissionDenied("No access to this property");
         }
       }
 
-      // Create revenue record - handle potential missing columns gracefully
+      // Create revenue record with connection stability and graceful column handling
       let revenueRow;
       try {
-        revenueRow = await financeDB.queryRow`
-          INSERT INTO revenues (org_id, property_id, source, amount_cents, currency, description, receipt_url, occurred_at, created_by_user_id, status, payment_mode, bank_reference, receipt_file_id, created_at)
-          VALUES (${authData.orgId}, ${propertyId}, ${source}, ${amountCents}, ${currency}, ${description || null}, ${receiptUrl || null}, ${occurredAtDate}, ${parseInt(authData.userID)}, 'pending', ${paymentMode}, ${bankReference || null}, ${receiptFileId || null}, ${currentTimestamp})
-          RETURNING id, property_id, source, amount_cents, currency, description, receipt_url, occurred_at, status, created_by_user_id, created_at, payment_mode, bank_reference, receipt_file_id
-        `;
+        // Determine status and approval fields based on user role
+        const isAdmin = authData.role === "ADMIN";
+        const status = isAdmin ? 'approved' : 'pending';
+        const approvedByUserId = isAdmin ? parseInt(authData.userID) : null;
+        const approvedAt = isAdmin ? currentTimestamp : null;
+
+        revenueRow = await executeQueryWithStability(
+          () => financeDB.queryRow`
+            INSERT INTO revenues (org_id, property_id, source, amount_cents, currency, description, receipt_url, occurred_at, created_by_user_id, status, payment_mode, bank_reference, receipt_file_id, created_at, approved_by_user_id, approved_at)
+            VALUES (${authData.orgId}, ${propertyId}, ${source}, ${amountCents}, ${currency}, ${description || null}, ${receiptUrl || null}, ${occurredAtDate}, ${parseInt(authData.userID)}, ${status}, ${paymentMode}, ${bankReference || null}, ${receiptFileId || null}, ${currentTimestamp}, ${approvedByUserId}, ${approvedAt})
+            RETURNING id, property_id, source, amount_cents, currency, description, receipt_url, occurred_at, status, created_by_user_id, created_at, payment_mode, bank_reference, receipt_file_id, approved_by_user_id, approved_at
+          `,
+          'create_revenue_with_new_columns'
+        );
       } catch (dbError: any) {
         console.error('Database error during revenue creation:', dbError);
         
-        // If columns are missing, try without the new columns
+        // If columns are missing, try without the new columns using connection stability
         if (dbError.message?.includes('column') && dbError.message?.includes('does not exist')) {
           console.log('Trying fallback insert without new columns...');
-          revenueRow = await financeDB.queryRow`
-            INSERT INTO revenues (org_id, property_id, source, amount_cents, currency, description, receipt_url, occurred_at, created_by_user_id, status, created_at)
-            VALUES (${authData.orgId}, ${propertyId}, ${source}, ${amountCents}, ${currency}, ${description || null}, ${receiptUrl || null}, ${occurredAtDate}, ${parseInt(authData.userID)}, 'pending', ${currentTimestamp})
-            RETURNING id, property_id, source, amount_cents, currency, description, receipt_url, occurred_at, created_by_user_id, status, created_at
-          `;
-          
-          // Set default values for missing columns in memory only
-          if (revenueRow) {
-            revenueRow.status = 'pending';
-            revenueRow.payment_mode = paymentMode;
-            revenueRow.bank_reference = bankReference;
-            revenueRow.receipt_file_id = receiptFileId;
+          try {
+            revenueRow = await executeQueryWithStability(
+              () => financeDB.queryRow`
+                INSERT INTO revenues (org_id, property_id, source, amount_cents, currency, description, receipt_url, occurred_at, created_by_user_id, created_at)
+                VALUES (${authData.orgId}, ${propertyId}, ${source}, ${amountCents}, ${currency}, ${description || null}, ${receiptUrl || null}, ${occurredAtDate}, ${parseInt(authData.userID)}, ${currentTimestamp})
+                RETURNING id, property_id, source, amount_cents, currency, description, receipt_url, occurred_at, created_by_user_id, created_at
+              `,
+              'create_revenue_fallback'
+            );
+            
+            // Set default values for missing columns in memory only
+            if (revenueRow) {
+              revenueRow.status = authData.role === "ADMIN" ? 'approved' : 'pending';
+              revenueRow.payment_mode = paymentMode || null;
+              revenueRow.bank_reference = bankReference || null;
+              revenueRow.receipt_file_id = receiptFileId || null;
+              revenueRow.approved_by_user_id = authData.role === "ADMIN" ? parseInt(authData.userID) : null;
+              revenueRow.approved_at = authData.role === "ADMIN" ? currentTimestamp : null;
+            }
+          } catch (fallbackError: any) {
+            // Use enhanced error handling for fallback failure
+            throw handleFinanceError(fallbackError, 'add_revenue', {
+              userId: authData.userID,
+              orgId: authData.orgId.toString(),
+              operation: 'create_revenue_fallback',
+              table: 'revenues'
+            });
           }
         } else {
-          throw dbError;
+          // Use enhanced error handling for other database errors
+          throw handleFinanceError(dbError, 'add_revenue', {
+            userId: authData.userID,
+            orgId: authData.orgId.toString(),
+            operation: 'create_revenue',
+            table: 'revenues'
+          });
         }
       }
 
@@ -162,17 +203,13 @@ export const addRevenue = api<AddRevenueRequest, AddRevenueResponse>(
         createdAt: revenueRow.created_at,
       };
     } catch (error) {
-      // Error occurred during revenue creation
-      console.error('Add revenue error:', error);
-      console.error('Error details:', {
-        message: error instanceof Error ? error.message : 'Unknown error',
-        stack: error instanceof Error ? error.stack : undefined,
-        name: error instanceof Error ? error.name : undefined
+      // Use enhanced error handling for any remaining errors
+      throw handleFinanceError(error as Error, 'add_revenue', {
+        userId: authData.userID,
+        orgId: authData.orgId.toString(),
+        operation: 'add_revenue',
+        table: 'revenues'
       });
-      if (error instanceof Error && error.name === 'APIError') {
-        throw error;
-      }
-      throw APIError.internal(`Failed to add revenue: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }
 );

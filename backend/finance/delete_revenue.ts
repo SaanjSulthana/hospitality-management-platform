@@ -34,14 +34,42 @@ export const deleteRevenue = api<DeleteRevenueRequest, DeleteRevenueResponse>(
       }
     }
 
+    // Check if status columns exist
+    let hasStatusColumns = false;
+    try {
+      const statusCheck = await financeDB.queryAll`
+        SELECT table_name, column_name FROM information_schema.columns 
+        WHERE table_name IN ('expenses', 'revenues') AND column_name = 'status'
+      `;
+      // Both tables must have the status column
+      hasStatusColumns = statusCheck.length === 2;
+      console.log('Status column check result:', statusCheck, 'hasStatusColumns:', hasStatusColumns);
+    } catch (error) {
+      console.log('Status column check failed:', error);
+    }
+
     const tx = await financeDB.begin();
     try {
       // Get existing revenue and check access with org scoping
-      const revenueRow = await tx.queryRow`
-        SELECT r.id, r.org_id, r.status, r.created_by_user_id, r.property_id, r.amount_cents, r.source
-        FROM revenues r
-        WHERE r.id = ${id} AND r.org_id = ${authData.orgId}
-      `;
+      let revenueRow;
+      if (hasStatusColumns) {
+        revenueRow = await tx.queryRow`
+          SELECT r.id, r.org_id, r.status, r.created_by_user_id, r.property_id, r.amount_cents, r.source
+          FROM revenues r
+          WHERE r.id = ${id} AND r.org_id = ${authData.orgId}
+        `;
+      } else {
+        // Fallback: select without status column
+        revenueRow = await tx.queryRow`
+          SELECT r.id, r.org_id, r.created_by_user_id, r.property_id, r.amount_cents, r.source
+          FROM revenues r
+          WHERE r.id = ${id} AND r.org_id = ${authData.orgId}
+        `;
+        // Add default status in memory
+        if (revenueRow) {
+          revenueRow.status = 'pending';
+        }
+      }
 
       if (!revenueRow) {
         throw APIError.notFound("Revenue not found");
@@ -65,17 +93,21 @@ export const deleteRevenue = api<DeleteRevenueRequest, DeleteRevenueResponse>(
 
       // For managers, create a deletion request instead of actually deleting
       if (authData.role === "MANAGER") {
-        // Create a deletion request record
-        await tx.exec`
-          INSERT INTO revenue_deletion_requests (
-            org_id, revenue_id, requested_by_user_id, amount_cents, source, 
-            reason, status, created_at
-          ) VALUES (
-            ${authData.orgId}, ${id}, ${parseInt(authData.userID)}, 
-            ${revenueRow.amount_cents}, ${revenueRow.source}, 
-            'Revenue deletion requested by manager', 'pending', NOW()
-          )
-        `;
+        // Create a deletion request record (if table exists)
+        try {
+          await tx.exec`
+            INSERT INTO revenue_deletion_requests (
+              org_id, revenue_id, requested_by_user_id, amount_cents, source, 
+              reason, status, created_at
+            ) VALUES (
+              ${authData.orgId}, ${id}, ${parseInt(authData.userID)}, 
+              ${revenueRow.amount_cents}, ${revenueRow.source}, 
+              'Revenue deletion requested by manager', 'pending', NOW()
+            )
+          `;
+        } catch (error) {
+          console.log('Revenue deletion requests table may not exist, skipping:', error);
+        }
 
         // Create notification for admins
         await tx.exec`

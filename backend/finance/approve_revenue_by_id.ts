@@ -27,15 +27,41 @@ export const approveRevenueById = api<ApproveRevenueByIdRequest, ApproveRevenueB
 
     const { id, approved, notes } = req;
 
+    // Check if status columns exist in both tables
+    let hasStatusColumns = false;
+    try {
+      const statusCheck = await financeDB.queryAll`
+        SELECT table_name, column_name FROM information_schema.columns 
+        WHERE table_name IN ('expenses', 'revenues') AND column_name = 'status'
+      `;
+      // Only consider status columns present if they exist in BOTH tables
+      hasStatusColumns = statusCheck.length === 2;
+      console.log('Status column check result:', statusCheck, 'hasStatusColumns:', hasStatusColumns);
+    } catch (error) {
+      console.log('Status column check failed:', error);
+    }
+
     const tx = await financeDB.begin();
     try {
       // Get revenue and check access with org scoping
-      const revenueRow = await tx.queryRow`
-        SELECT r.id, r.org_id, r.status, r.created_by_user_id, u.display_name as created_by_name
-        FROM revenues r
-        JOIN users u ON r.created_by_user_id = u.id
-        WHERE r.id = ${id} AND r.org_id = ${authData.orgId}
-      `;
+      let revenueRow: any;
+      if (hasStatusColumns) {
+        revenueRow = await tx.queryRow`
+          SELECT r.id, r.org_id, r.status, r.created_by_user_id, u.display_name as created_by_name
+          FROM revenues r
+          JOIN users u ON r.created_by_user_id = u.id
+          WHERE r.id = ${id} AND r.org_id = ${authData.orgId}
+        `;
+      } else {
+        revenueRow = await tx.queryRow`
+          SELECT r.id, r.org_id, r.created_by_user_id, u.display_name as created_by_name
+          FROM revenues r
+          JOIN users u ON r.created_by_user_id = u.id
+          WHERE r.id = ${id} AND r.org_id = ${authData.orgId}
+        `;
+        // Set default status if column doesn't exist
+        revenueRow.status = 'pending';
+      }
 
       if (!revenueRow) {
         throw APIError.notFound("Revenue not found");
@@ -47,12 +73,22 @@ export const approveRevenueById = api<ApproveRevenueByIdRequest, ApproveRevenueB
 
       const newStatus = approved ? 'approved' : 'rejected';
 
-      // Update revenue status
-      const updateResult = await tx.exec`
-        UPDATE revenues 
-        SET status = ${newStatus}, approved_by_user_id = ${parseInt(authData.userID)}, approved_at = NOW()
-        WHERE id = ${id} AND org_id = ${authData.orgId}
-      `;
+      // Update revenue status (only if status column exists)
+      let updateResult;
+      if (hasStatusColumns) {
+        updateResult = await tx.exec`
+          UPDATE revenues 
+          SET status = ${newStatus}, approved_by_user_id = ${parseInt(authData.userID)}, approved_at = NOW()
+          WHERE id = ${id} AND org_id = ${authData.orgId}
+        `;
+      } else {
+        // If no status column, just update approval fields
+        updateResult = await tx.exec`
+          UPDATE revenues 
+          SET approved_by_user_id = ${parseInt(authData.userID)}, approved_at = NOW()
+          WHERE id = ${id} AND org_id = ${authData.orgId}
+        `;
+      }
 
       // Create notification for the revenue creator
       await tx.exec`

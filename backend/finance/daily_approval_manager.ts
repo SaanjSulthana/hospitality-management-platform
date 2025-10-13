@@ -77,82 +77,184 @@ export const getDailyApprovalStats = api<DailyApprovalStatsRequest, DailyApprova
     const endOfDay = new Date(targetDate);
     endOfDay.setHours(23, 59, 59, 999);
 
+    // Check if status columns exist in both tables
+    let hasStatusColumns = false;
+    try {
+      const statusCheck = await financeDB.queryAll`
+        SELECT table_name, column_name FROM information_schema.columns 
+        WHERE table_name IN ('expenses', 'revenues') AND column_name = 'status'
+      `;
+      // Both tables must have the status column
+      hasStatusColumns = statusCheck.length === 2;
+      console.log('Status column check result:', statusCheck, 'hasStatusColumns:', hasStatusColumns);
+    } catch (error) {
+      console.log('Status column check failed:', error);
+    }
+
     try {
       // Get revenue statistics
-      const revenueStats = await financeDB.queryRow`
-        SELECT 
-          COUNT(*) as total_count,
-          COUNT(CASE WHEN status = 'pending' THEN 1 END) as pending_count,
-          COUNT(CASE WHEN status = 'approved' THEN 1 END) as approved_count,
-          COUNT(CASE WHEN status = 'rejected' THEN 1 END) as rejected_count,
-          COALESCE(SUM(CASE WHEN status = 'pending' THEN amount_cents ELSE 0 END), 0) as pending_amount,
-          COALESCE(SUM(CASE WHEN status = 'approved' THEN amount_cents ELSE 0 END), 0) as approved_amount,
-          COALESCE(SUM(CASE WHEN status = 'rejected' THEN amount_cents ELSE 0 END), 0) as rejected_amount
-        FROM revenues r
-        JOIN properties p ON r.property_id = p.id
-        WHERE r.org_id = ${authData.orgId}
-        AND r.created_at >= ${startOfDay}
-        AND r.created_at <= ${endOfDay}
-      `;
+      let revenueStats;
+      if (hasStatusColumns) {
+        revenueStats = await financeDB.queryRow`
+          SELECT 
+            COUNT(*) as total_count,
+            COUNT(CASE WHEN status = 'pending' THEN 1 END) as pending_count,
+            COUNT(CASE WHEN status = 'approved' THEN 1 END) as approved_count,
+            COUNT(CASE WHEN status = 'rejected' THEN 1 END) as rejected_count,
+            COALESCE(SUM(CASE WHEN status = 'pending' THEN amount_cents ELSE 0 END), 0) as pending_amount,
+            COALESCE(SUM(CASE WHEN status = 'approved' THEN amount_cents ELSE 0 END), 0) as approved_amount,
+            COALESCE(SUM(CASE WHEN status = 'rejected' THEN amount_cents ELSE 0 END), 0) as rejected_amount
+          FROM revenues r
+          JOIN properties p ON r.property_id = p.id
+          WHERE r.org_id = ${authData.orgId}
+          AND r.created_at >= ${startOfDay}
+          AND r.created_at <= ${endOfDay}
+        `;
+      } else {
+        // Fallback: assume all revenues are pending if no status column
+        revenueStats = await financeDB.queryRow`
+          SELECT 
+            COUNT(*) as total_count,
+            COUNT(*) as pending_count,
+            0 as approved_count,
+            0 as rejected_count,
+            COALESCE(SUM(amount_cents), 0) as pending_amount,
+            0 as approved_amount,
+            0 as rejected_amount
+          FROM revenues r
+          JOIN properties p ON r.property_id = p.id
+          WHERE r.org_id = ${authData.orgId}
+          AND r.created_at >= ${startOfDay}
+          AND r.created_at <= ${endOfDay}
+        `;
+      }
 
       // Get expense statistics
-      const expenseStats = await financeDB.queryRow`
-        SELECT 
-          COUNT(*) as total_count,
-          COUNT(CASE WHEN status = 'pending' THEN 1 END) as pending_count,
-          COUNT(CASE WHEN status = 'approved' THEN 1 END) as approved_count,
-          COUNT(CASE WHEN status = 'rejected' THEN 1 END) as rejected_count,
-          COALESCE(SUM(CASE WHEN status = 'pending' THEN amount_cents ELSE 0 END), 0) as pending_amount,
-          COALESCE(SUM(CASE WHEN status = 'approved' THEN amount_cents ELSE 0 END), 0) as approved_amount,
-          COALESCE(SUM(CASE WHEN status = 'rejected' THEN amount_cents ELSE 0 END), 0) as rejected_amount
-        FROM expenses e
-        JOIN properties p ON e.property_id = p.id
-        WHERE e.org_id = ${authData.orgId}
-        AND e.created_at >= ${startOfDay}
-        AND e.created_at <= ${endOfDay}
-      `;
+      let expenseStats;
+      if (hasStatusColumns) {
+        expenseStats = await financeDB.queryRow`
+          SELECT 
+            COUNT(*) as total_count,
+            COUNT(CASE WHEN status = 'pending' THEN 1 END) as pending_count,
+            COUNT(CASE WHEN status = 'approved' THEN 1 END) as approved_count,
+            COUNT(CASE WHEN status = 'rejected' THEN 1 END) as rejected_count,
+            COALESCE(SUM(CASE WHEN status = 'pending' THEN amount_cents ELSE 0 END), 0) as pending_amount,
+            COALESCE(SUM(CASE WHEN status = 'approved' THEN amount_cents ELSE 0 END), 0) as approved_amount,
+            COALESCE(SUM(CASE WHEN status = 'rejected' THEN amount_cents ELSE 0 END), 0) as rejected_amount
+          FROM expenses e
+          JOIN properties p ON e.property_id = p.id
+          WHERE e.org_id = ${authData.orgId}
+          AND e.created_at >= ${startOfDay}
+          AND e.created_at <= ${endOfDay}
+        `;
+      } else {
+        // Fallback: assume all expenses are pending if no status column
+        expenseStats = await financeDB.queryRow`
+          SELECT 
+            COUNT(*) as total_count,
+            COUNT(*) as pending_count,
+            0 as approved_count,
+            0 as rejected_count,
+            COALESCE(SUM(amount_cents), 0) as pending_amount,
+            0 as approved_amount,
+            0 as rejected_amount
+          FROM expenses e
+          JOIN properties p ON e.property_id = p.id
+          WHERE e.org_id = ${authData.orgId}
+          AND e.created_at >= ${startOfDay}
+          AND e.created_at <= ${endOfDay}
+        `;
+      }
 
       // Get detailed revenue transactions
-      const revenueTransactions = await financeDB.queryAll`
-        SELECT 
-          r.id,
-          p.name as property_name,
-          r.source,
-          r.amount_cents,
-          r.description,
-          r.status,
-          u.display_name as created_by_name,
-          r.created_at,
-          r.payment_mode
-        FROM revenues r
-        JOIN properties p ON r.property_id = p.id
-        JOIN users u ON r.created_by_user_id = u.id
-        WHERE r.org_id = ${authData.orgId}
-        AND r.created_at >= ${startOfDay}
-        AND r.created_at <= ${endOfDay}
-        ORDER BY r.created_at DESC
-      `;
+      let revenueTransactions;
+      if (hasStatusColumns) {
+        revenueTransactions = await financeDB.queryAll`
+          SELECT 
+            r.id,
+            p.name as property_name,
+            r.source,
+            r.amount_cents,
+            r.description,
+            r.status,
+            u.display_name as created_by_name,
+            r.created_at,
+            r.payment_mode
+          FROM revenues r
+          JOIN properties p ON r.property_id = p.id
+          JOIN users u ON r.created_by_user_id = u.id
+          WHERE r.org_id = ${authData.orgId}
+          AND r.created_at >= ${startOfDay}
+          AND r.created_at <= ${endOfDay}
+          ORDER BY r.created_at DESC
+        `;
+      } else {
+        // Fallback: select without status column
+        revenueTransactions = await financeDB.queryAll`
+          SELECT 
+            r.id,
+            p.name as property_name,
+            r.source,
+            r.amount_cents,
+            r.description,
+            'pending' as status,
+            u.display_name as created_by_name,
+            r.created_at,
+            'cash' as payment_mode
+          FROM revenues r
+          JOIN properties p ON r.property_id = p.id
+          JOIN users u ON r.created_by_user_id = u.id
+          WHERE r.org_id = ${authData.orgId}
+          AND r.created_at >= ${startOfDay}
+          AND r.created_at <= ${endOfDay}
+          ORDER BY r.created_at DESC
+        `;
+      }
 
       // Get detailed expense transactions
-      const expenseTransactions = await financeDB.queryAll`
-        SELECT 
-          e.id,
-          p.name as property_name,
-          e.category,
-          e.amount_cents,
-          e.description,
-          e.status,
-          u.display_name as created_by_name,
-          e.created_at,
-          e.payment_mode
-        FROM expenses e
-        JOIN properties p ON e.property_id = p.id
-        JOIN users u ON e.created_by_user_id = u.id
-        WHERE e.org_id = ${authData.orgId}
-        AND e.created_at >= ${startOfDay}
-        AND e.created_at <= ${endOfDay}
-        ORDER BY e.created_at DESC
-      `;
+      let expenseTransactions;
+      if (hasStatusColumns) {
+        expenseTransactions = await financeDB.queryAll`
+          SELECT 
+            e.id,
+            p.name as property_name,
+            e.category,
+            e.amount_cents,
+            e.description,
+            e.status,
+            u.display_name as created_by_name,
+            e.created_at,
+            e.payment_mode
+          FROM expenses e
+          JOIN properties p ON e.property_id = p.id
+          JOIN users u ON e.created_by_user_id = u.id
+          WHERE e.org_id = ${authData.orgId}
+          AND e.created_at >= ${startOfDay}
+          AND e.created_at <= ${endOfDay}
+          ORDER BY e.created_at DESC
+        `;
+      } else {
+        // Fallback: select without status column
+        expenseTransactions = await financeDB.queryAll`
+          SELECT 
+            e.id,
+            p.name as property_name,
+            e.category,
+            e.amount_cents,
+            e.description,
+            'pending' as status,
+            u.display_name as created_by_name,
+            e.created_at,
+            'cash' as payment_mode
+          FROM expenses e
+          JOIN properties p ON e.property_id = p.id
+          JOIN users u ON e.created_by_user_id = u.id
+          WHERE e.org_id = ${authData.orgId}
+          AND e.created_at >= ${startOfDay}
+          AND e.created_at <= ${endOfDay}
+          ORDER BY e.created_at DESC
+        `;
+      }
 
       const totalPending = (revenueStats?.pending_count || 0) + (expenseStats?.pending_count || 0);
       const totalApproved = (revenueStats?.approved_count || 0) + (expenseStats?.approved_count || 0);
@@ -413,26 +515,64 @@ export const getDailyApprovalSummary = api<DailyApprovalSummaryRequest, DailyApp
     const start = startDate ? new Date(startDate) : new Date(Date.now() - 7 * 24 * 60 * 60 * 1000); // Default to last 7 days
     const end = endDate ? new Date(endDate) : new Date();
 
+    // Check if status columns exist in both tables
+    let hasStatusColumns = false;
     try {
-      const summary = await financeDB.queryAll`
-        SELECT 
-          DATE(created_at) as date,
-          COUNT(*) as total_transactions,
-          COUNT(CASE WHEN status = 'pending' THEN 1 END) as pending_count,
-          COUNT(CASE WHEN status = 'approved' THEN 1 END) as approved_count,
-          COUNT(CASE WHEN status = 'rejected' THEN 1 END) as rejected_count,
-          COALESCE(SUM(CASE WHEN status = 'pending' THEN amount_cents ELSE 0 END), 0) as pending_amount,
-          COALESCE(SUM(CASE WHEN status = 'approved' THEN amount_cents ELSE 0 END), 0) as approved_amount,
-          COALESCE(SUM(CASE WHEN status = 'rejected' THEN amount_cents ELSE 0 END), 0) as rejected_amount
-        FROM (
-          SELECT created_at, status, amount_cents FROM revenues WHERE org_id = ${authData.orgId}
-          UNION ALL
-          SELECT created_at, status, amount_cents FROM expenses WHERE org_id = ${authData.orgId}
-        ) as all_transactions
-        WHERE created_at >= ${start} AND created_at <= ${end}
-        GROUP BY DATE(created_at)
-        ORDER BY DATE(created_at) DESC
+      const statusCheck = await financeDB.queryAll`
+        SELECT table_name, column_name FROM information_schema.columns 
+        WHERE table_name IN ('expenses', 'revenues') AND column_name = 'status'
       `;
+      // Both tables must have the status column
+      hasStatusColumns = statusCheck.length === 2;
+      console.log('Status column check result:', statusCheck, 'hasStatusColumns:', hasStatusColumns);
+    } catch (error) {
+      console.log('Status column check failed:', error);
+    }
+
+    try {
+      let summary;
+      if (hasStatusColumns) {
+        summary = await financeDB.queryAll`
+          SELECT 
+            DATE(created_at) as date,
+            COUNT(*) as total_transactions,
+            COUNT(CASE WHEN status = 'pending' THEN 1 END) as pending_count,
+            COUNT(CASE WHEN status = 'approved' THEN 1 END) as approved_count,
+            COUNT(CASE WHEN status = 'rejected' THEN 1 END) as rejected_count,
+            COALESCE(SUM(CASE WHEN status = 'pending' THEN amount_cents ELSE 0 END), 0) as pending_amount,
+            COALESCE(SUM(CASE WHEN status = 'approved' THEN amount_cents ELSE 0 END), 0) as approved_amount,
+            COALESCE(SUM(CASE WHEN status = 'rejected' THEN amount_cents ELSE 0 END), 0) as rejected_amount
+          FROM (
+            SELECT created_at, status, amount_cents FROM revenues WHERE org_id = ${authData.orgId}
+            UNION ALL
+            SELECT created_at, status, amount_cents FROM expenses WHERE org_id = ${authData.orgId}
+          ) as all_transactions
+          WHERE created_at >= ${start} AND created_at <= ${end}
+          GROUP BY DATE(created_at)
+          ORDER BY DATE(created_at) DESC
+        `;
+      } else {
+        // Fallback: assume all transactions are pending if no status column
+        summary = await financeDB.queryAll`
+          SELECT 
+            DATE(created_at) as date,
+            COUNT(*) as total_transactions,
+            COUNT(*) as pending_count,
+            0 as approved_count,
+            0 as rejected_count,
+            COALESCE(SUM(amount_cents), 0) as pending_amount,
+            0 as approved_amount,
+            0 as rejected_amount
+          FROM (
+            SELECT created_at, amount_cents FROM revenues WHERE org_id = ${authData.orgId}
+            UNION ALL
+            SELECT created_at, amount_cents FROM expenses WHERE org_id = ${authData.orgId}
+          ) as all_transactions
+          WHERE created_at >= ${start} AND created_at <= ${end}
+          GROUP BY DATE(created_at)
+          ORDER BY DATE(created_at) DESC
+        `;
+      }
 
       return {
         success: true,
@@ -467,107 +607,215 @@ export const getTodayPendingTransactions = api<TodayPendingTransactionsRequest, 
     const { date, propertyId, startDate, endDate } = req || {};
     const targetDate = date || new Date().toISOString().split('T')[0];
 
+    // Check if status columns exist in both tables
+    let hasStatusColumns = false;
+    try {
+      const statusCheck = await financeDB.queryAll`
+        SELECT table_name, column_name FROM information_schema.columns 
+        WHERE table_name IN ('expenses', 'revenues') AND column_name = 'status'
+      `;
+      // Both tables must have the status column
+      hasStatusColumns = statusCheck.length === 2;
+      console.log('Status column check result:', statusCheck, 'hasStatusColumns:', hasStatusColumns);
+    } catch (error) {
+      console.log('Status column check failed:', error);
+    }
+
     try {
       // Get pending revenues for the date
       let pendingRevenues;
       if (propertyId) {
-        pendingRevenues = await financeDB.queryAll`
-          SELECT 
-            r.id,
-            'revenue' as type,
-            r.source,
-            r.amount_cents,
-            r.description,
-            p.name as property_name,
-            u.display_name as created_by_name,
-            r.created_at,
-            COALESCE(r.status, 'pending') as status,
-            r.payment_mode,
-            r.bank_reference,
-            r.receipt_url
-          FROM revenues r
-          JOIN properties p ON r.property_id = p.id AND p.org_id = ${authData.orgId}
-          JOIN users u ON r.created_by_user_id = u.id AND u.org_id = ${authData.orgId}
-          WHERE r.org_id = ${authData.orgId}
-            AND DATE(r.created_at) = ${targetDate}
-            AND COALESCE(r.status, 'pending') = 'pending'
-            AND r.property_id = ${propertyId}
-          ORDER BY r.created_at DESC
-        `;
+        if (hasStatusColumns) {
+          pendingRevenues = await financeDB.queryAll`
+            SELECT 
+              r.id,
+              'revenue' as type,
+              r.source,
+              r.amount_cents,
+              r.description,
+              p.name as property_name,
+              u.display_name as created_by_name,
+              r.created_at,
+              COALESCE(r.status, 'pending') as status,
+              r.payment_mode,
+              r.bank_reference,
+              r.receipt_url
+            FROM revenues r
+            JOIN properties p ON r.property_id = p.id AND p.org_id = ${authData.orgId}
+            JOIN users u ON r.created_by_user_id = u.id AND u.org_id = ${authData.orgId}
+            WHERE r.org_id = ${authData.orgId}
+              AND DATE(r.created_at) = ${targetDate}
+              AND COALESCE(r.status, 'pending') = 'pending'
+              AND r.property_id = ${propertyId}
+            ORDER BY r.created_at DESC
+          `;
+        } else {
+          // Fallback query without status column
+          pendingRevenues = await financeDB.queryAll`
+            SELECT 
+              r.id,
+              'revenue' as type,
+              r.source,
+              r.amount_cents,
+              r.description,
+              p.name as property_name,
+              u.display_name as created_by_name,
+              r.created_at,
+              'pending' as status,
+              r.receipt_url
+            FROM revenues r
+            JOIN properties p ON r.property_id = p.id AND p.org_id = ${authData.orgId}
+            JOIN users u ON r.created_by_user_id = u.id AND u.org_id = ${authData.orgId}
+            WHERE r.org_id = ${authData.orgId}
+              AND DATE(r.created_at) = ${targetDate}
+              AND r.property_id = ${propertyId}
+            ORDER BY r.created_at DESC
+          `;
+        }
       } else {
-        pendingRevenues = await financeDB.queryAll`
-          SELECT 
-            r.id,
-            'revenue' as type,
-            r.source,
-            r.amount_cents,
-            r.description,
-            p.name as property_name,
-            u.display_name as created_by_name,
-            r.created_at,
-            COALESCE(r.status, 'pending') as status,
-            r.payment_mode,
-            r.bank_reference,
-            r.receipt_url
-          FROM revenues r
-          JOIN properties p ON r.property_id = p.id AND p.org_id = ${authData.orgId}
-          JOIN users u ON r.created_by_user_id = u.id AND u.org_id = ${authData.orgId}
-          WHERE r.org_id = ${authData.orgId}
-            AND DATE(r.created_at) = ${targetDate}
-            AND COALESCE(r.status, 'pending') = 'pending'
-          ORDER BY r.created_at DESC
-        `;
+        if (hasStatusColumns) {
+          pendingRevenues = await financeDB.queryAll`
+            SELECT 
+              r.id,
+              'revenue' as type,
+              r.source,
+              r.amount_cents,
+              r.description,
+              p.name as property_name,
+              u.display_name as created_by_name,
+              r.created_at,
+              COALESCE(r.status, 'pending') as status,
+              r.payment_mode,
+              r.bank_reference,
+              r.receipt_url
+            FROM revenues r
+            JOIN properties p ON r.property_id = p.id AND p.org_id = ${authData.orgId}
+            JOIN users u ON r.created_by_user_id = u.id AND u.org_id = ${authData.orgId}
+            WHERE r.org_id = ${authData.orgId}
+              AND DATE(r.created_at) = ${targetDate}
+              AND COALESCE(r.status, 'pending') = 'pending'
+            ORDER BY r.created_at DESC
+          `;
+        } else {
+          // Fallback query without status column
+          pendingRevenues = await financeDB.queryAll`
+            SELECT 
+              r.id,
+              'revenue' as type,
+              r.source,
+              r.amount_cents,
+              r.description,
+              p.name as property_name,
+              u.display_name as created_by_name,
+              r.created_at,
+              'pending' as status,
+              r.receipt_url
+            FROM revenues r
+            JOIN properties p ON r.property_id = p.id AND p.org_id = ${authData.orgId}
+            JOIN users u ON r.created_by_user_id = u.id AND u.org_id = ${authData.orgId}
+            WHERE r.org_id = ${authData.orgId}
+              AND DATE(r.created_at) = ${targetDate}
+            ORDER BY r.created_at DESC
+          `;
+        }
       }
 
       // Get pending expenses for the date
       let pendingExpenses;
       if (propertyId) {
-        pendingExpenses = await financeDB.queryAll`
-          SELECT 
-            e.id,
-            'expense' as type,
-            e.category,
-            e.amount_cents,
-            e.description,
-            p.name as property_name,
-            u.display_name as created_by_name,
-            e.created_at,
-            COALESCE(e.status, 'pending') as status,
-            e.payment_mode,
-            e.bank_reference,
-            e.receipt_url
-          FROM expenses e
-          JOIN properties p ON e.property_id = p.id AND p.org_id = ${authData.orgId}
-          JOIN users u ON e.created_by_user_id = u.id AND u.org_id = ${authData.orgId}
-          WHERE e.org_id = ${authData.orgId}
-            AND DATE(e.created_at) = ${targetDate}
-            AND COALESCE(e.status, 'pending') = 'pending'
-            AND e.property_id = ${propertyId}
-          ORDER BY e.created_at DESC
-        `;
+        if (hasStatusColumns) {
+          pendingExpenses = await financeDB.queryAll`
+            SELECT 
+              e.id,
+              'expense' as type,
+              e.category,
+              e.amount_cents,
+              e.description,
+              p.name as property_name,
+              u.display_name as created_by_name,
+              e.created_at,
+              COALESCE(e.status, 'pending') as status,
+              e.payment_mode,
+              e.bank_reference,
+              e.receipt_url
+            FROM expenses e
+            JOIN properties p ON e.property_id = p.id AND p.org_id = ${authData.orgId}
+            JOIN users u ON e.created_by_user_id = u.id AND u.org_id = ${authData.orgId}
+            WHERE e.org_id = ${authData.orgId}
+              AND DATE(e.created_at) = ${targetDate}
+              AND COALESCE(e.status, 'pending') = 'pending'
+              AND e.property_id = ${propertyId}
+            ORDER BY e.created_at DESC
+          `;
+        } else {
+          // Fallback query without status column
+          pendingExpenses = await financeDB.queryAll`
+            SELECT 
+              e.id,
+              'expense' as type,
+              e.category,
+              e.amount_cents,
+              e.description,
+              p.name as property_name,
+              u.display_name as created_by_name,
+              e.created_at,
+              'pending' as status,
+              e.receipt_url
+            FROM expenses e
+            JOIN properties p ON e.property_id = p.id AND p.org_id = ${authData.orgId}
+            JOIN users u ON e.created_by_user_id = u.id AND u.org_id = ${authData.orgId}
+            WHERE e.org_id = ${authData.orgId}
+              AND DATE(e.created_at) = ${targetDate}
+              AND e.property_id = ${propertyId}
+            ORDER BY e.created_at DESC
+          `;
+        }
       } else {
-        pendingExpenses = await financeDB.queryAll`
-          SELECT 
-            e.id,
-            'expense' as type,
-            e.category,
-            e.amount_cents,
-            e.description,
-            p.name as property_name,
-            u.display_name as created_by_name,
-            e.created_at,
-            COALESCE(e.status, 'pending') as status,
-            e.payment_mode,
-            e.bank_reference,
-            e.receipt_url
-          FROM expenses e
-          JOIN properties p ON e.property_id = p.id AND p.org_id = ${authData.orgId}
-          JOIN users u ON e.created_by_user_id = u.id AND u.org_id = ${authData.orgId}
-          WHERE e.org_id = ${authData.orgId}
-            AND DATE(e.created_at) = ${targetDate}
-            AND COALESCE(e.status, 'pending') = 'pending'
-          ORDER BY e.created_at DESC
-        `;
+        if (hasStatusColumns) {
+          pendingExpenses = await financeDB.queryAll`
+            SELECT 
+              e.id,
+              'expense' as type,
+              e.category,
+              e.amount_cents,
+              e.description,
+              p.name as property_name,
+              u.display_name as created_by_name,
+              e.created_at,
+              COALESCE(e.status, 'pending') as status,
+              e.payment_mode,
+              e.bank_reference,
+              e.receipt_url
+            FROM expenses e
+            JOIN properties p ON e.property_id = p.id AND p.org_id = ${authData.orgId}
+            JOIN users u ON e.created_by_user_id = u.id AND u.org_id = ${authData.orgId}
+            WHERE e.org_id = ${authData.orgId}
+              AND DATE(e.created_at) = ${targetDate}
+              AND COALESCE(e.status, 'pending') = 'pending'
+            ORDER BY e.created_at DESC
+          `;
+        } else {
+          // Fallback query without status column
+          pendingExpenses = await financeDB.queryAll`
+            SELECT 
+              e.id,
+              'expense' as type,
+              e.category,
+              e.amount_cents,
+              e.description,
+              p.name as property_name,
+              u.display_name as created_by_name,
+              e.created_at,
+              'pending' as status,
+              e.receipt_url
+            FROM expenses e
+            JOIN properties p ON e.property_id = p.id AND p.org_id = ${authData.orgId}
+            JOIN users u ON e.created_by_user_id = u.id AND u.org_id = ${authData.orgId}
+            WHERE e.org_id = ${authData.orgId}
+              AND DATE(e.created_at) = ${targetDate}
+            ORDER BY e.created_at DESC
+          `;
+        }
       }
 
       // Combine and format the results

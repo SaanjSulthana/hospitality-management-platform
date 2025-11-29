@@ -11,7 +11,7 @@
  * If using raw WebSocket, token must be passed via query param or cookie.
  */
 
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { API_CONFIG } from '../src/config/api';
@@ -103,6 +103,9 @@ interface HealthMetrics {
   connectionUptime: number;
   avgLatencyMs: number;
   p95LatencyMs: number;
+  // Per-service counters (lightweight)
+  byServiceDelivered?: Record<string, number>;
+  byServiceSuppressed?: Record<string, number>;
 }
 
 /**
@@ -113,7 +116,10 @@ export default function RealtimeProviderV2Fixed(): null {
   const location = useLocation();
 
   // Feature flags
-  const masterEnabled = getFlagBool('REALTIME_STREAMING_V2', true);
+  // Production: force realtime ON, with an emergency kill switch; in dev respect local flags.
+  const IS_PRODUCTION = typeof import.meta !== 'undefined' && (import.meta as any)?.env?.PROD === true;
+  const EMERGENCY_KILL = getFlagBool('REALTIME_EMERGENCY_DISABLE', false);
+  const masterEnabled = !EMERGENCY_KILL && (IS_PRODUCTION ? true : getFlagBool('REALTIME_STREAMING_V2', true));
   // Disable leader election by default for stability; can be re-enabled via FIN_LEADER_ENABLED=true
   const leaderEnabled = getFlagBool('FIN_LEADER_ENABLED', false);
   const rolloutPercent = getFlagNumber('REALTIME_ROLLOUT_PERCENT', 100);
@@ -126,6 +132,10 @@ export default function RealtimeProviderV2Fixed(): null {
   const pingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isLeaderRef = useRef<boolean>(false);
   const suspendedRef = useRef<boolean>(false);
+  const connectingRef = useRef<boolean>(false);
+  // Track last services and debounce service/property-driven reconnects
+  const serviceChangeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastServicesRef = useRef<string>('');
 
   // Dedup cache
   const dedupCacheRef = useRef<Map<number, OrgDedupState>>(new Map());
@@ -144,6 +154,8 @@ export default function RealtimeProviderV2Fixed(): null {
     connectionUptime: 0,
     avgLatencyMs: 0,
     p95LatencyMs: 0,
+    byServiceDelivered: {},
+    byServiceSuppressed: {},
   });
 
   // Broadcast channels
@@ -154,6 +166,8 @@ export default function RealtimeProviderV2Fixed(): null {
   const tokenHash = getAccessTokenHash();
   const orgId = (user as any)?.orgId ?? (user as any)?.organizationId ?? null;
   const tabId = useRef<string>('');
+  // Property filter propagated by pages
+  const [subscribedPropertyId, setSubscribedPropertyId] = useState<number | null>(null);
 
   /**
    * Initialize tab ID
@@ -209,9 +223,15 @@ export default function RealtimeProviderV2Fixed(): null {
    * Suspend/Resume transport via global events to free browser connections
    */
   useEffect(() => {
-    const onSuspend = () => {
+    let currentSuspendReason: string | null = null;
+
+    const onSuspend = (e?: Event) => {
       try {
         suspendedRef.current = true;
+        try {
+          const detail: any = (e as any)?.detail || {};
+          currentSuspendReason = typeof detail?.reason === 'string' ? detail.reason : null;
+        } catch {}
         // Close active socket to immediately free the slot
         if (wsRef.current) {
           wsRef.current.close();
@@ -222,17 +242,69 @@ export default function RealtimeProviderV2Fixed(): null {
     const onResume = () => {
       if (!suspendedRef.current) return;
       suspendedRef.current = false;
+      currentSuspendReason = null;
       // Reset backoff attempts and reconnect immediately
       reconnectAttemptsRef.current = 0;
       connect();
     };
     window.addEventListener('realtime:suspend', onSuspend);
     window.addEventListener('realtime:resume', onResume);
+
+    // Context-aware watchdog: only resume if visible and not critical suspend
+    const watchdog = setInterval(() => {
+      if (!suspendedRef.current) return;
+      if (document.visibilityState !== 'visible') return;
+      if (currentSuspendReason === 'upload' || currentSuspendReason === 'payment') return;
+      try { window.dispatchEvent(new CustomEvent('realtime:resume')); } catch {}
+    }, 60_000);
+
     return () => {
+      clearInterval(watchdog);
       window.removeEventListener('realtime:suspend', onSuspend);
       window.removeEventListener('realtime:resume', onResume);
     };
   }, []);
+
+  /**
+   * Visibility reconnect
+   */
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible' && !suspendedRef.current) {
+        reconnectAttemptsRef.current = 0;
+        if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
+          connect();
+        }
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+  }, [orgId, masterEnabled]);
+
+  /**
+   * Property filter events from pages → handshake
+   */
+  useEffect(() => {
+    const handler = (e: any) => {
+      const nextId = (e?.detail?.propertyId ?? null) as number | null;
+      if (nextId === subscribedPropertyId) return;
+      setSubscribedPropertyId(nextId);
+      if (serviceChangeTimerRef.current) clearTimeout(serviceChangeTimerRef.current);
+      serviceChangeTimerRef.current = setTimeout(() => {
+        try {
+          if (wsRef.current) {
+            wsRef.current.close();
+            wsRef.current = null;
+          }
+        } catch {}
+        connectingRef.current = false;
+        reconnectAttemptsRef.current = 0;
+        connect();
+      }, 500);
+    };
+    window.addEventListener('realtime:set-property', handler as EventListener);
+    return () => window.removeEventListener('realtime:set-property', handler as EventListener);
+  }, [subscribedPropertyId, masterEnabled]);
 
   /**
    * Check if org is in rollout
@@ -274,7 +346,7 @@ export default function RealtimeProviderV2Fixed(): null {
   /**
    * Check if event is duplicate (Enhanced with time-based expiry)
    */
-  const isDuplicate = (oid: number, eventId: string): boolean => {
+  const isDuplicate = (oid: number, dedupKey: string): boolean => {
     const now = Date.now();
     const cache = dedupCacheRef.current;
     let state = cache.get(oid);
@@ -304,15 +376,20 @@ export default function RealtimeProviderV2Fixed(): null {
       state.lastCleanup = now;
     }
 
-    // Check duplicate
-    if (state.entries.has(eventId)) {
+    // Empty key means "do not dedup"
+    if (!dedupKey) {
+      return false;
+    }
+
+    // Check duplicate for this service
+    if (state.entries.has(dedupKey)) {
       metricsRef.current.duplicatesDetected++;
       return true;
     }
 
     // Store with timestamp
-    state.entries.set(eventId, now);
-    state.order.push(eventId);
+    state.entries.set(dedupKey, now);
+    state.order.push(dedupKey);
 
     // Size-based cleanup
     while (state.order.length > CONFIG.MAX_CACHE_IDS) {
@@ -328,15 +405,47 @@ export default function RealtimeProviderV2Fixed(): null {
   /**
    * Dispatch events
    */
-  const dispatchEvents = (service: ServiceName, events: any[]): void => {
+  const dispatchEvents = (service: ServiceName, events: any[], seqForBatch?: number): void => {
     if (!events || events.length === 0) return;
 
+    // Optional kill switch for dedup to help diagnose field issues in prod without redeploy
+    const DEDUP_DISABLED = getFlagBool('REALTIME_DEDUP_DISABLED', false);
+
+    let suppressed = 0;
     const filtered = events.filter((event) => {
-      if (!event.eventId) return true;
-      return !isDuplicate(orgId, event.eventId);
+      if (DEDUP_DISABLED) return true;
+
+      // Build robust dedup key:
+      // 1) Prefer eventId (global id) + service + entityType, to avoid cross-service collisions
+      // 2) Fallback: if no eventId, and seqForBatch is provided, dedup using sequence
+      // 3) Final fallback: no key => do not dedup
+      let key = '';
+      const eid = (event as any)?.eventId as string | undefined;
+      const entityType = (event as any)?.entityType as string | undefined;
+      if (typeof eid === 'string' && eid.length > 0) {
+        key = `${service}:${entityType ?? ''}:${eid}`;
+      } else if (typeof seqForBatch === 'number' && Number.isFinite(seqForBatch)) {
+        key = `${service}:seq:${seqForBatch}`;
+      }
+
+      const isDup = isDuplicate(orgId, key);
+      if (isDup) suppressed++;
+      return !isDup;
     });
 
     if (filtered.length === 0) return;
+
+    if (suppressed > 0 && import.meta.env.DEV) {
+      console.warn('[RealtimeV2Fixed][dedup-suppressed]', { service, suppressed, total: events.length, orgId });
+    }
+
+    // Update per-service counters
+    try {
+      const svc = String(service);
+      const met = metricsRef.current;
+      met.byServiceSuppressed![svc] = (met.byServiceSuppressed?.[svc] || 0) + suppressed;
+      met.byServiceDelivered![svc] = (met.byServiceDelivered?.[svc] || 0) + filtered.length;
+    } catch {}
 
     // Local dispatch for this tab
     window.dispatchEvent(
@@ -428,7 +537,7 @@ export default function RealtimeProviderV2Fixed(): null {
           metricsRef.current.lastEventAt = Date.now();
 
           if (message.service && message.events) {
-            dispatchEvents(message.service, message.events);
+            dispatchEvents(message.service, message.events, message.seq);
           }
           break;
         }
@@ -454,7 +563,7 @@ export default function RealtimeProviderV2Fixed(): null {
               metricsRef.current.lastEventAt = Date.now();
 
               if (m.service && m.events) {
-                dispatchEvents(m.service, m.events);
+                dispatchEvents(m.service, m.events, m.seq);
               }
             }
 
@@ -466,7 +575,7 @@ export default function RealtimeProviderV2Fixed(): null {
             }
           } else if (message.service && message.events) {
             // Fallback: some servers may set events on the batch itself
-            dispatchEvents(message.service, message.events);
+            dispatchEvents(message.service, message.events, (message as any).seq);
           }
           break;
         }
@@ -533,10 +642,16 @@ export default function RealtimeProviderV2Fixed(): null {
       return;
     }
 
+    // Avoid duplicate connects
     if (wsRef.current) {
-      wsRef.current.close();
+      const state = wsRef.current.readyState;
+      if (state === WebSocket.OPEN || state === WebSocket.CONNECTING) {
+        return;
+      }
+      try { wsRef.current.close(); } catch {}
       wsRef.current = null;
     }
+    if (connectingRef.current) return;
 
     const token = typeof window !== 'undefined' ? localStorage.getItem('accessToken') : null;
     if (!token) {
@@ -550,7 +665,11 @@ export default function RealtimeProviderV2Fixed(): null {
         (typeof window !== 'undefined' ? window.location.pathname : '')
     );
 
+    // Track last services used by active connection
+    try { lastServicesRef.current = JSON.stringify(services); } catch {}
+
     console.log('[RealtimeV2Fixed][connecting]', { orgId, lastSeq: lastSeqRef.current, services });
+    connectingRef.current = true;
 
     (async () => {
       try {
@@ -567,7 +686,7 @@ export default function RealtimeProviderV2Fixed(): null {
           services,
           version: 1,
           lastSeq: lastSeqRef.current || undefined,
-          propertyId: null,
+          propertyId: subscribedPropertyId,
           // Backend expects this extra token field for manual auth in unified_stream.ts
           token,
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -588,10 +707,12 @@ export default function RealtimeProviderV2Fixed(): null {
           metricsRef.current.connectionState = 'connected';
           metricsRef.current.lastConnectedAt = Date.now();
           metricsRef.current.reconnectAttempts = 0;
+          connectingRef.current = false;
         });
 
         socket.on('error', (error: any) => {
           console.error('[RealtimeV2Fixed][error]', { error, orgId });
+          connectingRef.current = false;
         });
 
         socket.on('close', (event: any) => {
@@ -603,6 +724,7 @@ export default function RealtimeProviderV2Fixed(): null {
           });
 
           wsRef.current = null;
+          connectingRef.current = false;
           metricsRef.current.connectionState = 'disconnected';
           metricsRef.current.lastDisconnectedAt = Date.now();
           metricsRef.current.totalDisconnects++;
@@ -644,6 +766,7 @@ export default function RealtimeProviderV2Fixed(): null {
           error: err instanceof Error ? err.message : String(err),
           orgId,
         });
+        connectingRef.current = false;
         if (masterEnabled && isLeaderRef.current) {
           metricsRef.current.connectionState = 'reconnecting';
           metricsRef.current.reconnectAttempts++;
@@ -661,6 +784,39 @@ export default function RealtimeProviderV2Fixed(): null {
       }
     })();
   };
+
+  /**
+   * Route-based services refresh: reconnect when required services change
+   */
+  useEffect(() => {
+    if (!masterEnabled || !orgId) return;
+    const newServices = resolveServicesForPath(
+      location?.pathname ||
+        (typeof window !== 'undefined' ? window.location.pathname : '')
+    );
+    const next = JSON.stringify(newServices);
+    // If this is the very first evaluation and we haven't connected yet,
+    // initialize lastServicesRef to avoid an immediate redundant reconnect.
+    if (!lastServicesRef.current) {
+      lastServicesRef.current = next;
+      return;
+    }
+    if (next !== lastServicesRef.current) {
+      if (serviceChangeTimerRef.current) clearTimeout(serviceChangeTimerRef.current);
+      serviceChangeTimerRef.current = setTimeout(() => {
+        // Force reconnect to apply new services set
+        try {
+          if (wsRef.current) {
+            wsRef.current.close();
+            wsRef.current = null;
+          }
+        } catch {}
+        connectingRef.current = false;
+        reconnectAttemptsRef.current = 0;
+        connect();
+      }, 300);
+    }
+  }, [location.pathname, masterEnabled, orgId]);
 
   /**
    * Leader election
@@ -872,12 +1028,29 @@ export default function RealtimeProviderV2Fixed(): null {
         eventRate: metrics.eventsReceived / ((Date.now() - metrics.lastConnectedAt) / 1000 || 1),
       };
     };
+    (window as any).__realtimeState = () => {
+      const services = (() => {
+        try {
+          return JSON.parse(lastServicesRef.current || '[]');
+        } catch { return []; }
+      })();
+      return {
+        connected: !!wsRef.current && wsRef.current.readyState === WebSocket.OPEN,
+        lastSeq: lastSeqRef.current,
+        lastEventAt: metricsRef.current.lastEventAt,
+        services,
+        subscribedPropertyId,
+        byServiceDelivered: metricsRef.current.byServiceDelivered || {},
+        byServiceSuppressed: metricsRef.current.byServiceSuppressed || {},
+      };
+    };
 
     return () => {
       clearInterval(uptimeInterval);
       delete (window as any).__realtimeMetrics;
+      delete (window as any).__realtimeState;
     };
-  }, []);
+  }, [subscribedPropertyId]);
 
   return null;
 }

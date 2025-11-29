@@ -82,6 +82,37 @@ export default function FinancePage() {
     window.addEventListener('finance-stream-health', onHealth as EventListener);
     return () => window.removeEventListener('finance-stream-health', onHealth as EventListener);
   }, []);
+
+  // Telemetry helper: posts with Authorization and keepalive; falls back silently on errors
+  const sendTelemetry = (_sampleRate: number, events: any[]) => {
+    try {
+      const token = localStorage.getItem('accessToken') || '';
+      if (!token) return;
+      const url = `${API_CONFIG.BASE_URL}/telemetry/client`;
+      const normalized = (Array.isArray(events) ? events : []).map((_e: any) => ({
+        type: 'derived_debounce_fired',
+        coalescedCount: 1,
+        ts: new Date().toISOString(),
+      }));
+      fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ events: normalized }),
+        keepalive: true,
+      }).catch(() => {});
+    } catch {}
+  };
+
+  // Propagate current property filter to the realtime provider (for scoped WS fanout)
+  useEffect(() => {
+    try {
+      const pid = selectedPropertyId === 'all' ? null : Number(selectedPropertyId);
+      window.dispatchEvent(new CustomEvent('realtime:set-property', { detail: { propertyId: pid } }));
+    } catch {}
+  }, [selectedPropertyId]);
   const isFinanceEvent = (ev: any): ev is {
     eventId: string; eventType: string; entityId: number; timestamp: string | Date; metadata?: any; propertyId: number; orgId: number; userId: number; entityType: string;
   } => {
@@ -1372,10 +1403,7 @@ export default function FinancePage() {
       // Keep optimistic removal; nothing else to do for list
       try {
         const payload = { type: 'expense_deleted', id: (data as any)?.id ?? null, ts: new Date().toISOString() };
-        if ('sendBeacon' in navigator) {
-          const blob = new Blob([JSON.stringify({ sampleRate: 1.0, events: [payload] })], { type: 'text/plain' });
-          (navigator as any).sendBeacon('/telemetry/client', blob);
-        }
+        sendTelemetry(1.0, [payload]);
       } catch {}
       toast({
         title: data.deleted ? "Expense deleted" : "Deletion requested",
@@ -1439,10 +1467,7 @@ export default function FinancePage() {
       // Keep optimistic removal; avoid broad invalidations
       try {
         const payload = { type: 'revenue_deleted', id: (data as any)?.id ?? null, ts: new Date().toISOString() };
-        if ('sendBeacon' in navigator) {
-          const blob = new Blob([JSON.stringify({ sampleRate: 1.0, events: [payload] })], { type: 'text/plain' });
-          (navigator as any).sendBeacon('/telemetry/client', blob);
-        }
+        sendTelemetry(1.0, [payload]);
       } catch {}
       toast({
         title: data.deleted ? "Revenue deleted" : "Deletion requested",

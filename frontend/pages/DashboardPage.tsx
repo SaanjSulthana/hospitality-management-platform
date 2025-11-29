@@ -162,6 +162,7 @@ export default function DashboardPage() {
   // Realtime: Dashboard events listener (debounced invalidation + telemetry)
   useEffect(() => {
     try { (window as any).__dashboardSelectedPropertyId = 'all'; } catch {}
+    try { window.dispatchEvent(new CustomEvent('realtime:set-property', { detail: { propertyId: null } })); } catch {}
 
     const enabled = getFlagBool('DASHBOARD_REALTIME_V1', true);
     if (!enabled) return;
@@ -191,20 +192,22 @@ export default function DashboardPage() {
         impacted.add(QUERY_KEYS.ANALYTICS);
       }
       impacted.forEach(k => queryClient.invalidateQueries({ queryKey: k }));
-      // 2% telemetry with low-preflight path
+      // 2% telemetry (authorized POST to backend)
       if (Math.random() < 0.02) {
         try {
-          const payload = {
-            type: 'dashboard_realtime_invalidation',
-            keys: Array.from(impacted.values()).length,
-            ts: new Date().toISOString(),
-          };
-          if ('sendBeacon' in navigator) {
-            const blob = new Blob([JSON.stringify({ sampleRate: 0.02, events: [payload] })], { type: 'text/plain' });
-            (navigator as any).sendBeacon(`/telemetry/client`, blob);
-          } else {
-            const q = encodeURIComponent(JSON.stringify({ sampleRate: 0.02, events: [payload] }));
-            fetch(`/telemetry/client?d=${q}`, { method: 'GET' }).catch(() => {});
+          const token = localStorage.getItem('accessToken') || '';
+          if (token) {
+            const payload = {
+              type: 'derived_debounce_fired',
+              coalescedCount: Array.from(impacted.values()).length || 1,
+              ts: new Date().toISOString(),
+            };
+            fetch(`${API_CONFIG.BASE_URL}/telemetry/client`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+              body: JSON.stringify({ events: [payload] }),
+              keepalive: true,
+            }).catch(() => {});
           }
         } catch {}
       }

@@ -533,40 +533,42 @@ function DailyReportManagerContent({ selectedPropertyId, selectedDate, onPropert
     gcTime: 300000, // 5 minutes
     refetchInterval: false, // Rely on realtime events from RealtimeProvider
     refetchOnMount: true, // Refresh when component mounts
-    onSuccess: () => {
-      try {
-        const last = (window as any).__reportsLastInvalidateAt;
-        if (!last) return;
-        const key = `daily|${propertyId}|${selectedDate}`;
-        const started = last[key];
-        if (started) {
-          const ms = Date.now() - started;
-          if (process.env.NODE_ENV !== 'production') {
-            console.log('[ReportsTelemetry] daily refetch duration ms:', ms, { propertyId, date: selectedDate });
-          }
-          if (Math.random() < 0.02) {
-            fetch(`${API_CONFIG.BASE_URL}/telemetry/client`, {
-              method: 'POST',
-              headers: {
-                'Authorization': `Bearer ${localStorage.getItem('accessToken') || ''}`,
-                'Content-Type': 'application/json',
-              },
-              body: JSON.stringify({
-                sampleRate: 0.02,
-                events: [{
-                  type: 'reports_refetch_ms',
-                  ts: new Date().toISOString(),
-                  scope: 'daily',
-                  ms,
-                  propertyId, date: selectedDate,
-                }],
-              }),
-            }).catch(() => {});
-          }
-        }
-      } catch {}
-    }
   });
+
+  // Telemetry for daily report fetches (v5 has no onSuccess)
+  useEffect(() => {
+    if (!dailyReportData) return;
+    try {
+      const last = (window as any).__reportsLastInvalidateAt;
+      if (!last) return;
+      const key = `daily|${propertyId}|${selectedDate}`;
+      const started = last[key];
+      if (!started) return;
+      const ms = Date.now() - started;
+      if (process.env.NODE_ENV !== 'production') {
+        console.log('[ReportsTelemetry] daily refetch duration ms:', ms, { propertyId, date: selectedDate });
+      }
+      if (Math.random() < 0.02) {
+        fetch(`${API_CONFIG.BASE_URL}/telemetry/client`, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${localStorage.getItem('accessToken') || ''}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            sampleRate: 0.02,
+            events: [{
+              type: 'reports_refetch_ms',
+              ts: new Date().toISOString(),
+              scope: 'daily',
+              ms,
+              propertyId, date: selectedDate,
+            }],
+          }),
+        }).catch(() => {});
+      }
+    } catch {}
+  }, [dailyReportData, propertyId, selectedDate]);
 
   // Use values from backend API
   const cashRevenue = dailyReportData?.cashReceivedCents || 0;

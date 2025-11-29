@@ -1135,7 +1135,7 @@ export default function GuestCheckInPage() {
       );
       if (fetchIds.length) {
       const updatedGuests = (
-        await Promise.all(fetchIds.map((guestId) => fetchGuestDetailsById(guestId)))
+        await Promise.all(fetchIds.map((guestId) => fetchGuestDetailsById(Number(guestId))))
       ).filter((guest): guest is GuestCheckIn => Boolean(guest));
       if (!updatedGuests.length) {
         fetchCheckIns();

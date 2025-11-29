@@ -192,40 +192,42 @@ function MonthlyYearlyReportsComponent() {
     staleTime: 25000,
     gcTime: 300000,
     refetchOnMount: true,
-    onSuccess: () => {
-      try {
-        const last = (window as any).__reportsLastInvalidateAt;
-        if (!last) return;
-        const key = `quarterly|${selectedYear}|${selectedQuarter}|${selectedPropertyId || 'all'}`;
-        const started = last[key];
-        if (started) {
-          const ms = Date.now() - started;
-          if (process.env.NODE_ENV !== 'production') {
-            console.log('[ReportsTelemetry] quarterly refetch duration ms:', ms, { year: selectedYear, quarter: selectedQuarter, propertyId: selectedPropertyId || 'all' });
-          }
-          if (Math.random() < 0.02) {
-            fetch(`${API_CONFIG.BASE_URL}/telemetry/client`, {
-              method: 'POST',
-              headers: {
-                'Authorization': `Bearer ${localStorage.getItem('accessToken') || ''}`,
-                'Content-Type': 'application/json',
-              },
-              body: JSON.stringify({
-                sampleRate: 0.02,
-                events: [{
-                  type: 'reports_refetch_ms',
-                  ts: new Date().toISOString(),
-                  scope: 'quarterly',
-                  ms,
-                  year: selectedYear, quarter: selectedQuarter, propertyId: selectedPropertyId || 'all',
-                }],
-              }),
-            }).catch(() => {});
-          }
-        }
-      } catch {}
-    }
   });
+
+  // Telemetry for quarterly report fetches (v5 has no onSuccess)
+  React.useEffect(() => {
+    if (!quarterlyReport) return;
+    try {
+      const last = (window as any).__reportsLastInvalidateAt;
+      if (!last) return;
+      const key = `quarterly|${selectedYear}|${selectedQuarter}|${selectedPropertyId || 'all'}`;
+      const started = last[key];
+      if (!started) return;
+      const ms = Date.now() - started;
+      if (process.env.NODE_ENV !== 'production') {
+        console.log('[ReportsTelemetry] quarterly refetch duration ms:', ms, { year: selectedYear, quarter: selectedQuarter, propertyId: selectedPropertyId || 'all' });
+      }
+      if (Math.random() < 0.02) {
+        fetch(`${API_CONFIG.BASE_URL}/telemetry/client`, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${localStorage.getItem('accessToken') || ''}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            sampleRate: 0.02,
+            events: [{
+              type: 'reports_refetch_ms',
+              ts: new Date().toISOString(),
+              scope: 'quarterly',
+              ms,
+              year: selectedYear, quarter: selectedQuarter, propertyId: selectedPropertyId || 'all',
+            }],
+          }),
+        }).catch(() => {});
+      }
+    } catch {}
+  }, [quarterlyReport, selectedYear, selectedQuarter, selectedPropertyId]);
 
   // Get yearly report
   const { data: yearlyReport, isLoading: yearlyReportLoading } = useQuery<YearlyReport | undefined>({
@@ -301,40 +303,42 @@ function MonthlyYearlyReportsComponent() {
     staleTime: 25000,
     gcTime: 300000,
     refetchOnMount: true,
-    onSuccess: () => {
-      try {
-        const last = (window as any).__reportsLastInvalidateAt;
-        if (!last) return;
-        const key = `yearly|${selectedYear}|${selectedPropertyId || 'all'}`;
-        const started = last[key];
-        if (started) {
-          const ms = Date.now() - started;
-          if (process.env.NODE_ENV !== 'production') {
-            console.log('[ReportsTelemetry] yearly refetch duration ms:', ms, { year: selectedYear, propertyId: selectedPropertyId || 'all' });
-          }
-          if (Math.random() < 0.02) {
-            fetch(`${API_CONFIG.BASE_URL}/telemetry/client`, {
-              method: 'POST',
-              headers: {
-                'Authorization': `Bearer ${localStorage.getItem('accessToken') || ''}`,
-                'Content-Type': 'application/json',
-              },
-              body: JSON.stringify({
-                sampleRate: 0.02,
-                events: [{
-                  type: 'reports_refetch_ms',
-                  ts: new Date().toISOString(),
-                  scope: 'yearly',
-                  ms,
-                  year: selectedYear, propertyId: selectedPropertyId || 'all',
-                }],
-              }),
-            }).catch(() => {});
-          }
-        }
-      } catch {}
-    }
   });
+
+  // Telemetry for yearly report fetches (v5 has no onSuccess)
+  React.useEffect(() => {
+    if (!yearlyReport) return;
+    try {
+      const last = (window as any).__reportsLastInvalidateAt;
+      if (!last) return;
+      const key = `yearly|${selectedYear}|${selectedPropertyId || 'all'}`;
+      const started = last[key];
+      if (!started) return;
+      const ms = Date.now() - started;
+      if (process.env.NODE_ENV !== 'production') {
+        console.log('[ReportsTelemetry] yearly refetch duration ms:', ms, { year: selectedYear, propertyId: selectedPropertyId || 'all' });
+      }
+      if (Math.random() < 0.02) {
+        fetch(`${API_CONFIG.BASE_URL}/telemetry/client`, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${localStorage.getItem('accessToken') || ''}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            sampleRate: 0.02,
+            events: [{
+              type: 'reports_refetch_ms',
+              ts: new Date().toISOString(),
+              scope: 'yearly',
+              ms,
+              year: selectedYear, propertyId: selectedPropertyId || 'all',
+            }],
+          }),
+        }).catch(() => {});
+      }
+    } catch {}
+  }, [yearlyReport, selectedYear, selectedPropertyId]);
 
   const formatCurrency = (amountCents: number) => {
     return formatCurrencyUtil(amountCents, theme.currency);

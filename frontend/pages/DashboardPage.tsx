@@ -168,7 +168,7 @@ export default function DashboardPage() {
 
     let timer: ReturnType<typeof setTimeout> | null = null;
     const scheduleInvalidate = (events: any[]) => {
-      const impacted = new Set<string>();
+      const impacted = new Set<string[]>();
       for (const ev of events) {
         const t = (ev?.eventType || '').toString();
         const entity = (ev?.entityType || '').toString();
@@ -190,7 +190,7 @@ export default function DashboardPage() {
       if (impacted.size === 0) {
         impacted.add(QUERY_KEYS.ANALYTICS);
       }
-      impacted.forEach(k => queryClient.invalidateQueries({ queryKey: [k] }));
+      impacted.forEach(k => queryClient.invalidateQueries({ queryKey: k }));
       // 2% telemetry with low-preflight path
       if (Math.random() < 0.02) {
         try {

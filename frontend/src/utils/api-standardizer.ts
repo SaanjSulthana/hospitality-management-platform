@@ -101,7 +101,7 @@ export const ERROR_HANDLERS = {
  */
 export interface StandardQueryOptions {
   enabled?: boolean;
-  refetchInterval?: number;
+  refetchInterval?: number | false;
   staleTime?: number;
   gcTime?: number;
   refetchOnWindowFocus?: boolean;

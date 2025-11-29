@@ -308,7 +308,8 @@ export function StreamingDocumentUpload({
           wasClean: event.wasClean,
         });
 
-        if (uploadState !== 'complete' && uploadState !== 'error') {
+        const finalStates = new Set(['complete', 'error']);
+        if (!finalStates.has(uploadState as any)) {
           const errorObj = new Error('Connection closed unexpectedly');
           setError(errorObj.message);
           setUploadState('error');

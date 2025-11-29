@@ -43,26 +43,24 @@ export function ExportButton({
           setStatus(exportStatus.status as any);
           setProgress(exportStatus.progress || 0);
 
-          if (exportStatus.status === 'processing') {
-            toast.loading(`Generating document... ${exportStatus.progress || 0}%`, {
-              id: 'export-progress',
-            });
-          }
+          // Optional: could show progress in UI; avoid persistent toasts
         },
         onComplete: (exportStatus: ExportStatus) => {
           setStatus('ready');
-          toast.dismiss('export-progress');
-          toast.success('Document ready! Downloading...', {
+          toast({
+            title: 'Document ready! Downloading...',
             description: exportStatus.fileSizeBytes 
               ? `File size: ${formatFileSize(exportStatus.fileSizeBytes)}`
               : undefined,
+            variant: 'success' as any,
           });
         },
         onError: (error: Error) => {
           setStatus('error');
-          toast.dismiss('export-progress');
-          toast.error('Export failed', {
+          toast({
+            title: 'Export failed',
             description: error.message,
+            variant: 'destructive' as any,
           });
         },
         filename,

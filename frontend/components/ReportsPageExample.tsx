@@ -4,7 +4,7 @@ import { CacheStatus } from '@/components/CacheStatus';
 import { API_CONFIG } from '@/src/config/api';
 
 export function ReportsPageExample() {
-  const [reports, setReports] = useState([]);
+  const [reports, setReports] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const { lastUpdate, isPolling } = useRealtimeUpdates(true);
 

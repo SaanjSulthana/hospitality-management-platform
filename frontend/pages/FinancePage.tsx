@@ -398,7 +398,7 @@ export default function FinancePage() {
         financeSoftRefreshTimerRef.current = setTimeout(() => {
           queryClient.invalidateQueries({ queryKey: ['revenues'] });
           queryClient.invalidateQueries({ queryKey: ['expenses'] });
-        }, 400);
+        }, 5000);
       } catch (outerErr) {
         console.error('[Finance] Event batch failed', outerErr);
       }

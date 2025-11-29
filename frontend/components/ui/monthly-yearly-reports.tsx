@@ -24,6 +24,7 @@ import {
   CreditCard,
   Banknote
 } from 'lucide-react';
+import { API_CONFIG } from '../../src/config/api';
 
 // Helper function to get current quarter (Indian fiscal year)
 function getCurrentQuarter(): string {
@@ -117,7 +118,7 @@ function MonthlyYearlyReportsComponent() {
   });
 
   // Get quarterly report
-  const { data: quarterlyReport, isLoading: quarterlyReportLoading } = useQuery({
+  const { data: quarterlyReport, isLoading: quarterlyReportLoading } = useQuery<QuarterlyReport | undefined>({
     queryKey: ['quarterly-report', selectedYear, selectedQuarter, selectedPropertyId],
     queryFn: async () => {
       const backend = getAuthenticatedBackend();
@@ -227,7 +228,7 @@ function MonthlyYearlyReportsComponent() {
   });
 
   // Get yearly report
-  const { data: yearlyReport, isLoading: yearlyReportLoading } = useQuery({
+  const { data: yearlyReport, isLoading: yearlyReportLoading } = useQuery<YearlyReport | undefined>({
     queryKey: ['yearly-report', selectedYear, selectedPropertyId],
     queryFn: async () => {
       const backend = getAuthenticatedBackend();

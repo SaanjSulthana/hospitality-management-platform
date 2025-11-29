@@ -95,16 +95,6 @@ async function listLeaveRequestsHandler(req: ListLeaveRequestsRequest): Promise<
     const offset = (pageNum - 1) * limitNum;
 
     try {
-      // First, let's check if the table exists and what columns it has
-      console.log('=== DEBUG: Checking leave_requests table structure ===');
-      const tableCheck = await staffDB.rawQueryRow(`
-        SELECT column_name, data_type 
-        FROM information_schema.columns 
-        WHERE table_name = 'leave_requests' 
-        ORDER BY ordinal_position
-      `);
-      console.log('Table structure:', tableCheck);
-
       // Build base query with only the columns that definitely exist
       let baseQuery = `
         SELECT 

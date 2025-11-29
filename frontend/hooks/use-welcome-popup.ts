@@ -46,7 +46,7 @@ export function useWelcomePopup() {
       const backend = getAuthenticatedBackend();
       return backend.properties.list({});
     },
-    enabled: !!user,
+    enabled: !!user && showWelcomePopup,
   });
 
   const { data: tasks } = useQuery({
@@ -55,7 +55,7 @@ export function useWelcomePopup() {
       const backend = getAuthenticatedBackend();
       return backend.tasks.list({});
     },
-    enabled: !!user,
+    enabled: !!user && showWelcomePopup,
   });
 
   const { data: expenses } = useQuery({
@@ -71,7 +71,7 @@ export function useWelcomePopup() {
         endDate: endDate.toISOString().split('T')[0],
       });
     },
-    enabled: !!user && user.role === 'ADMIN',
+    enabled: !!user && user.role === 'ADMIN' && showWelcomePopup,
   });
 
   const { data: revenues } = useQuery({
@@ -87,7 +87,7 @@ export function useWelcomePopup() {
         endDate: endDate.toISOString().split('T')[0],
       });
     },
-    enabled: !!user && user.role === 'ADMIN',
+    enabled: !!user && user.role === 'ADMIN' && showWelcomePopup,
   });
 
   const { data: leaveRequests } = useQuery({
@@ -96,7 +96,7 @@ export function useWelcomePopup() {
       const backend = getAuthenticatedBackend();
       return backend.staff.listLeaveRequests({});
     },
-    enabled: !!user,
+    enabled: !!user && showWelcomePopup,
   });
 
   // Process dashboard data with fallbacks

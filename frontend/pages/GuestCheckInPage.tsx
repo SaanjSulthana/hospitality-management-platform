@@ -76,6 +76,8 @@ interface GuestCheckIn {
   address: string;
   aadharNumber?: string;
   panNumber?: string;
+  drivingLicenseNumber?: string;
+  electionCardNumber?: string;
   passportNumber?: string;
   country?: string;
   visaType?: string;

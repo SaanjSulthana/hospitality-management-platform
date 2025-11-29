@@ -65,7 +65,10 @@ const LeaveHistory: React.FC<LeaveHistoryProps> = ({ staffId, showAll = false })
       page: currentPage,
       limit: itemsPerPage,
     }),
-    refetchInterval: 30000, // 30 seconds
+    refetchInterval: false, // Disabled: Use WebSocket/Pub-Sub for real-time updates
+    staleTime: 30000, // 30 seconds
+    gcTime: 300000, // 5 minutes
+    refetchOnWindowFocus: false, // Avoid focus storms
   });
 
   const getLeaveTypeLabel = (type: string) => {

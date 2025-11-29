@@ -71,7 +71,10 @@ const SalaryAnalytics: React.FC = () => {
     queryFn: () => getAuthenticatedBackend().staff.salaryStatistics({
       period: selectedPeriod,
     }),
-    refetchInterval: 60000, // 1 minute
+    refetchInterval: false, // Disabled: Use WebSocket/Pub-Sub for real-time updates
+    staleTime: 60000, // 1 minute
+    gcTime: 300000,
+    refetchOnWindowFocus: false,
   });
 
   const formatCurrency = (cents: number) => {

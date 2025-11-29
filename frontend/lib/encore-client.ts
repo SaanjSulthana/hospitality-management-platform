@@ -6028,15 +6028,6 @@ export namespace staff {
         format: "csv" | "xlsx" | "pdf"
     }
 
-    export interface ExportAttendanceRequest {
-        staffId?: number
-        propertyId?: number
-        status?: "present" | "absent" | "late" | "half_day" | "leave"
-        startDate?: string
-        endDate?: string
-        format?: "csv" | "excel" | "pdf"
-    }
-
     export interface ExportAttendanceResponse {
         success: boolean
         downloadUrl: string
@@ -6044,17 +6035,6 @@ export namespace staff {
         fileSize: number
         recordCount: number
         generatedAt: string
-    }
-
-    export interface ExportLeaveRequest {
-        staffId?: number
-        propertyId?: number
-        leaveType?: "annual" | "sick" | "emergency" | "personal"
-        status?: "pending" | "approved" | "rejected"
-        startDate?: string
-        endDate?: string
-        format?: "csv" | "excel" | "pdf"
-        includeBalance?: boolean
     }
 
     export interface ExportLeaveRequest {
@@ -6084,16 +6064,6 @@ export namespace staff {
         statusUrl: string
         downloadUrl: string
         recordCount: number
-    }
-
-    export interface ExportSalaryRequest {
-        staffId?: number
-        propertyId?: number
-        payPeriodStart?: string
-        payPeriodEnd?: string
-        format?: "csv" | "excel" | "pdf"
-        includePayslips?: boolean
-        includeComponents?: boolean
     }
 
     export interface ExportSalaryRequest {

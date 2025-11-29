@@ -67,7 +67,6 @@ export default function TasksPage() {
     QUERY_KEYS.TASKS,
     '/tasks',
     {
-      refetchInterval: false,
       staleTime: 25000,
       gcTime: 300000,
       refetchOnWindowFocus: false,

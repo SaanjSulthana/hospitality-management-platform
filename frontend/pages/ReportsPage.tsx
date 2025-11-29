@@ -514,7 +514,7 @@ function DailyReportManagerContent({ selectedPropertyId, selectedDate, onPropert
   }, [propertiesData, selectedPropertyId, selectedDate, onPropertyDateChange]);
 
   // Fetch daily report data from backend API
-  const { data: dailyReportData, isLoading: isLoadingTransactions, error: transactionsError } = useQuery({
+  const { data: dailyReportData, isLoading: isLoadingTransactions, error: transactionsError } = useQuery<any>({
     queryKey: ['daily-report', propertyId, selectedDate, orgId],
     queryFn: async () => {
       const backend = getAuthenticatedBackend();
@@ -1176,6 +1176,20 @@ export default function ReportsPage() {
   const { setPageTitle } = usePageTitle();
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const TELEMETRY_SAMPLE = 0.02;
+  const sendClientTelemetry = (events: any[]) => {
+    try {
+      if (Math.random() >= TELEMETRY_SAMPLE) return;
+      fetch(`${API_CONFIG.BASE_URL}/telemetry/client`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('accessToken') || ''}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ sampleRate: TELEMETRY_SAMPLE, events }),
+      }).catch(() => {});
+    } catch {}
+  };
 
   // Set page title and description
   useEffect(() => {

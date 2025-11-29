@@ -57,7 +57,7 @@ export function useFinanceEvents() {
             }
           });
 
-          lastEventIdRef.current = data.lastEventId;
+          lastEventIdRef.current = data.lastEventId ?? new Date().toISOString();
         }
       } catch (error) {
         console.error('Event subscription error:', error);

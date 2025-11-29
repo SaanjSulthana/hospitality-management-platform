@@ -128,10 +128,11 @@ export default function AttendanceHistory({
         sortOrder: filters.sortOrder,
       });
     },
-    refetchInterval: 5000,
-    staleTime: 0,
-    gcTime: 0,
+    refetchInterval: false, // Disabled: Use WebSocket/Pub-Sub for real-time updates
+    staleTime: 30000, // 30 seconds
+    gcTime: 300000, // 5 minutes
     refetchOnMount: true,
+    refetchOnWindowFocus: false, // Avoid focus storms
   });
 
   // Fetch staff list for filters
@@ -141,10 +142,11 @@ export default function AttendanceHistory({
       const backend = getAuthenticatedBackend();
       return backend.staff.list({});
     },
-    refetchInterval: 10000,
-    staleTime: 0,
-    gcTime: 0,
+    refetchInterval: false, // Disabled: Staff data rarely changes
+    staleTime: 60000, // 1 minute
+    gcTime: 300000,
     refetchOnMount: true,
+    refetchOnWindowFocus: false,
   });
 
   // Update attendance mutation

@@ -174,10 +174,11 @@ export default function AdminAttendanceOverview() {
         limit: 100,
       });
     },
-    refetchInterval: 3000, // Real-time updates every 3 seconds
-    staleTime: 0,
-    gcTime: 0,
+    refetchInterval: false, // Disabled: Use WebSocket/Pub-Sub for real-time updates
+    staleTime: 30000, // 30 seconds
+    gcTime: 300000, // 5 minutes
     refetchOnMount: true,
+    refetchOnWindowFocus: false, // Avoid focus storms
   });
 
   // Fetch attendance statistics
@@ -187,10 +188,11 @@ export default function AdminAttendanceOverview() {
       const backend = getAuthenticatedBackend();
       return backend.staff.attendanceStatistics({});
     },
-    refetchInterval: 5000, // Update stats every 5 seconds
-    staleTime: 0,
-    gcTime: 0,
+    refetchInterval: false, // Disabled: Use WebSocket/Pub-Sub for real-time updates
+    staleTime: 30000,
+    gcTime: 300000,
     refetchOnMount: true,
+    refetchOnWindowFocus: false,
   });
 
   // Fetch properties for filters
@@ -200,10 +202,11 @@ export default function AdminAttendanceOverview() {
       const backend = getAuthenticatedBackend();
       return backend.properties.list({});
     },
-    refetchInterval: 10000,
-    staleTime: 0,
-    gcTime: 0,
+    refetchInterval: false, // Disabled: Properties rarely change
+    staleTime: 60000, // 1 minute
+    gcTime: 300000,
     refetchOnMount: true,
+    refetchOnWindowFocus: false,
   });
 
   // Update attendance mutation

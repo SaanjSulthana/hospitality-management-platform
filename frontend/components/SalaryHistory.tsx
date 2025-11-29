@@ -69,7 +69,10 @@ const SalaryHistory: React.FC<SalaryHistoryProps> = ({ staffId, showAll = false 
       page: currentPage,
       limit: itemsPerPage,
     }),
-    refetchInterval: 30000, // 30 seconds
+    refetchInterval: false, // Disabled: Use WebSocket/Pub-Sub for real-time updates
+    staleTime: 30000,
+    gcTime: 300000,
+    refetchOnWindowFocus: false,
   });
 
   const formatCurrency = (cents: number) => {

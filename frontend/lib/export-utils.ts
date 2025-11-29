@@ -3,7 +3,7 @@
  * Helper functions for handling document exports with polling and download
  */
 
-import { API_CONFIG } from './api-config';
+import { API_CONFIG } from '../src/config/api';
 
 export interface ExportResponse {
   exportId: string;

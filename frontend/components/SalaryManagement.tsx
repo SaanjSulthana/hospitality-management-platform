@@ -116,7 +116,10 @@ const SalaryManagement: React.FC = () => {
       page: 1,
       limit: 50,
     }),
-    refetchInterval: 30000, // 30 seconds
+    refetchInterval: false, // Disabled: Use WebSocket/Pub-Sub for real-time updates
+    staleTime: 30000,
+    gcTime: 300000,
+    refetchOnWindowFocus: false,
   });
 
   const { data: payslips, isLoading: loadingPayslips } = useQuery({
@@ -125,13 +128,19 @@ const SalaryManagement: React.FC = () => {
       page: 1,
       limit: 50,
     }),
-    refetchInterval: 30000,
+    refetchInterval: false, // Disabled: Use WebSocket/Pub-Sub for real-time updates
+    staleTime: 30000,
+    gcTime: 300000,
+    refetchOnWindowFocus: false,
   });
 
   const { data: salaryStats, isLoading: loadingStats } = useQuery({
     queryKey: ['salaryStats'],
     queryFn: () => getAuthenticatedBackend().staff.salaryStatistics(),
-    refetchInterval: 60000, // 1 minute
+    refetchInterval: false, // Disabled: Use WebSocket/Pub-Sub for real-time updates
+    staleTime: 60000,
+    gcTime: 300000,
+    refetchOnWindowFocus: false,
   });
 
   // API Mutations

@@ -61,6 +61,30 @@ export default function DashboardPage() {
     setPageTitle('Dashboard Overview', 'Monitor your hospitality operations and manage pending tasks');
   }, [setPageTitle]);
 
+  // Local refresh helper used by the error state button
+  const refreshNow = () => {
+    try {
+      const keys = [
+        QUERY_KEYS.ANALYTICS,
+        QUERY_KEYS.DASHBOARD,
+        QUERY_KEYS.PROPERTIES,
+        QUERY_KEYS.TASKS,
+        QUERY_KEYS.USERS,
+        QUERY_KEYS.REVENUES,
+        QUERY_KEYS.EXPENSES,
+        QUERY_KEYS.LEAVE_REQUESTS,
+        QUERY_KEYS.PENDING_APPROVALS,
+      ];
+      keys.forEach(k => queryClient.invalidateQueries({ queryKey: [k] }));
+      // Force a couple of critical refetches
+      queryClient.refetchQueries({ queryKey: [QUERY_KEYS.ANALYTICS] });
+      queryClient.refetchQueries({ queryKey: [QUERY_KEYS.DASHBOARD] });
+    } catch (e) {
+      console.warn('refreshNow failed, reloading page', e);
+      window.location.reload();
+    }
+  };
+
   const { data: analytics, isLoading: analyticsLoading, error: analyticsError } = useStandardQuery(
     QUERY_KEYS.ANALYTICS,
     '/analytics/overview',

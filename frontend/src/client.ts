@@ -9834,24 +9834,6 @@ export namespace staff {
         format: "csv" | "xlsx" | "pdf"
     }
 
-    export interface ExportAttendanceRequest {
-        staffId?: number
-        propertyId?: number
-        startDate?: string
-        endDate?: string
-        status?: "present" | "absent" | "late" | "half_day"
-        format: "csv" | "xlsx" | "pdf"
-    }
-
-    export interface ExportAttendanceRequest {
-        staffId?: number
-        propertyId?: number
-        status?: "present" | "absent" | "late" | "half_day" | "leave"
-        startDate?: string
-        endDate?: string
-        format?: "csv" | "excel" | "pdf"
-    }
-
     export interface ExportAttendanceResponse {
         success: boolean
         downloadUrl: string
@@ -9869,28 +9851,6 @@ export namespace staff {
         startDate?: string
         endDate?: string
         format: "csv" | "xlsx" | "pdf"
-        includeBalance?: boolean
-    }
-
-    export interface ExportLeaveRequest {
-        staffId?: number
-        propertyId?: number
-        leaveType?: "annual" | "sick" | "emergency" | "personal"
-        status?: "pending" | "approved" | "rejected"
-        startDate?: string
-        endDate?: string
-        format: "csv" | "xlsx" | "pdf"
-        includeBalance?: boolean
-    }
-
-    export interface ExportLeaveRequest {
-        staffId?: number
-        propertyId?: number
-        leaveType?: "annual" | "sick" | "emergency" | "personal"
-        status?: "pending" | "approved" | "rejected"
-        startDate?: string
-        endDate?: string
-        format?: "csv" | "excel" | "pdf"
         includeBalance?: boolean
     }
 
@@ -9922,26 +9882,6 @@ export namespace staff {
         includeComponents?: boolean
     }
 
-    export interface ExportSalaryRequest {
-        staffId?: number
-        propertyId?: number
-        payPeriodStart?: string
-        payPeriodEnd?: string
-        format?: "csv" | "excel" | "pdf"
-        includePayslips?: boolean
-        includeComponents?: boolean
-    }
-
-    export interface ExportSalaryRequest {
-        staffId?: number
-        propertyId?: number
-        payPeriodStart?: string
-        payPeriodEnd?: string
-        format: "csv" | "xlsx" | "pdf"
-        includePayslips?: boolean
-        includeComponents?: boolean
-    }
-
     export interface ExportSalaryResponse {
         success: boolean
         downloadUrl: string
@@ -9955,12 +9895,6 @@ export namespace staff {
         success: boolean
         message: string
         details?: any
-    }
-
-    export interface GeneratePayslipRequest {
-        payPeriodStart: string
-        payPeriodEnd: string
-        generatePDF?: boolean
     }
 
     export interface GeneratePayslipRequest {

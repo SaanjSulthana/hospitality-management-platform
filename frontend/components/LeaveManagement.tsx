@@ -121,19 +121,28 @@ const LeaveManagement: React.FC = () => {
       page: 1,
       limit: 50,
     }),
-    refetchInterval: 30000, // 30 seconds
+    refetchInterval: false, // Disabled: Use WebSocket/Pub-Sub for real-time updates
+    staleTime: 30000, // 30 seconds
+    gcTime: 300000, // 5 minutes
+    refetchOnWindowFocus: false, // Avoid focus storms
   });
 
   const { data: leaveBalance, isLoading: loadingBalance } = useQuery({
     queryKey: ['leaveBalance'],
     queryFn: () => getAuthenticatedBackend().staff.leaveBalance(),
-    refetchInterval: 60000, // 1 minute
+    refetchInterval: false, // Disabled: Use WebSocket/Pub-Sub for real-time updates
+    staleTime: 60000, // 1 minute
+    gcTime: 300000,
+    refetchOnWindowFocus: false,
   });
 
   const { data: leaveStats, isLoading: loadingStats } = useQuery({
     queryKey: ['leaveStats'],
     queryFn: () => getAuthenticatedBackend().staff.leaveStatistics(),
-    refetchInterval: 60000, // 1 minute
+    refetchInterval: false, // Disabled: Use WebSocket/Pub-Sub for real-time updates
+    staleTime: 60000, // 1 minute
+    gcTime: 300000,
+    refetchOnWindowFocus: false,
   });
 
   // API Mutations

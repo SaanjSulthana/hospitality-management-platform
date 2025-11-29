@@ -73,7 +73,6 @@ export default function PropertiesPage() {
     API_ENDPOINTS.PROPERTIES,
     {
       // Disable legacy polling; rely on RealtimeProvider
-      refetchInterval: false,
       staleTime: 25000,
       gcTime: 300000,
       refetchOnWindowFocus: false,

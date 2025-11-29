@@ -130,7 +130,10 @@ const ScheduleManagement: React.FC = () => {
       page: 1,
       limit: 50,
     }),
-    refetchInterval: 30000, // 30 seconds
+    refetchInterval: false, // Disabled: Use WebSocket/Pub-Sub for real-time updates
+    staleTime: 30000,
+    gcTime: 300000,
+    refetchOnWindowFocus: false,
   });
 
   const { data: changeRequests, isLoading: loadingChangeRequests } = useQuery({
@@ -139,13 +142,19 @@ const ScheduleManagement: React.FC = () => {
       page: 1,
       limit: 50,
     }),
-    refetchInterval: 30000,
+    refetchInterval: false, // Disabled: Use WebSocket/Pub-Sub for real-time updates
+    staleTime: 30000,
+    gcTime: 300000,
+    refetchOnWindowFocus: false,
   });
 
   const { data: scheduleStats, isLoading: loadingStats } = useQuery({
     queryKey: ['scheduleStats'],
     queryFn: () => getAuthenticatedBackend().staff.scheduleStatistics(),
-    refetchInterval: 60000, // 1 minute
+    refetchInterval: false, // Disabled: Use WebSocket/Pub-Sub for real-time updates
+    staleTime: 60000,
+    gcTime: 300000,
+    refetchOnWindowFocus: false,
   });
 
   // API Mutations

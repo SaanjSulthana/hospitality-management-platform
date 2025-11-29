@@ -38,16 +38,23 @@ export function useDashboardRealtime() {
   };
 
   // Enhanced real-time synchronization for cross-user updates
+  // NOTE: Polling is DISABLED by default - use WebSocket/Pub-Sub for real-time updates
+  // This function is kept for backwards compatibility but should not be called
   const startRealTimeSync = () => {
+    // DISABLED: Aggressive polling causes excessive network requests (600+ in 11 min)
+    // Real-time updates should come from RealtimeProviderV2_Fixed via WebSocket
+    console.log('[use-realtime] Polling disabled - use WebSocket for real-time updates');
+    return; // Early return - do not start polling
+    
+    /* DISABLED CODE:
     if (intervalRef.current) {
       clearInterval(intervalRef.current);
     }
-
-    // More aggressive polling for real-time updates
     intervalRef.current = setInterval(() => {
       console.log('Real-time sync: Refreshing data...');
       refreshNow();
-    }, 5000); // Refresh every 5 seconds for cross-user synchronization
+    }, 5000);
+    */
   };
 
   const stopRealTimeSync = () => {
@@ -57,9 +64,11 @@ export function useDashboardRealtime() {
       }
     };
 
-  // Start real-time sync when component mounts
+  // DISABLED: Auto-start of polling
+  // Real-time updates should come from RealtimeProviderV2_Fixed via WebSocket
   useEffect(() => {
-    startRealTimeSync();
+    // startRealTimeSync(); // DISABLED: Causes excessive network requests
+    console.log('[use-realtime] Auto-polling disabled - using WebSocket for real-time updates');
 
     // Cleanup on unmount
     return () => {

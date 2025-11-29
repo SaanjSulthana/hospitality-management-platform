@@ -136,8 +136,8 @@ export function useStandardQuery<T = any>(
     refetchInterval,
     staleTime,
     gcTime,
-    refetchOnWindowFocus = true,
-    refetchOnMount = true,
+    refetchOnWindowFocus = false,
+    refetchOnMount = false,
     retry = RETRY_CONFIG.RETRY_CONDITION,
     retryDelay = RETRY_CONFIG.RETRY_DELAY,
     ...requestOptions

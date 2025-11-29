@@ -33,7 +33,7 @@ export default function RealtimeHealthBadge(): JSX.Element | null {
 
   useEffect(() => {
     fetchMetrics();
-    const id = setInterval(fetchMetrics, 20000);
+    const id = setInterval(fetchMetrics, 60000);
     return () => clearInterval(id);
   }, []);
 

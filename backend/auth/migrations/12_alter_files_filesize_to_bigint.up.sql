@@ -3,15 +3,18 @@
 
 DO $$ 
 BEGIN
-    -- Check if column is already BIGINT
-    IF NOT EXISTS (
-        SELECT 1 FROM information_schema.columns 
-        WHERE table_name = 'files' 
-        AND column_name = 'file_size' 
-        AND data_type = 'bigint'
-    ) THEN
-        ALTER TABLE files 
-        ALTER COLUMN file_size TYPE BIGINT;
+    -- Only run if the 'files' table exists
+    IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'files') THEN
+        -- Check if column is already BIGINT
+        IF NOT EXISTS (
+            SELECT 1 FROM information_schema.columns 
+            WHERE table_name = 'files' 
+            AND column_name = 'file_size' 
+            AND data_type = 'bigint'
+        ) THEN
+            ALTER TABLE files 
+            ALTER COLUMN file_size TYPE BIGINT;
+        END IF;
     END IF;
 END $$;
 

@@ -147,10 +147,11 @@ export default function AttendanceManagement() {
         limit: 50,
       });
     },
-    refetchInterval: 3000,
-    staleTime: 0,
-    gcTime: 0,
+    refetchInterval: false, // Disabled: Use WebSocket/Pub-Sub for real-time updates
+    staleTime: 30000, // 30 seconds
+    gcTime: 300000, // 5 minutes
     refetchOnMount: true,
+    refetchOnWindowFocus: false, // Avoid focus storms
   });
 
   // Fetch attendance statistics
@@ -160,10 +161,11 @@ export default function AttendanceManagement() {
       const backend = getAuthenticatedBackend();
       return backend.staff.attendanceStatistics({});
     },
-    refetchInterval: 10000,
-    staleTime: 0,
-    gcTime: 0,
+    refetchInterval: false, // Disabled: Use WebSocket/Pub-Sub for real-time updates
+    staleTime: 30000,
+    gcTime: 300000,
     refetchOnMount: true,
+    refetchOnWindowFocus: false,
   });
 
   // Fetch staff list for filters
@@ -173,10 +175,11 @@ export default function AttendanceManagement() {
       const backend = getAuthenticatedBackend();
       return backend.staff.list({});
     },
-    refetchInterval: 5000,
-    staleTime: 0,
-    gcTime: 0,
+    refetchInterval: false, // Disabled: Staff data rarely changes
+    staleTime: 60000, // 1 minute
+    gcTime: 300000,
     refetchOnMount: true,
+    refetchOnWindowFocus: false,
   });
 
   // Check-in mutation

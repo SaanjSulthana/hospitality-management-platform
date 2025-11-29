@@ -58,7 +58,10 @@ const ScheduleCalendar: React.FC<ScheduleCalendarProps> = ({ staffId, showAll = 
       page: 1,
       limit: 100,
     }),
-    refetchInterval: 30000, // 30 seconds
+    refetchInterval: false, // Disabled: Use WebSocket/Pub-Sub for real-time updates
+    staleTime: 30000,
+    gcTime: 300000,
+    refetchOnWindowFocus: false,
   });
 
   const formatTime = (time: string) => {

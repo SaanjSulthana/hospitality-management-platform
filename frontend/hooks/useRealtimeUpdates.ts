@@ -1,11 +1,25 @@
 import { useState, useEffect } from 'react';
-import { backend } from '@/services/backend';
+// import { backend } from '@/services/backend';
 
+/**
+ * useRealtimeUpdates - DISABLED
+ * 
+ * REASON: This 3-second polling hook causes excessive network requests.
+ * Real-time updates should come from RealtimeProviderV2_Fixed via WebSocket.
+ * 
+ * The hook is kept for backwards compatibility but polling is disabled.
+ * Components should listen to WebSocket events instead.
+ */
 export function useRealtimeUpdates(enabled: boolean = true) {
   const [lastUpdate, setLastUpdate] = useState<Date>(new Date());
-  const [isPolling, setIsPolling] = useState(false);
+  const [isPolling] = useState(false);
 
   useEffect(() => {
+    // DISABLED: Polling causes excessive network requests
+    // Real-time updates should come from WebSocket via RealtimeProviderV2_Fixed
+    console.log('[useRealtimeUpdates] Polling disabled - use WebSocket for real-time updates');
+    
+    /* DISABLED CODE:
     if (!enabled) return;
 
     const pollInterval = setInterval(async () => {
@@ -16,9 +30,7 @@ export function useRealtimeUpdates(enabled: boolean = true) {
         });
         
         if (response.data.updates.length > 0) {
-          // Trigger refresh
           setLastUpdate(new Date());
-          // Emit event for components to refetch
           window.dispatchEvent(new CustomEvent('finance-update'));
         }
       } catch (error) {
@@ -26,10 +38,11 @@ export function useRealtimeUpdates(enabled: boolean = true) {
       } finally {
         setIsPolling(false);
       }
-    }, 3000); // Poll every 3 seconds
+    }, 3000);
 
     return () => clearInterval(pollInterval);
-  }, [enabled, lastUpdate]);
+    */
+  }, [enabled]);
 
   return { lastUpdate, isPolling };
 }

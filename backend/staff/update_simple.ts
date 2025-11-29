@@ -19,10 +19,8 @@ export interface UpdateStaffSimpleResponse {
   message: string;
 }
 
-// Simplified staff update function that only handles basic fields
-export const updateSimple = api<UpdateStaffSimpleRequest, UpdateStaffSimpleResponse>(
-  { auth: true, expose: true, method: "PUT", path: "/staff/update-simple" },
-  async (req) => {
+// Shared handler for simple staff update
+async function updateSimpleHandler(req: UpdateStaffSimpleRequest): Promise<UpdateStaffSimpleResponse> {
     const authData = getAuthData();
     if (!authData) {
       throw APIError.unauthenticated("Authentication required");
@@ -125,5 +123,16 @@ export const updateSimple = api<UpdateStaffSimpleRequest, UpdateStaffSimpleRespo
       }
       throw APIError.internal(`Failed to update staff: ${error.message}`);
     }
-  }
+}
+
+// LEGACY: Simple staff update (keep for backward compatibility)
+export const updateSimple = api<UpdateStaffSimpleRequest, UpdateStaffSimpleResponse>(
+  { auth: true, expose: true, method: "PUT", path: "/staff/update-simple" },
+  updateSimpleHandler
+);
+
+// V1: Simple staff update
+export const updateSimpleV1 = api<UpdateStaffSimpleRequest, UpdateStaffSimpleResponse>(
+  { auth: true, expose: true, method: "PUT", path: "/v1/staff/update-simple" },
+  updateSimpleHandler
 );

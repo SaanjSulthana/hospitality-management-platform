@@ -5,6 +5,10 @@ import { requireRole } from "../auth/middleware";
 import { checkDailyApprovalInternal } from "./check_daily_approval";
 import { handleFinanceError } from "./error_handling";
 import { executeQueryWithStability } from "./connection_stability";
+import { financeEvents } from "./events";
+import { v1Path } from "../shared/http";
+import { v4 as uuidv4 } from 'uuid';
+import { toISTDateString } from "../shared/date_utils";
 
 export interface AddExpenseRequest {
   propertyId: number;
@@ -33,13 +37,14 @@ export interface AddExpenseResponse {
   bankReference?: string;
   createdByUserId: number;
   createdAt: Date;
+  status: string;
+  approvedByUserId?: number | null;
+  approvedAt?: Date | null;
 }
 
-// Adds a new expense record
-export const addExpense = api<AddExpenseRequest, AddExpenseResponse>(
-  { auth: true, expose: true, method: "POST", path: "/finance/expenses" },
-  async (req) => {
-    console.log('=== ADD EXPENSE FUNCTION CALLED ===');
+// Adds a new expense record (now using optimized implementation)
+async function addExpenseHandler(req: AddExpenseRequest): Promise<AddExpenseResponse> {
+    console.log('=== ADD EXPENSE FUNCTION CALLED (OPTIMIZED) ===');
     console.log('Request data:', req);
     
     const authData = getAuthData();
@@ -50,17 +55,21 @@ export const addExpense = api<AddExpenseRequest, AddExpenseResponse>(
     }
     requireRole("ADMIN", "MANAGER")(authData);
 
-    // Check if manager can add transactions based on daily approval workflow
-    if (authData.role === "MANAGER") {
-      const approvalCheck = await checkDailyApprovalInternal(authData);
-      if (!approvalCheck.canAddTransactions) {
-        throw APIError.permissionDenied(
-          approvalCheck.message || "You cannot add transactions at this time. Please wait for admin approval."
-        );
-      }
+    // Check approval workflow for all users (ADMIN and MANAGER)
+    const approvalCheck = await checkDailyApprovalInternal(authData);
+    if (!approvalCheck.canAddTransactions) {
+      throw APIError.permissionDenied(
+        approvalCheck.message || "You cannot add transactions at this time. Please wait for admin approval."
+      );
     }
 
-    const { propertyId, category, amountCents, currency = "USD", description, receiptUrl, receiptFileId, expenseDate, paymentMode = "cash", bankReference } = req;
+    const { propertyId, category, amountCents, currency = "INR", description, receiptUrl, receiptFileId, expenseDate, paymentMode = "cash", bankReference } = req;
+    
+    // If we have a receiptFileId but no receiptUrl, construct the URL
+    let finalReceiptUrl = receiptUrl;
+    if (receiptFileId && !receiptUrl) {
+      finalReceiptUrl = `/uploads/file/${receiptFileId}`;
+    }
     
     // Use provided expense date for expense_date field, but current timestamp for created_at
     const expenseDateValue = expenseDate ? new Date(expenseDate) : new Date();
@@ -90,8 +99,8 @@ export const addExpense = api<AddExpenseRequest, AddExpenseResponse>(
 
       // Check property access with org scoping using connection stability
       const propertyRow = await executeQueryWithStability(
-        () => financeDB.queryRow`
-          SELECT p.id, p.org_id
+      () => financeDB.queryRow`
+          SELECT p.id, p.org_id, p.name
           FROM properties p
           WHERE p.id = ${propertyId} AND p.org_id = ${authData.orgId}
         `,
@@ -127,7 +136,7 @@ export const addExpense = api<AddExpenseRequest, AddExpenseResponse>(
         expenseRow = await executeQueryWithStability(
           () => financeDB.queryRow`
             INSERT INTO expenses (org_id, property_id, category, amount_cents, currency, description, receipt_url, expense_date, created_by_user_id, status, payment_mode, bank_reference, receipt_file_id, created_at, approved_by_user_id, approved_at)
-            VALUES (${authData.orgId}, ${propertyId}, ${category}, ${amountCents}, ${currency}, ${description || null}, ${receiptUrl || null}, ${expenseDateValue}, ${parseInt(authData.userID)}, ${status}, ${paymentMode}, ${bankReference || null}, ${receiptFileId || null}, ${currentTimestamp}, ${approvedByUserId}, ${approvedAt})
+            VALUES (${authData.orgId}, ${propertyId}, ${category}, ${amountCents}, ${currency}, ${description || null}, ${finalReceiptUrl || null}, ${expenseDateValue}, ${parseInt(authData.userID)}, ${status}, ${paymentMode}, ${bankReference || null}, ${receiptFileId || null}, ${currentTimestamp}, ${approvedByUserId}, ${approvedAt})
             RETURNING id, property_id, category, amount_cents, currency, description, receipt_url, expense_date, status, created_by_user_id, created_at, payment_mode, bank_reference, receipt_file_id, approved_by_user_id, approved_at
           `,
           'create_expense_with_new_columns'
@@ -142,7 +151,7 @@ export const addExpense = api<AddExpenseRequest, AddExpenseResponse>(
             expenseRow = await executeQueryWithStability(
               () => financeDB.queryRow`
                 INSERT INTO expenses (org_id, property_id, category, amount_cents, currency, description, receipt_url, expense_date, created_by_user_id, created_at)
-                VALUES (${authData.orgId}, ${propertyId}, ${category}, ${amountCents}, ${currency}, ${description || null}, ${receiptUrl || null}, ${expenseDateValue}, ${parseInt(authData.userID)}, ${currentTimestamp})
+                VALUES (${authData.orgId}, ${propertyId}, ${category}, ${amountCents}, ${currency}, ${description || null}, ${finalReceiptUrl || null}, ${expenseDateValue}, ${parseInt(authData.userID)}, ${currentTimestamp})
                 RETURNING id, property_id, category, amount_cents, currency, description, receipt_url, expense_date, created_by_user_id, created_at
               `,
               'create_expense_fallback'
@@ -187,9 +196,40 @@ export const addExpense = api<AddExpenseRequest, AddExpenseResponse>(
 
       console.log('Expense creation completed successfully');
 
+      // Publish event for real-time updates BEFORE returning
+      try {
+        await financeEvents.publish({
+          eventId: uuidv4(),
+          eventVersion: 'v1',
+          eventType: 'expense_added',
+          orgId: authData.orgId,
+          propertyId: expenseRow.property_id,
+          userId: parseInt(authData.userID),
+          timestamp: new Date(),
+          entityId: expenseRow.id,
+          entityType: 'expense',
+          metadata: {
+            amountCents: expenseRow.amount_cents,
+            currency: expenseRow.currency,
+            transactionDate: toISTDateString(expenseRow.expense_date || new Date()),
+            paymentMode: expenseRow.payment_mode,
+            category: expenseRow.category,
+            affectedReportDates: [toISTDateString(expenseRow.expense_date || new Date())],
+            propertyName: propertyRow?.name || undefined,
+            newStatus: expenseRow.status || undefined
+          }
+        });
+        console.log(`[Finance] Published expense_added event for expense ID: ${expenseRow.id}`);
+      } catch (eventError) {
+        console.error('[Finance] Failed to publish expense_added event:', eventError);
+        // Don't fail the transaction if event publishing fails
+      }
+
       return {
         id: expenseRow.id,
         propertyId: expenseRow.property_id,
+        // Include property name so frontend can render immediately without extra lookups
+        propertyName: propertyRow?.name || 'Unknown Property',
         category: expenseRow.category,
         amountCents: expenseRow.amount_cents,
         currency: expenseRow.currency,
@@ -200,7 +240,12 @@ export const addExpense = api<AddExpenseRequest, AddExpenseResponse>(
         paymentMode: expenseRow.payment_mode,
         bankReference: expenseRow.bank_reference,
         createdByUserId: expenseRow.created_by_user_id,
+        // Best-effort creator name; frontend also has user context
+        createdByName: (authData as any)?.displayName || (authData as any)?.email || 'Unknown User',
         createdAt: expenseRow.created_at,
+        status: expenseRow.status || 'pending',
+        approvedByUserId: expenseRow.approved_by_user_id,
+        approvedAt: expenseRow.approved_at,
       };
     } catch (error) {
       // Use enhanced error handling for any remaining errors
@@ -211,6 +256,15 @@ export const addExpense = api<AddExpenseRequest, AddExpenseResponse>(
         table: 'expenses'
       });
     }
-  }
+}
+
+export const addExpense = api<AddExpenseRequest, AddExpenseResponse>(
+  { auth: true, expose: true, method: "POST", path: "/finance/expenses" },
+  addExpenseHandler
+);
+
+export const addExpenseV1 = api<AddExpenseRequest, AddExpenseResponse>(
+  { auth: true, expose: true, method: "POST", path: "/v1/finance/expenses" },
+  addExpenseHandler
 );
 

@@ -2,7 +2,10 @@ import { api, APIError } from "encore.dev/api";
 import { getAuthData } from "~encore/auth";
 import { requireRole } from "../auth/middleware";
 import { usersDB } from "./db";
+import { v1Path } from "../shared/http";
 import log from "encore.dev/log";
+import { usersEvents } from "./events";
+import { v4 as uuidv4 } from "uuid";
 
 export interface AssignPropertiesRequest {
   id: number;
@@ -17,9 +20,7 @@ export interface AssignPropertiesResponse {
 
 // Assigns properties to a manager (Admin only).
 // Replaces existing assignments with the provided list.
-export const assignProperties = api<AssignPropertiesRequest, AssignPropertiesResponse>(
-  { auth: true, expose: true, method: "POST", path: "/users/assign-properties" },
-  async (req) => {
+async function assignPropertiesHandler(req: AssignPropertiesRequest): Promise<AssignPropertiesResponse> {
     const authData = getAuthData();
     if (!authData) {
       throw APIError.unauthenticated("Authentication required");
@@ -86,6 +87,26 @@ export const assignProperties = api<AssignPropertiesRequest, AssignPropertiesRes
         orgId: authData.orgId 
       });
 
+      // Publish user_properties_assigned event
+      try {
+        await usersEvents.publish({
+          eventId: uuidv4(),
+          eventVersion: 'v1',
+          eventType: 'user_properties_assigned',
+          orgId: authData.orgId,
+          propertyId: null,
+          userId: parseInt(authData.userID),
+          timestamp: new Date(),
+          entityId: userId,
+          entityType: 'user',
+          metadata: {
+            propertyIds: toAssign,
+          },
+        });
+      } catch (e) {
+        log.warn("Users event publish failed (user_properties_assigned)", { error: e instanceof Error ? e.message : String(e) });
+      }
+
       return { success: true, userId: userId, propertyIds: toAssign };
     } catch (error) {
       await tx.rollback();
@@ -103,6 +124,15 @@ export const assignProperties = api<AssignPropertiesRequest, AssignPropertiesRes
       
       throw APIError.internal("Failed to update property assignments");
     }
-  }
+}
+
+export const assignProperties = api<AssignPropertiesRequest, AssignPropertiesResponse>(
+  { auth: true, expose: true, method: "POST", path: "/users/assign-properties" },
+  assignPropertiesHandler
+);
+
+export const assignPropertiesV1 = api<AssignPropertiesRequest, AssignPropertiesResponse>(
+  { auth: true, expose: true, method: "POST", path: "/v1/users/assign-properties" },
+  assignPropertiesHandler
 );
 

@@ -2,6 +2,9 @@ import { api, APIError } from "encore.dev/api";
 import { getAuthData } from "~encore/auth";
 import { requireRole } from "../auth/middleware";
 import { tasksDB } from "./db";
+import { v1Path } from "../shared/http";
+import { taskEvents } from "./events";
+import { v4 as uuidv4 } from "uuid";
 
 export interface AddAttachmentRequest {
   taskId: number;
@@ -22,10 +25,8 @@ export interface AddAttachmentResponse {
   createdAt: Date;
 }
 
-// Adds an attachment to a task
-export const addAttachment = api<AddAttachmentRequest, AddAttachmentResponse>(
-  { auth: true, expose: true, method: "POST", path: "/tasks/attachments" },
-  async (req) => {
+// Handler function for adding an attachment
+async function addAttachmentHandler(req: AddAttachmentRequest): Promise<AddAttachmentResponse> {
     const authData = getAuthData();
     if (!authData) {
       throw APIError.unauthenticated("Authentication required");
@@ -66,6 +67,28 @@ export const addAttachment = api<AddAttachmentRequest, AddAttachmentResponse>(
       throw new Error('Failed to create attachment');
     }
 
+    // Publish task_attachment_added
+    try {
+      await taskEvents.publish({
+        eventId: uuidv4(),
+        eventVersion: 'v1',
+        eventType: 'task_attachment_added',
+        orgId: authData.orgId,
+        propertyId: taskRow.property_id,
+        userId: parseInt(authData.userID),
+        timestamp: new Date(),
+        entityId: taskId,
+        entityType: 'task',
+        metadata: {
+          attachmentId: attachmentRow.id,
+          fileName,
+          fileUrl,
+          fileSize,
+          mimeType,
+        },
+      });
+    } catch {}
+
     return {
       id: attachmentRow.id,
       taskId: attachmentRow.task_id,
@@ -76,6 +99,17 @@ export const addAttachment = api<AddAttachmentRequest, AddAttachmentResponse>(
       uploadedByUserId: attachmentRow.uploaded_by_user_id,
       createdAt: attachmentRow.created_at,
     };
-  }
+}
+
+// Legacy path
+export const addAttachment = api<AddAttachmentRequest, AddAttachmentResponse>(
+  { auth: true, expose: true, method: "POST", path: "/tasks/attachments" },
+  addAttachmentHandler
+);
+
+// Versioned path
+export const addAttachmentV1 = api<AddAttachmentRequest, AddAttachmentResponse>(
+  { auth: true, expose: true, method: "POST", path: "/v1/tasks/attachments" },
+  addAttachmentHandler
 );
 

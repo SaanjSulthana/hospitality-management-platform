@@ -16,10 +16,8 @@ export interface AssignPropertyResponse {
   updatedAt: Date;
 }
 
-// Assigns a staff member to a property
-export const assignProperty = api<AssignPropertyRequest, AssignPropertyResponse>(
-  { auth: true, expose: true, method: "PUT", path: "/staff/:staffId/assign-property" },
-  async (req) => {
+// Shared handler for assigning staff to property
+async function assignPropertyHandler(req: AssignPropertyRequest): Promise<AssignPropertyResponse> {
     const authData = getAuthData();
     if (!authData) {
       throw APIError.unauthenticated("Authentication required");
@@ -88,5 +86,16 @@ export const assignProperty = api<AssignPropertyRequest, AssignPropertyResponse>
       }
       throw APIError.internal("Failed to assign staff to property");
     }
-  }
+}
+
+// LEGACY: Assigns staff to property (keep for backward compatibility)
+export const assignProperty = api<AssignPropertyRequest, AssignPropertyResponse>(
+  { auth: true, expose: true, method: "PUT", path: "/staff/:staffId/assign-property" },
+  assignPropertyHandler
+);
+
+// V1: Assigns staff to property
+export const assignPropertyV1 = api<AssignPropertyRequest, AssignPropertyResponse>(
+  { auth: true, expose: true, method: "PUT", path: "/v1/staff/:staffId/assign-property" },
+  assignPropertyHandler
 );

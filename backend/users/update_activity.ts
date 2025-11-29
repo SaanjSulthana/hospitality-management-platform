@@ -2,7 +2,10 @@ import { api, APIError } from "encore.dev/api";
 import { getAuthData } from "~encore/auth";
 import { requireRole } from "../auth/middleware";
 import { usersDB } from "./db";
+import { v1Path } from "../shared/http";
 import log from "encore.dev/log";
+import { usersEvents } from "./events";
+import { v4 as uuidv4 } from "uuid";
 
 export interface UpdateUserActivityRequest {
   userId?: number; // Make optional to allow using authenticated user's ID
@@ -25,9 +28,7 @@ export interface UpdateUserActivityResponse {
 }
 
 // Updates user activity and login information
-export const updateActivity = api<UpdateUserActivityRequest, UpdateUserActivityResponse>(
-  { auth: true, expose: true, method: "POST", path: "/users/activity" },
-  async (req) => {
+async function updateActivityHandler(req: UpdateUserActivityRequest): Promise<UpdateUserActivityResponse> {
     const authData = getAuthData();
     if (!authData) {
       throw APIError.unauthenticated("Authentication required");
@@ -68,6 +69,23 @@ export const updateActivity = api<UpdateUserActivityRequest, UpdateUserActivityR
             ipAddress,
             locationData 
           });
+          // Publish user_login
+          try {
+            await usersEvents.publish({
+              eventId: uuidv4(),
+              eventVersion: 'v1',
+              eventType: 'user_login',
+              orgId: authData.orgId,
+              propertyId: null,
+              userId: targetUserId,
+              timestamp: new Date(),
+              entityId: targetUserId,
+              entityType: 'user',
+              metadata: { ipAddress, userAgent, locationData },
+            });
+          } catch (e) {
+            log.warn("Users event publish failed (user_login)", { error: e instanceof Error ? e.message : String(e) });
+          }
         } else if (activityType === 'activity') {
           // Update general activity timestamp
           await tx.exec`
@@ -82,6 +100,23 @@ export const updateActivity = api<UpdateUserActivityRequest, UpdateUserActivityR
             SET last_activity_at = NOW()
             WHERE id = ${targetUserId} AND org_id = ${authData.orgId}
           `;
+          // Publish user_logout
+          try {
+            await usersEvents.publish({
+              eventId: uuidv4(),
+              eventVersion: 'v1',
+              eventType: 'user_logout',
+              orgId: authData.orgId,
+              propertyId: null,
+              userId: targetUserId,
+              timestamp: new Date(),
+              entityId: targetUserId,
+              entityType: 'user',
+              metadata: {},
+            });
+          } catch (e) {
+            log.warn("Users event publish failed (user_logout)", { error: e instanceof Error ? e.message : String(e) });
+          }
         }
 
         await tx.commit();
@@ -104,6 +139,15 @@ export const updateActivity = api<UpdateUserActivityRequest, UpdateUserActivityR
       
       throw APIError.internal("Failed to update user activity");
     }
-  }
+}
+
+export const updateActivity = api<UpdateUserActivityRequest, UpdateUserActivityResponse>(
+  { auth: true, expose: true, method: "POST", path: "/users/activity" },
+  updateActivityHandler
+);
+
+export const updateActivityV1 = api<UpdateUserActivityRequest, UpdateUserActivityResponse>(
+  { auth: true, expose: true, method: "POST", path: "/v1/users/activity" },
+  updateActivityHandler
 );
 

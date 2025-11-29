@@ -3,10 +3,8 @@ import { api } from "encore.dev/api";
 import { cronDB } from "./db";
 import log from "encore.dev/log";
 
-// Task reminders API endpoint
-export const taskRemindersHandler = api<void, void>(
-  { expose: false, method: "POST", path: "/cron/task-reminders" },
-  async () => {
+// Shared handler for task reminders
+async function taskRemindersHandlerImpl(): Promise<void> {
     try {
       const now = new Date();
       const oneHourFromNow = new Date(now.getTime() + 60 * 60 * 1000);
@@ -63,7 +61,20 @@ export const taskRemindersHandler = api<void, void>(
     } catch (error) {
       log.error("Task reminders failed:", error);
     }
-  }
+}
+
+// Task reminders API endpoint
+
+// LEGACY: Sends task reminders (keep for backward compatibility)
+export const taskRemindersHandler = api<{}, void>(
+  { expose: false, method: "POST", path: "/cron/task-reminders" },
+  taskRemindersHandlerImpl
+);
+
+// V1: Sends task reminders
+export const taskRemindersHandlerV1 = api<{}, void>(
+  { expose: false, method: "POST", path: "/v1/system/cron/task-reminders" },
+  taskRemindersHandlerImpl
 );
 
 // Task reminders cron job - runs every 5 minutes

@@ -1,17 +1,17 @@
 import { api, APIError } from "encore.dev/api";
 import { getAuthData } from "~encore/auth";
 import { guestCheckinDB } from "./db";
+import { propertiesDB } from "../properties/db";
 import { GuestCheckInWithProperty } from "./types";
 import { createAuditLog } from "./audit-middleware";
 import log from "encore.dev/log";
+import { v1Path } from "../shared/http";
 
 interface GetCheckInRequest {
   id: number;
 }
 
-export const getCheckIn = api(
-  { expose: true, method: "GET", path: "/guest-checkin/:id", auth: true },
-  async ({ id }: GetCheckInRequest): Promise<GuestCheckInWithProperty> => {
+async function getCheckInHandler({ id }: GetCheckInRequest): Promise<GuestCheckInWithProperty> {
     const authData = getAuthData()!;
 
     log.info("Getting guest check-in", {
@@ -26,7 +26,6 @@ export const getCheckIn = api(
           gc.id,
           gc.org_id,
           gc.property_id,
-          'Test Property' as property_name,
           gc.guest_type,
           gc.full_name,
           gc.email,
@@ -34,6 +33,8 @@ export const getCheckIn = api(
           gc.address,
           gc.aadhar_number,
           gc.pan_number,
+          gc.driving_license_number,
+          gc.election_card_number,
           gc.passport_number,
           gc.country,
           gc.visa_type,
@@ -61,11 +62,26 @@ export const getCheckIn = api(
         throw APIError.permissionDenied("You don't have permission to view this check-in");
       }
 
+      // Fetch property name from properties database
+      const property = await propertiesDB.queryRow`
+        SELECT name FROM properties WHERE id = ${result.property_id} AND org_id = ${authData.orgId}
+      `;
+      const propertyName = property?.name || 'Unknown Property';
+
+      // Log view action (temporarily disabled for testing)
+      // await createAuditLog({
+      //   actionType: "view_guest_details",
+      //   resourceType: "guest_checkin",
+      //   resourceId: id,
+      //   guestCheckInId: id,
+      //   guestName: result.full_name,
+      // });
+
       return {
         id: result.id,
         orgId: result.org_id,
         propertyId: result.property_id,
-        propertyName: result.property_name,
+        propertyName,
         guestType: result.guest_type,
         fullName: result.full_name,
         email: result.email,
@@ -73,6 +89,8 @@ export const getCheckIn = api(
         address: result.address,
         aadharNumber: result.aadhar_number,
         panNumber: result.pan_number,
+        drivingLicenseNumber: result.driving_license_number,
+        electionCardNumber: result.election_card_number,
         passportNumber: result.passport_number,
         country: result.country,
         visaType: result.visa_type,
@@ -87,42 +105,6 @@ export const getCheckIn = api(
         createdAt: result.created_at,
         updatedAt: result.updated_at,
       };
-
-        // Log view action (temporarily disabled for testing)
-        // await createAuditLog({
-        //   actionType: "view_guest_details",
-        //   resourceType: "guest_checkin",
-        //   resourceId: id,
-        //   guestCheckInId: id,
-        //   guestName: result.full_name,
-        // });
-
-      return {
-        id: result!.id,
-        orgId: result!.org_id,
-        propertyId: result!.property_id,
-        propertyName: result!.property_name || 'Unknown Property',
-        guestType: result!.guest_type,
-        fullName: result!.full_name,
-        email: result!.email,
-        phone: result!.phone,
-        address: result!.address,
-        aadharNumber: result!.aadhar_number,
-        panNumber: result!.pan_number,
-        passportNumber: result!.passport_number,
-        country: result!.country,
-        visaType: result!.visa_type,
-        visaExpiryDate: result!.visa_expiry_date,
-        checkInDate: result!.check_in_date,
-        expectedCheckoutDate: result!.expected_checkout_date,
-        actualCheckoutDate: result!.actual_checkout_date,
-        roomNumber: result!.room_number,
-        numberOfGuests: result!.number_of_guests,
-        status: result!.status,
-        createdByUserId: result!.created_by_user_id,
-        createdAt: result!.created_at,
-        updatedAt: result!.updated_at,
-      };
     } catch (error) {
       log.error("Error getting guest check-in", { error, checkInId: id });
       if (error instanceof APIError) {
@@ -130,5 +112,14 @@ export const getCheckIn = api(
       }
       throw APIError.internal("Failed to get check-in");
     }
-  }
+}
+
+export const getCheckIn = api<GetCheckInRequest, GuestCheckInWithProperty>(
+  { expose: true, method: "GET", path: "/guest-checkin/:id", auth: true },
+  getCheckInHandler
+);
+
+export const getCheckInV1 = api<GetCheckInRequest, GuestCheckInWithProperty>(
+  { expose: true, method: "GET", path: "/v1/guest-checkin/:id", auth: true },
+  getCheckInHandler
 );

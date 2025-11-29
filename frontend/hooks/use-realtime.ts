@@ -9,13 +9,8 @@ export function useDashboardRealtime() {
   const refreshNow = async () => {
     setIsPolling(true);
     try {
-      // Invalidate all relevant queries for immediate refresh
+      // Invalidate non-finance queries for immediate refresh
       await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ['expenses'] }),
-        queryClient.invalidateQueries({ queryKey: ['revenues'] }),
-        queryClient.invalidateQueries({ queryKey: ['profit-loss'] }),
-        queryClient.invalidateQueries({ queryKey: ['pending-approvals'] }),
-        queryClient.invalidateQueries({ queryKey: ['daily-approval-check'] }),
         queryClient.invalidateQueries({ queryKey: ['analytics'] }),
         queryClient.invalidateQueries({ queryKey: ['dashboard'] }),
         // Check if property update is in progress before invalidating
@@ -28,13 +23,8 @@ export function useDashboardRealtime() {
         queryClient.invalidateQueries({ queryKey: ['notifications'] }),
       ]);
 
-      // Force immediate refetch of critical queries
+      // Force immediate refetch of critical non-finance queries
       await Promise.all([
-        queryClient.refetchQueries({ queryKey: ['expenses'] }),
-        queryClient.refetchQueries({ queryKey: ['revenues'] }),
-        queryClient.refetchQueries({ queryKey: ['profit-loss'] }),
-        queryClient.refetchQueries({ queryKey: ['pending-approvals'] }),
-        queryClient.refetchQueries({ queryKey: ['daily-approval-check'] }),
         queryClient.refetchQueries({ queryKey: ['analytics'] }),
         queryClient.refetchQueries({ queryKey: ['dashboard'] }),
       ]);

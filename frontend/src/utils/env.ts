@@ -72,7 +72,14 @@ export function getEnvVar(key: string, fallback: string = ''): string {
 }
 
 /**
+ * API Version prefix for versioned endpoints
+ * All new API calls should use /v1 prefix
+ */
+export const API_VERSION = '/v1';
+
+/**
  * Get API URL from environment or use default
+ * Returns BASE URL without version prefix (version added per request)
  */
 export function getApiUrl(): string {
   // Check for explicit environment variables first
@@ -99,6 +106,14 @@ export function getApiUrl(): string {
   
   // Default to localhost for development
   return 'http://localhost:4000';
+}
+
+/**
+ * Get full API URL with version prefix
+ * Use this for making API calls with versioned endpoints
+ */
+export function getVersionedApiUrl(): string {
+  return `${getApiUrl()}${API_VERSION}`;
 }
 
 /**

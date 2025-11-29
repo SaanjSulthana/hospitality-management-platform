@@ -67,14 +67,13 @@ export interface CalculateSalaryResponse {
 }
 
 // Calculates salary based on attendance and salary components
-export const calculateSalary = api<CalculateSalaryRequest, CalculateSalaryResponse>(
-  { auth: true, expose: true, method: "POST", path: "/staff/calculate-salary" },
-  async (req) => {
-    const authData = getAuthData();
-    if (!authData) {
-      throw APIError.unauthenticated("Authentication required");
-    }
-    requireRole("ADMIN", "MANAGER")(authData);
+// Shared handler for calculating salary
+async function calculateSalaryHandler(req: CalculateSalaryRequest): Promise<CalculateSalaryResponse> {
+  const authData = getAuthData();
+  if (!authData) {
+    throw APIError.unauthenticated("Authentication required");
+  }
+  requireRole("ADMIN", "MANAGER")(authData);
 
     const { 
       staffId, 
@@ -258,5 +257,16 @@ export const calculateSalary = api<CalculateSalaryRequest, CalculateSalaryRespon
       }
       throw APIError.internal("Failed to calculate salary");
     }
-  }
+}
+
+// LEGACY: Calculates salary (keep for backward compatibility)
+export const calculateSalary = api<CalculateSalaryRequest, CalculateSalaryResponse>(
+  { auth: true, expose: true, method: "POST", path: "/staff/:staffId/calculate-salary" },
+  calculateSalaryHandler
+);
+
+// V1: Calculates salary
+export const calculateSalaryV1 = api<CalculateSalaryRequest, CalculateSalaryResponse>(
+  { auth: true, expose: true, method: "POST", path: "/v1/staff/:staffId/calculate-salary" },
+  calculateSalaryHandler
 );

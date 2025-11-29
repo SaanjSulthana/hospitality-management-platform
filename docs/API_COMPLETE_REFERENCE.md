@@ -706,6 +706,135 @@ curl -X GET "http://localhost:4000/finance/pending-approvals?date=2025-10-08" \
 
 ---
 
+### **⚡ Real-time Streaming & Telemetry**
+
+Real-time endpoints deliver finance updates with sub-second latency using the leader/follower pattern described in `docs/NETWORKING_AND_REALTIME_IMPROVEMENTS.md`.
+
+#### **3.14 Subscribe to Realtime Finance Events**
+```bash
+GET /finance/realtime/subscribe
+```
+
+**Query Parameters:**
+| Param | Type | Description |
+|-------|------|-------------|
+| `lastEventId` | string | ISO timestamp of the latest event you received (optional) |
+| `propertyId` | integer | Only receive events for a specific property (optional) |
+
+**Behavior:**
+- Uses long-polling (25 s timeout). Returns immediately when events are available, otherwise waits until new events arrive or timeout elapses.
+- Responds with buffered events plus a new `lastEventId` so clients can resume without duplication.
+- Requires Bearer token; scoped per org.
+
+**Sample Request:**
+```bash
+TOKEN=$(cat /tmp/token.txt)
+LAST_EVENT_ID=$(date -Iseconds)
+
+curl -X GET "http://localhost:4000/finance/realtime/subscribe?lastEventId=${LAST_EVENT_ID}" \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+**Sample Response:**
+```json
+{
+  "events": [
+    {
+      "eventId": "2025-10-08T12:34:56.789Z",
+      "type": "finance.revenue.created",
+      "propertyId": 1,
+      "payload": { "id": 456, "amountCents": 500000 },
+      "timestamp": "2025-10-08T12:34:56.789Z"
+    }
+  ],
+  "lastEventId": "2025-10-08T12:34:56.789Z"
+}
+```
+
+#### **3.15 Realtime Buffer Metrics**
+```bash
+GET /finance/realtime/metrics
+```
+
+**Purpose:** Operational endpoint that exposes per-org buffer stats: queue sizes, published/delivered counts, drops, TTL, waiter caps.
+
+**Request:**
+```bash
+TOKEN=$(cat /tmp/token.txt)
+curl -X GET "http://localhost:4000/finance/realtime/metrics" \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+**Sample Response:**
+```json
+{
+  "buffers": [
+    {
+      "orgId": 2,
+      "size": 3,
+      "totalPublished": 125,
+      "totalDelivered": 122,
+      "totalDropped": 0,
+      "maxBufferSize": 200,
+      "eventTtlMs": 25000,
+      "waiters": 1
+    }
+  ]
+}
+```
+
+#### **Realtime Client Expectations**
+
+- **Leader/Follower:** Only one tab per user session should hold the long-poll connection (“leader”). Use `BroadcastChannel('finance-events')` + localStorage/Web Locks to elect the leader; other tabs (“followers”) listen locally and avoid hitting the backend.
+- **Backoff & Health:** If the subscribe request returns empty in <1.5 s, back off 2–5 s before retrying. Hidden/follower tabs should relaunch every 3–5 s at most.
+- **Auth lifecycle:** Listen to the global `auth-control` channel; abort the long-poll immediately when a logout event fires, and resume only after fresh tokens exist.
+- **Telemetry:** Sample 2% of client events (see `/telemetry/client` below) to capture `fast_empty`, `leader_acquired`, `leader_takeover`, and network errors.
+
+#### **3.16 Client Telemetry Ingestion**
+```bash
+POST /telemetry/client
+```
+
+**Purpose:** Allows browsers to report sampled telemetry for realtime and auth events.
+
+**Request Body:**
+```json
+{
+  "type": "finance.fast_empty",
+  "orgId": 2,
+  "tabId": "tab-123",
+  "elapsedMs": 240,
+  "backoffMs": 3000,
+  "isLeader": true,
+  "timestamp": "2025-10-08T12:35:10.123Z",
+  "metadata": {
+    "status": 200,
+    "reason": "no_events"
+  }
+}
+```
+
+**cURL Example:**
+```bash
+TOKEN=$(cat /tmp/token.txt)
+curl -X POST "http://localhost:4000/telemetry/client" \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+        "type": "finance.leader_acquired",
+        "orgId": 2,
+        "tabId": "tab-abc",
+        "timestamp": "'"$(date -Iseconds)"'",
+        "metadata": { "role": "leader" }
+      }'
+```
+
+**Notes:**
+- Auth required. Events are stored/logged for ops dashboards.
+- Do **not** send PII or tokens; hash tab IDs if needed.
+
+---
+
 ## 4. **Reports Service** (`/reports`)
 
 ### **📅 Daily Reports:**
@@ -2198,6 +2327,290 @@ curl -X GET "http://localhost:4000/analytics/overview" \
 # Filter by property and date
 curl -X GET "http://localhost:4000/analytics/overview?propertyId=1&startDate=2025-10-01&endDate=2025-10-31" \
   -H "Authorization: Bearer $TOKEN"
+```
+
+---
+
+## 12. **Guest Check-in Service** (`/guest-checkin`) ⭐ NEW
+
+Modern guest intake with AI-powered document extraction, audit logging, and realtime updates. All endpoints require authentication; managers and admins have broader access than front-desk staff.
+
+### **12.1 List Check-ins**
+```bash
+GET /guest-checkin/list
+```
+
+**Query Parameters:** `status`, `guestType`, `propertyId`, `startDate`, `endDate`, `search`, `limit`, `offset`, `sortBy`, `sortOrder`.
+
+**Request:**
+```bash
+curl -X GET "http://localhost:4000/guest-checkin/list?status=checked_in&propertyId=1&limit=25" \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+**Response:**
+```json
+{
+  "items": [
+    {
+      "id": 123,
+      "guestType": "indian",
+      "fullName": "Ananya Sharma",
+      "email": "ananya@example.com",
+      "phone": "+91 9876543210",
+      "roomNumber": "201",
+      "checkInDate": "2025-10-10T12:00:00Z",
+      "expectedCheckoutDate": "2025-10-15",
+      "status": "checked_in",
+      "propertyName": "test1"
+    }
+  ],
+  "total": 1,
+  "limit": 25,
+  "offset": 0
+}
+```
+
+### **12.2 Get Single Check-in**
+```bash
+GET /guest-checkin/:id
+```
+
+Returns complete record (person details, documents, timestamps). Non-admin users can only fetch records they created.
+
+### **12.3 Create Check-in**
+```bash
+POST /guest-checkin/create
+```
+
+```bash
+curl -X POST "http://localhost:4000/guest-checkin/create" \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+        "propertyId": 1,
+        "guestType": "indian",
+        "fullName": "Ananya Sharma",
+        "email": "ananya@example.com",
+        "phone": "+91 9876543210",
+        "address": "123 Park Street, Kolkata",
+        "aadharNumber": "123456789012",
+        "roomNumber": "201",
+        "numberOfGuests": 2
+      }'
+```
+
+### **12.4 Create Check-in with Documents**
+```bash
+POST /guest-checkin/create-with-documents
+```
+
+Allows bundling the intake form plus up to six documents. Each document entry accepts `documentType`, `fileData` (base64), `filename`, `mimeType`, optional `performExtraction`. Entire transaction rolls back if any upload fails.
+
+### **12.5 Update Check-in**
+```bash
+PUT /guest-checkin/:id/update
+```
+
+Patched fields include contact info, room number, IDs, and expected checkout. Non-admins can only update their own records.
+
+### **12.6 Check-out Guest**
+```bash
+POST /guest-checkin/:id/checkout
+```
+
+Body: `{ "actualCheckoutDate": "2025-10-12T10:00:00Z" }` (optional). Marks the record as `checked_out`, writes audit log, and broadcasts realtime event for dashboards.
+
+### **12.7 Delete Check-in**
+```bash
+DELETE /guest-checkin/:id
+```
+
+Admins/owners only. Cascades document cleanup and emits audit entry.
+
+### **12.8 Check-in Statistics**
+```bash
+GET /guest-checkin/stats
+```
+
+**Query Parameters:** `propertyId`, `startDate`, `endDate`.
+
+**Response (abridged):**
+```json
+{
+  "totalCheckins": 145,
+  "currentlyCheckedIn": 32,
+  "checkedOut": 110,
+  "indianGuests": 120,
+  "foreignGuests": 25,
+  "byProperty": [
+    { "propertyId": 1, "propertyName": "test1", "count": 95 },
+    { "propertyId": 3, "propertyName": "HostelExp Munroe", "count": 50 }
+  ]
+}
+```
+
+---
+
+### 📎 **Guest Document Management**
+
+#### **12.9 Upload Document with LLM Extraction**
+```bash
+POST /guest-checkin/documents/upload
+```
+
+```bash
+curl -X POST "http://localhost:4000/guest-checkin/documents/upload" \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+        "guestCheckInId": 123,
+        "documentType": "aadhaar_front",
+        "fileData": "/9j/4AAQSkZJRgABAQEAYABgAAD...",
+        "filename": "aadhaar_front.jpg",
+        "mimeType": "image/jpeg",
+        "performExtraction": true
+      }'
+```
+
+**Response (abridged):**
+```json
+{
+  "success": true,
+  "document": {
+    "id": 456,
+    "documentType": "aadhaar_front",
+    "filename": "aadhaar_front_20251010.jpg",
+    "thumbnailUrl": "/guest-checkin/documents/456/thumbnail",
+    "uploadedAt": "2025-10-10T12:05:30Z"
+  },
+  "extraction": {
+    "status": "completed",
+    "overallConfidence": 92,
+    "data": {
+      "fullName": {"value": "Ananya Sharma", "confidence": 95},
+      "aadharNumber": {"value": "1234 5678 9012", "confidence": 98}
+    }
+  }
+}
+```
+
+#### **12.10 List Documents**
+```bash
+GET /guest-checkin/:checkInId/documents
+```
+
+Optional query params: `documentType`, `includeDeleted`.
+
+#### **12.11 View / Download / Thumbnail**
+```bash
+GET /guest-checkin/documents/:documentId/view
+GET /guest-checkin/documents/:documentId/download
+GET /guest-checkin/documents/:documentId/thumbnail
+```
+
+Returns base64 file data for inline viewing/download; thumbnails return a signed URL path.
+
+#### **12.12 Verify Extracted Data**
+```bash
+POST /guest-checkin/documents/:documentId/verify
+```
+
+Payload example:
+```json
+{
+  "correctedData": {
+    "address": "123, Rose Villa, MG Road, Bangalore"
+  },
+  "notes": "Corrected address from passport"
+}
+```
+
+#### **12.13 Delete Document**
+```bash
+DELETE /guest-checkin/documents/:documentId
+```
+
+Soft-deletes the file and records an audit log. Use `includeDeleted=true` on the list endpoint to review removed items.
+
+#### **12.14 Retry Extraction**
+```bash
+POST /guest-checkin/documents/:documentId/retry-extraction
+```
+
+Reprocesses the stored image through the LLM extractor (useful if the first attempt failed).
+
+#### **12.15 Document Stats**
+```bash
+GET /guest-checkin/documents/stats?propertyId=1
+```
+
+Returns aggregate counts, average confidence, top document types, and storage usage per property.
+
+---
+
+### 🕵️ **Audit Logs & Compliance**
+
+| Endpoint | Description |
+|----------|-------------|
+| `GET /guest-checkin/audit-logs` | Paginated list of all guest-related actions; filters for `userId`, `guestCheckInId`, `actionType`, `resourceType`, `startDate`, `endDate`, `success`. |
+| `GET /guest-checkin/audit-logs/:logId` | Detailed view of a single audit entry with request context. |
+| `GET /guest-checkin/audit-logs/export` | Exports CSV for a date range (use `startDate` / `endDate`). |
+| `GET /guest-checkin/audit-logs/summary` | Aggregated counts per action plus security alerts. |
+| `POST /guest-checkin/audit/view-documents` | Records that a user opened the document viewer (front-end helper endpoint). |
+
+**Example (List Audit Logs):**
+```bash
+curl -X GET "http://localhost:4000/guest-checkin/audit-logs?startDate=2025-10-01&endDate=2025-10-15&actionType=view_documents" \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+**Response (abridged):**
+```json
+{
+  "logs": [
+    {
+      "id": 9876,
+      "timestamp": "2025-10-10T12:10:00Z",
+      "user": { "id": 10, "email": "manager@hotel.com", "role": "MANAGER" },
+      "action": { "type": "view_documents", "resourceType": "guest_document", "resourceId": 456 },
+      "guest": { "checkInId": 123, "name": "Ananya Sharma" },
+      "success": true,
+      "durationMs": 234
+    }
+  ],
+  "pagination": { "total": 150, "limit": 20, "offset": 0, "hasMore": true }
+}
+```
+
+---
+
+### 🔁 **Realtime Guest Updates**
+
+```bash
+GET /guest-checkin/realtime/subscribe
+```
+
+Long-poll (25 s) endpoint mirroring the finance realtime stack. Events cover `guest_checkin_created`, `guest_document_uploaded`, `guest_document_extracted`, `guest_checked_out`, etc. Follow the same leader/follower guidance listed in the Finance section (single tab per session maintains the connection; followers listen via `BroadcastChannel('guest-events')`, respect RTT-aware backoff, and stop on logout broadcasts).
+
+Event schema:
+```json
+{
+  "events": [
+    {
+      "eventType": "guest_document_extracted",
+      "timestamp": "2025-10-10T12:05:35.000Z",
+      "entityId": 123,
+      "entityType": "guest_checkin",
+      "metadata": {
+        "documentId": 456,
+        "status": "completed",
+        "overallConfidence": 92
+      }
+    }
+  ],
+  "lastEventId": "2025-10-10T12:05:35.000Z"
+}
 ```
 
 ---

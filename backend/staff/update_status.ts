@@ -17,10 +17,8 @@ export interface UpdateStatusResponse {
   updatedAt: Date;
 }
 
-// Updates staff status (active/inactive)
-export const updateStatus = api<UpdateStatusRequest, UpdateStatusResponse>(
-  { auth: true, expose: true, method: "PUT", path: "/staff/:staffId/status" },
-  async (req) => {
+// Shared handler for updating staff status
+async function updateStatusHandler(req: UpdateStatusRequest): Promise<UpdateStatusResponse> {
     const authData = getAuthData();
     if (!authData) {
       throw APIError.unauthenticated("Authentication required");
@@ -84,5 +82,16 @@ export const updateStatus = api<UpdateStatusRequest, UpdateStatusResponse>(
       }
       throw APIError.internal("Failed to update staff status");
     }
-  }
+}
+
+// LEGACY: Updates staff status (keep for backward compatibility)
+export const updateStatus = api<UpdateStatusRequest, UpdateStatusResponse>(
+  { auth: true, expose: true, method: "PUT", path: "/staff/:staffId/status" },
+  updateStatusHandler
+);
+
+// V1: Updates staff status
+export const updateStatusV1 = api<UpdateStatusRequest, UpdateStatusResponse>(
+  { auth: true, expose: true, method: "PUT", path: "/v1/staff/:staffId/status" },
+  updateStatusHandler
 );

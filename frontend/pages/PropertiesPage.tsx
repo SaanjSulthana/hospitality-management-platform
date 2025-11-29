@@ -12,7 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Textarea } from '@/components/ui/textarea';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { useToast } from '@/components/ui/use-toast';
-import { Building2, MapPin, Users, Bed, Plus, Search, Pencil, Trash2, RefreshCw, Edit } from 'lucide-react';
+import { Building2, MapPin, Users, Bed, Plus, Search, Pencil, Trash2, RefreshCw, Edit, Phone } from 'lucide-react';
 import { API_CONFIG } from '../src/config/api';
 import { 
   useStandardQuery, 
@@ -22,6 +22,7 @@ import {
   API_ENDPOINTS,
   handleStandardError
 } from '../src/utils/api-standardizer';
+import { getFlagBool } from '../lib/feature-flags';
 
 export default function PropertiesPage() {
   const { user, getAuthenticatedBackend } = useAuth();
@@ -51,6 +52,7 @@ export default function PropertiesPage() {
   const [propertyForm, setPropertyForm] = useState({
     name: '',
     type: 'hotel' as 'hotel' | 'hostel' | 'resort' | 'apartment',
+    mobileNumber: '',
     address: {
       street: '',
       city: '',
@@ -70,7 +72,12 @@ export default function PropertiesPage() {
     QUERY_KEYS.PROPERTIES,
     API_ENDPOINTS.PROPERTIES,
     {
-      ...STANDARD_QUERY_CONFIGS.NORMAL,
+      // Disable legacy polling; rely on RealtimeProvider
+      refetchInterval: false,
+      staleTime: 25000,
+      gcTime: 300000,
+      refetchOnWindowFocus: false,
+      refetchOnMount: true,
     }
   );
 
@@ -161,11 +168,68 @@ export default function PropertiesPage() {
   };
 
   const handleCreateProperty = () => {
+    // Validate required fields
     if (!propertyForm.name || !propertyForm.type) {
       toast({
         variant: "destructive",
         title: "Missing fields",
-        description: "Please fill in the required fields.",
+        description: "Please fill in the property name and type.",
+      });
+      return;
+    }
+
+    // Validate mobile number
+    if (!propertyForm.mobileNumber || propertyForm.mobileNumber.trim() === '') {
+      toast({
+        variant: "destructive",
+        title: "Missing mobile number",
+        description: "Please provide a contact mobile number for the property.",
+      });
+      return;
+    }
+
+    // Validate address fields (all required)
+    if (!propertyForm.address.street || propertyForm.address.street.trim() === '') {
+      toast({
+        variant: "destructive",
+        title: "Missing address",
+        description: "Please provide the street address.",
+      });
+      return;
+    }
+
+    if (!propertyForm.address.city || propertyForm.address.city.trim() === '') {
+      toast({
+        variant: "destructive",
+        title: "Missing address",
+        description: "Please provide the city.",
+      });
+      return;
+    }
+
+    if (!propertyForm.address.state || propertyForm.address.state.trim() === '') {
+      toast({
+        variant: "destructive",
+        title: "Missing address",
+        description: "Please provide the state/province.",
+      });
+      return;
+    }
+
+    if (!propertyForm.address.country || propertyForm.address.country.trim() === '') {
+      toast({
+        variant: "destructive",
+        title: "Missing address",
+        description: "Please provide the country.",
+      });
+      return;
+    }
+
+    if (!propertyForm.address.zipCode || propertyForm.address.zipCode.trim() === '') {
+      toast({
+        variant: "destructive",
+        title: "Missing address",
+        description: "Please provide the ZIP/Postal code.",
       });
       return;
     }
@@ -177,15 +241,20 @@ export default function PropertiesPage() {
       ...(propertyForm.capacity.maxGuests && propertyForm.capacity.maxGuests !== '0' ? { maxGuests: parseInt(propertyForm.capacity.maxGuests) } : {}),
     };
     
-    // Clean up empty address fields
-    const address = Object.fromEntries(
-      Object.entries(propertyForm.address).filter(([_, value]) => value && value.trim() !== '')
-    );
+    // Build complete address object
+    const address = {
+      street: propertyForm.address.street.trim(),
+      city: propertyForm.address.city.trim(),
+      state: propertyForm.address.state.trim(),
+      country: propertyForm.address.country.trim(),
+      zipCode: propertyForm.address.zipCode.trim(),
+    };
     
     const formattedData = {
       name: propertyForm.name.trim(),
       type: propertyForm.type,
-      ...(Object.keys(address).length > 0 ? { address } : {}),
+      mobileNumber: propertyForm.mobileNumber.trim(),
+      address,
       ...(propertyForm.amenities.length > 0 ? { amenities: propertyForm.amenities } : {}),
       ...(Object.keys(capacity).length > 0 ? { capacity } : {}),
     };
@@ -217,6 +286,7 @@ export default function PropertiesPage() {
     setPropertyForm({
       name: '',
       type: 'hotel',
+      mobileNumber: '',
       address: {
         street: '',
         city: '',
@@ -248,6 +318,62 @@ export default function PropertiesPage() {
       deletePropertyMutation.mutate({ id: deletingProperty.id });
     }
   };
+
+  // Realtime: Properties events (row-level patching + minimal refetch)
+  useEffect(() => {
+    // Expose property filter if any (none on this page)
+    try { (window as any).__propertiesSelectedPropertyId = 'all'; } catch {}
+
+    const enabled = getFlagBool('PROPERTIES_REALTIME_V1', true);
+    if (!enabled) return;
+
+    const onEvents = (e: any) => {
+      const events = e?.detail?.events || [];
+      if (!Array.isArray(events) || events.length === 0) return;
+
+      let needsPropertiesRefetch = false;
+
+      for (const ev of events) {
+        const { eventType, entityId, metadata } = ev || {};
+        if (!eventType || !entityId) continue;
+
+        // For create/delete (and other complex changes), trigger a single refetch
+        if (eventType === 'property_created' || eventType === 'property_deleted') {
+          needsPropertiesRefetch = true;
+          continue;
+        }
+
+        if (eventType === 'property_updated') {
+          queryClient.setQueryData(QUERY_KEYS.PROPERTIES, (old: any) => {
+            if (!old?.properties) return old;
+            return {
+              ...old,
+              properties: old.properties.map((prop: any) =>
+                prop.id === entityId
+                  ? {
+                      ...prop,
+                      name: metadata?.name ?? prop.name,
+                      status: metadata?.status ?? prop.status,
+                      regionId: metadata?.regionId ?? prop.regionId,
+                    }
+                  : prop
+              ),
+            };
+          });
+          continue;
+        }
+      }
+
+      if (needsPropertiesRefetch) {
+        queryClient.invalidateQueries({ queryKey: QUERY_KEYS.PROPERTIES });
+      }
+    };
+
+    window.addEventListener('properties-stream-events', onEvents);
+    return () => {
+      window.removeEventListener('properties-stream-events', onEvents);
+    };
+  }, [queryClient]);
 
   if (isLoading) {
     return (
@@ -435,14 +561,26 @@ export default function PropertiesPage() {
                               </Select>
                             </div>
                           </div>
+                          <div className="space-y-2">
+                            <Label htmlFor="mobileNumber" className="text-sm font-medium text-gray-700">Mobile Number *</Label>
+                            <Input
+                              id="mobileNumber"
+                              type="tel"
+                              value={propertyForm.mobileNumber}
+                              onChange={(e) => setPropertyForm(prev => ({ ...prev, mobileNumber: e.target.value }))}
+                              placeholder="+1 234 567 8900"
+                              className="h-11 border-gray-300 focus:border-blue-500 focus:ring-blue-500"
+                            />
+                            <p className="text-xs text-gray-500">Contact number for the property</p>
+                          </div>
                         </div>
 
                 {/* Address */}
                 <div className="space-y-4">
-                  <h3 className="text-lg font-medium text-gray-900">Address</h3>
+                  <h3 className="text-lg font-medium text-gray-900">Address *</h3>
                   <div className="space-y-4">
                     <div className="space-y-2">
-                      <Label htmlFor="street" className="text-sm font-medium text-gray-700">Street Address</Label>
+                      <Label htmlFor="street" className="text-sm font-medium text-gray-700">Street Address *</Label>
                       <Input
                         id="street"
                         value={propertyForm.address.street}
@@ -456,7 +594,7 @@ export default function PropertiesPage() {
                     </div>
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                       <div className="space-y-2">
-                        <Label htmlFor="city" className="text-sm font-medium text-gray-700">City</Label>
+                        <Label htmlFor="city" className="text-sm font-medium text-gray-700">City *</Label>
                         <Input
                           id="city"
                           value={propertyForm.address.city}
@@ -469,7 +607,7 @@ export default function PropertiesPage() {
                         />
                       </div>
                       <div className="space-y-2">
-                        <Label htmlFor="state" className="text-sm font-medium text-gray-700">State/Province</Label>
+                        <Label htmlFor="state" className="text-sm font-medium text-gray-700">State/Province *</Label>
                         <Input
                           id="state"
                           value={propertyForm.address.state}
@@ -482,7 +620,7 @@ export default function PropertiesPage() {
                         />
                       </div>
                       <div className="space-y-2">
-                        <Label htmlFor="zipCode" className="text-sm font-medium text-gray-700">ZIP/Postal Code</Label>
+                        <Label htmlFor="zipCode" className="text-sm font-medium text-gray-700">ZIP/Postal Code *</Label>
                         <Input
                           id="zipCode"
                           value={propertyForm.address.zipCode}
@@ -496,7 +634,7 @@ export default function PropertiesPage() {
                       </div>
                     </div>
                     <div className="space-y-2">
-                      <Label htmlFor="country" className="text-sm font-medium text-gray-700">Country</Label>
+                      <Label htmlFor="country" className="text-sm font-medium text-gray-700">Country *</Label>
                       <Input
                         id="country"
                         value={propertyForm.address.country}
@@ -674,10 +812,18 @@ export default function PropertiesPage() {
                             </div>
                           </div>
                         </div>
-                        <CardDescription className="flex items-center text-sm text-gray-600 break-words">
-                          <MapPin className="h-4 w-4 mr-2 flex-shrink-0" />
-                          <span className="min-w-0">{formatAddress(property.addressJson)}</span>
-                        </CardDescription>
+                        <div className="space-y-1">
+                          <CardDescription className="flex items-center text-sm text-gray-600 break-words">
+                            <MapPin className="h-4 w-4 mr-2 flex-shrink-0" />
+                            <span className="min-w-0">{formatAddress(property.addressJson)}</span>
+                          </CardDescription>
+                          {property.mobileNumber && (
+                            <CardDescription className="flex items-center text-sm text-gray-600 break-words">
+                              <Phone className="h-4 w-4 mr-2 flex-shrink-0" />
+                              <span className="min-w-0">{property.mobileNumber}</span>
+                            </CardDescription>
+                          )}
+                        </div>
                       </div>
                     </div>
                   </CardHeader>
@@ -764,7 +910,7 @@ export default function PropertiesPage() {
                 <div className="space-y-6">
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div className="space-y-2">
-                      <Label className="text-sm font-medium text-gray-700">Property Name</Label>
+                      <Label className="text-sm font-medium text-gray-700">Property Name *</Label>
                       <Input
                         value={editingProperty.name}
                         onChange={(e) => setEditingProperty((prev: any) => ({ ...prev, name: e.target.value }))}
@@ -772,7 +918,7 @@ export default function PropertiesPage() {
                       />
                     </div>
                     <div className="space-y-2">
-                      <Label className="text-sm font-medium text-gray-700">Property Type</Label>
+                      <Label className="text-sm font-medium text-gray-700">Property Type *</Label>
                       <Select
                         value={editingProperty.type}
                         onValueChange={(value: any) => setEditingProperty((prev: any) => ({ ...prev, type: value }))}
@@ -788,6 +934,18 @@ export default function PropertiesPage() {
                         </SelectContent>
                       </Select>
                     </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label className="text-sm font-medium text-gray-700">Mobile Number *</Label>
+                    <Input
+                      type="tel"
+                      value={editingProperty.mobileNumber || ''}
+                      onChange={(e) => setEditingProperty((prev: any) => ({ ...prev, mobileNumber: e.target.value }))}
+                      placeholder="+1 234 567 8900"
+                      className="h-11 border-gray-300 focus:border-blue-500 focus:ring-blue-500"
+                    />
+                    <p className="text-xs text-gray-500">Contact number for the property</p>
                   </div>
 
                   <div className="space-y-2">
@@ -809,49 +967,54 @@ export default function PropertiesPage() {
 
               {/* Address */}
               <div className="space-y-4">
-                <Label>Address</Label>
+                <Label>Address *</Label>
                 <div className="space-y-2">
                   <Input
-                    placeholder="Street"
+                    placeholder="Street *"
                     value={editingProperty.addressJson?.street || ''}
                     onChange={(e) => setEditingProperty((prev: any) => ({
                       ...prev,
                       addressJson: { ...prev.addressJson, street: e.target.value }
                     }))}
+                    className="h-11 border-gray-300 focus:border-blue-500 focus:ring-blue-500"
                   />
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
                     <Input
-                      placeholder="City"
+                      placeholder="City *"
                       value={editingProperty.addressJson?.city || ''}
                       onChange={(e) => setEditingProperty((prev: any) => ({
                         ...prev,
                         addressJson: { ...prev.addressJson, city: e.target.value }
                       }))}
+                      className="h-11 border-gray-300 focus:border-blue-500 focus:ring-blue-500"
                     />
                     <Input
-                      placeholder="State/Province"
+                      placeholder="State/Province *"
                       value={editingProperty.addressJson?.state || ''}
                       onChange={(e) => setEditingProperty((prev: any) => ({
                         ...prev,
                         addressJson: { ...prev.addressJson, state: e.target.value }
                       }))}
+                      className="h-11 border-gray-300 focus:border-blue-500 focus:ring-blue-500"
                     />
                     <Input
-                      placeholder="ZIP"
+                      placeholder="ZIP *"
                       value={editingProperty.addressJson?.zipCode || ''}
                       onChange={(e) => setEditingProperty((prev: any) => ({
                         ...prev,
                         addressJson: { ...prev.addressJson, zipCode: e.target.value }
                       }))}
+                      className="h-11 border-gray-300 focus:border-blue-500 focus:ring-blue-500"
                     />
                   </div>
                   <Input
-                    placeholder="Country"
+                    placeholder="Country *"
                     value={editingProperty.addressJson?.country || ''}
                     onChange={(e) => setEditingProperty((prev: any) => ({
                       ...prev,
                       addressJson: { ...prev.addressJson, country: e.target.value }
                     }))}
+                    className="h-11 border-gray-300 focus:border-blue-500 focus:ring-blue-500"
                   />
                 </div>
               </div>
@@ -904,13 +1067,14 @@ export default function PropertiesPage() {
                       id: editingProperty.id,
                       name: editingProperty.name,
                       type: editingProperty.type,
+                      mobileNumber: editingProperty.mobileNumber,
                       status: editingProperty.status,
                       address: editingProperty.addressJson || {},
                       amenities: editingProperty.amenitiesJson?.amenities || [],
                       capacity: editingProperty.capacityJson || {},
                     });
                   }}
-                  disabled={updatePropertyMutation.isPending || !editingProperty?.name}
+                  disabled={updatePropertyMutation.isPending || !editingProperty?.name || !editingProperty?.mobileNumber}
                   className="bg-blue-600 hover:bg-blue-700"
                 >
                   {updatePropertyMutation.isPending ? 'Saving...' : 'Save Changes'}

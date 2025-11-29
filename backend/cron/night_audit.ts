@@ -3,10 +3,8 @@ import { api } from "encore.dev/api";
 import { cronDB } from "./db";
 import log from "encore.dev/log";
 
-// Night audit API endpoint
-export const nightAuditHandler = api<void, void>(
-  { expose: false, method: "POST", path: "/cron/night-audit" },
-  async () => {
+// Shared handler for night audit
+async function nightAuditHandlerImpl(): Promise<void> {
     log.info("Starting night audit process");
 
     const tx = await cronDB.begin();
@@ -59,7 +57,20 @@ export const nightAuditHandler = api<void, void>(
       log.error("Night audit failed:", error);
       throw error;
     }
-  }
+}
+
+// Night audit API endpoint
+
+// LEGACY: Runs night audit (keep for backward compatibility)
+export const nightAuditHandler = api<{}, void>(
+  { expose: false, method: "POST", path: "/cron/night-audit" },
+  nightAuditHandlerImpl
+);
+
+// V1: Runs night audit
+export const nightAuditHandlerV1 = api<{}, void>(
+  { expose: false, method: "POST", path: "/v1/system/cron/night-audit" },
+  nightAuditHandlerImpl
 );
 
 // Night audit cron job - runs daily at 5 AM

@@ -47,6 +47,7 @@
     ],
     "expose_headers": [
       "Content-Length"
-    ]
+    ],
+    "max_age_seconds": 7200
   }
 }

@@ -54,6 +54,20 @@ export class MigrationManager {
     // For now, we'll define the known migrations
     this.migrations = [
       {
+        version: '1',
+        name: 'ensure_revenues_table',
+        up_sql: 'DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = \'revenues\') THEN RAISE EXCEPTION \'revenues table does not exist. Auth service migrations must run first.\'; END IF; END $$;',
+        down_sql: '-- No rollback needed - table managed by auth service',
+        file: '1_create_revenues_table.up.sql'
+      },
+      {
+        version: '2',
+        name: 'ensure_expenses_table',
+        up_sql: 'DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = \'expenses\') THEN RAISE EXCEPTION \'expenses table does not exist. Auth service migrations must run first.\'; END IF; END $$;',
+        down_sql: '-- No rollback needed - table managed by auth service',
+        file: '2_create_expenses_table.up.sql'
+      },
+      {
         version: '3',
         name: 'add_receipt_file_id',
         up_sql: 'ALTER TABLE revenues ADD COLUMN receipt_file_id INTEGER;\nALTER TABLE expenses ADD COLUMN receipt_file_id INTEGER;',

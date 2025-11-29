@@ -3,6 +3,8 @@ import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '../../contexts/AuthContext';
 import { useTheme } from '../../contexts/ThemeContext';
 import { formatCurrency as formatCurrencyUtil } from '../../lib/currency';
+import { safeApiCall, safeDataAccess } from '../../utils/safeApiCall';
+import { ErrorBoundary } from '../ErrorBoundary';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './card';
 import { Button } from './button';
 import { Badge } from './badge';
@@ -97,7 +99,7 @@ interface YearlyReport {
   totalMonths: number;
 }
 
-export function MonthlyYearlyReports() {
+function MonthlyYearlyReportsComponent() {
   const { getAuthenticatedBackend } = useAuth();
   const { theme } = useTheme();
   
@@ -121,19 +123,47 @@ export function MonthlyYearlyReports() {
       const backend = getAuthenticatedBackend();
       const { startDate, endDate } = getQuarterDateRange(selectedQuarter, parseInt(selectedYear));
       
-      const dailyReports = await backend.reports.getDailyReports({
-        startDate,
-        endDate,
-        propertyId: selectedPropertyId && selectedPropertyId !== 'all' ? parseInt(selectedPropertyId) : undefined,
-      });
+      const dailyReports = await safeApiCall(
+        () => backend.reports.getDailyReports({
+          startDate,
+          endDate,
+          propertyId: selectedPropertyId && selectedPropertyId !== 'all' ? parseInt(selectedPropertyId) : undefined,
+        }),
+        { maxRetries: 3, baseDelay: 1000 }
+      );
 
-      // Calculate quarterly totals
-      const totalOpeningBalanceCents = dailyReports.reports.reduce((sum: any, report: any) => sum + report.openingBalanceCents, 0);
-      const totalCashReceivedCents = dailyReports.reports.reduce((sum: any, report: any) => sum + report.cashReceivedCents, 0);
-      const totalBankReceivedCents = dailyReports.reports.reduce((sum: any, report: any) => sum + report.bankReceivedCents, 0);
-      const totalCashExpensesCents = dailyReports.reports.reduce((sum: any, report: any) => sum + report.cashExpensesCents, 0);
-      const totalBankExpensesCents = dailyReports.reports.reduce((sum: any, report: any) => sum + report.bankExpensesCents, 0);
-      const totalClosingBalanceCents = dailyReports.reports.reduce((sum: any, report: any) => sum + report.closingBalanceCents, 0);
+      // Safe data access with comprehensive validation
+      const reports = safeDataAccess(dailyReports, 'reports', []);
+      
+      if (!Array.isArray(reports) || reports.length === 0) {
+        console.warn('No reports data available for the selected period');
+        return {
+          quarter: selectedQuarter,
+          year: selectedYear,
+          propertyId: selectedPropertyId && selectedPropertyId !== 'all' ? parseInt(selectedPropertyId) : undefined,
+          propertyName: selectedPropertyId && selectedPropertyId !== 'all' && properties?.properties.find((p: any) => p.id.toString() === selectedPropertyId)?.name,
+          totalOpeningBalanceCents: 0,
+          totalCashReceivedCents: 0,
+          totalBankReceivedCents: 0,
+          totalReceivedCents: 0,
+          totalCashExpensesCents: 0,
+          totalBankExpensesCents: 0,
+          totalExpensesCents: 0,
+          totalClosingBalanceCents: 0,
+          netCashFlowCents: 0,
+          averageDailyBalanceCents: 0,
+          daysWithTransactions: 0,
+          totalDays: 0,
+        };
+      }
+      
+      // Calculate quarterly totals with safe access
+      const totalOpeningBalanceCents = reports.reduce((sum: any, report: any) => sum + (report?.openingBalanceCents || 0), 0);
+      const totalCashReceivedCents = reports.reduce((sum: any, report: any) => sum + (report?.cashReceivedCents || 0), 0);
+      const totalBankReceivedCents = reports.reduce((sum: any, report: any) => sum + (report?.bankReceivedCents || 0), 0);
+      const totalCashExpensesCents = reports.reduce((sum: any, report: any) => sum + (report?.cashExpensesCents || 0), 0);
+      const totalBankExpensesCents = reports.reduce((sum: any, report: any) => sum + (report?.bankExpensesCents || 0), 0);
+      const totalClosingBalanceCents = reports.reduce((sum: any, report: any) => sum + (report?.closingBalanceCents || 0), 0);
 
       const quarterlyReport: QuarterlyReport = {
         quarter: selectedQuarter,
@@ -149,19 +179,51 @@ export function MonthlyYearlyReports() {
         totalExpensesCents: totalCashExpensesCents + totalBankExpensesCents,
         totalClosingBalanceCents,
         netCashFlowCents: (totalCashReceivedCents + totalBankReceivedCents) - (totalCashExpensesCents + totalBankExpensesCents),
-        averageDailyBalanceCents: dailyReports.reports.length > 0 ? totalClosingBalanceCents / dailyReports.reports.length : 0,
-        daysWithTransactions: dailyReports.reports.filter((report: any) => report.transactions.length > 0).length,
-        totalDays: dailyReports.reports.length,
+        averageDailyBalanceCents: reports.length > 0 ? totalClosingBalanceCents / reports.length : 0,
+        daysWithTransactions: reports.filter((report: any) => (report?.transactions?.length || 0) > 0).length,
+        totalDays: reports.length,
       };
 
       return quarterlyReport;
     },
     enabled: !!selectedYear && !!selectedQuarter,
-    refetchInterval: 30000, // Refresh every 30 seconds
-    staleTime: 0,
-    gcTime: 0,
-    refetchOnWindowFocus: true,
+    refetchInterval: false, // Rely on realtime events from RealtimeProvider
+    staleTime: 25000,
+    gcTime: 300000,
     refetchOnMount: true,
+    onSuccess: () => {
+      try {
+        const last = (window as any).__reportsLastInvalidateAt;
+        if (!last) return;
+        const key = `quarterly|${selectedYear}|${selectedQuarter}|${selectedPropertyId || 'all'}`;
+        const started = last[key];
+        if (started) {
+          const ms = Date.now() - started;
+          if (process.env.NODE_ENV !== 'production') {
+            console.log('[ReportsTelemetry] quarterly refetch duration ms:', ms, { year: selectedYear, quarter: selectedQuarter, propertyId: selectedPropertyId || 'all' });
+          }
+          if (Math.random() < 0.02) {
+            fetch(`${API_CONFIG.BASE_URL}/telemetry/client`, {
+              method: 'POST',
+              headers: {
+                'Authorization': `Bearer ${localStorage.getItem('accessToken') || ''}`,
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                sampleRate: 0.02,
+                events: [{
+                  type: 'reports_refetch_ms',
+                  ts: new Date().toISOString(),
+                  scope: 'quarterly',
+                  ms,
+                  year: selectedYear, quarter: selectedQuarter, propertyId: selectedPropertyId || 'all',
+                }],
+              }),
+            }).catch(() => {});
+          }
+        }
+      } catch {}
+    }
   });
 
   // Get yearly report
@@ -172,19 +234,46 @@ export function MonthlyYearlyReports() {
       const startDate = `${selectedYear}-01-01`;
       const endDate = `${selectedYear}-12-31`;
       
-      const dailyReports = await backend.reports.getDailyReports({
-        startDate,
-        endDate,
-        propertyId: selectedPropertyId && selectedPropertyId !== 'all' ? parseInt(selectedPropertyId) : undefined,
-      });
+      const dailyReports = await safeApiCall(
+        () => backend.reports.getDailyReports({
+          startDate,
+          endDate,
+          propertyId: selectedPropertyId && selectedPropertyId !== 'all' ? parseInt(selectedPropertyId) : undefined,
+        }),
+        { maxRetries: 3, baseDelay: 1000 }
+      );
 
-      // Calculate yearly totals
-      const totalOpeningBalanceCents = dailyReports.reports.reduce((sum: any, report: any) => sum + report.openingBalanceCents, 0);
-      const totalCashReceivedCents = dailyReports.reports.reduce((sum: any, report: any) => sum + report.cashReceivedCents, 0);
-      const totalBankReceivedCents = dailyReports.reports.reduce((sum: any, report: any) => sum + report.bankReceivedCents, 0);
-      const totalCashExpensesCents = dailyReports.reports.reduce((sum: any, report: any) => sum + report.cashExpensesCents, 0);
-      const totalBankExpensesCents = dailyReports.reports.reduce((sum: any, report: any) => sum + report.bankExpensesCents, 0);
-      const totalClosingBalanceCents = dailyReports.reports.reduce((sum: any, report: any) => sum + report.closingBalanceCents, 0);
+      // Safe data access with comprehensive validation
+      const reports = safeDataAccess(dailyReports, 'reports', []);
+      
+      if (!Array.isArray(reports) || reports.length === 0) {
+        console.warn('No reports data available for the selected year');
+        return {
+          year: selectedYear,
+          propertyId: selectedPropertyId ? parseInt(selectedPropertyId) : undefined,
+          propertyName: selectedPropertyId && properties?.properties.find((p: any) => p.id.toString() === selectedPropertyId)?.name,
+          totalOpeningBalanceCents: 0,
+          totalCashReceivedCents: 0,
+          totalBankReceivedCents: 0,
+          totalReceivedCents: 0,
+          totalCashExpensesCents: 0,
+          totalBankExpensesCents: 0,
+          totalExpensesCents: 0,
+          totalClosingBalanceCents: 0,
+          netCashFlowCents: 0,
+          averageMonthlyBalanceCents: 0,
+          monthsWithTransactions: 0,
+          totalMonths: 12,
+        };
+      }
+
+      // Calculate yearly totals with safe access
+      const totalOpeningBalanceCents = reports.reduce((sum: any, report: any) => sum + (report?.openingBalanceCents || 0), 0);
+      const totalCashReceivedCents = reports.reduce((sum: any, report: any) => sum + (report?.cashReceivedCents || 0), 0);
+      const totalBankReceivedCents = reports.reduce((sum: any, report: any) => sum + (report?.bankReceivedCents || 0), 0);
+      const totalCashExpensesCents = reports.reduce((sum: any, report: any) => sum + (report?.cashExpensesCents || 0), 0);
+      const totalBankExpensesCents = reports.reduce((sum: any, report: any) => sum + (report?.bankExpensesCents || 0), 0);
+      const totalClosingBalanceCents = reports.reduce((sum: any, report: any) => sum + (report?.closingBalanceCents || 0), 0);
 
       const yearlyReport: YearlyReport = {
         year: selectedYear,
@@ -199,19 +288,51 @@ export function MonthlyYearlyReports() {
         totalExpensesCents: totalCashExpensesCents + totalBankExpensesCents,
         totalClosingBalanceCents,
         netCashFlowCents: (totalCashReceivedCents + totalBankReceivedCents) - (totalCashExpensesCents + totalBankExpensesCents),
-        averageMonthlyBalanceCents: dailyReports.reports.length > 0 ? totalClosingBalanceCents / 12 : 0,
-        monthsWithTransactions: new Set(dailyReports.reports.map((report: any) => report.date.substring(0, 7))).size,
+        averageMonthlyBalanceCents: reports.length > 0 ? totalClosingBalanceCents / 12 : 0,
+        monthsWithTransactions: new Set(reports.map((report: any) => report?.date?.substring(0, 7) || '')).size,
         totalMonths: 12,
       };
 
       return yearlyReport;
     },
     enabled: !!selectedYear,
-    refetchInterval: 30000, // Refresh every 30 seconds
-    staleTime: 0,
-    gcTime: 0,
-    refetchOnWindowFocus: true,
+    refetchInterval: false, // Rely on realtime events from RealtimeProvider
+    staleTime: 25000,
+    gcTime: 300000,
     refetchOnMount: true,
+    onSuccess: () => {
+      try {
+        const last = (window as any).__reportsLastInvalidateAt;
+        if (!last) return;
+        const key = `yearly|${selectedYear}|${selectedPropertyId || 'all'}`;
+        const started = last[key];
+        if (started) {
+          const ms = Date.now() - started;
+          if (process.env.NODE_ENV !== 'production') {
+            console.log('[ReportsTelemetry] yearly refetch duration ms:', ms, { year: selectedYear, propertyId: selectedPropertyId || 'all' });
+          }
+          if (Math.random() < 0.02) {
+            fetch(`${API_CONFIG.BASE_URL}/telemetry/client`, {
+              method: 'POST',
+              headers: {
+                'Authorization': `Bearer ${localStorage.getItem('accessToken') || ''}`,
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                sampleRate: 0.02,
+                events: [{
+                  type: 'reports_refetch_ms',
+                  ts: new Date().toISOString(),
+                  scope: 'yearly',
+                  ms,
+                  year: selectedYear, propertyId: selectedPropertyId || 'all',
+                }],
+              }),
+            }).catch(() => {});
+          }
+        }
+      } catch {}
+    }
   });
 
   const formatCurrency = (amountCents: number) => {
@@ -837,5 +958,13 @@ export function MonthlyYearlyReports() {
         </FinanceTabs>
       </div>
     </div>
+  );
+}
+
+export function MonthlyYearlyReports() {
+  return (
+    <ErrorBoundary>
+      <MonthlyYearlyReportsComponent />
+    </ErrorBoundary>
   );
 }

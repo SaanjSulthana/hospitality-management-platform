@@ -16,67 +16,63 @@ import type {
 } from "./audit-types";
 import log from "encore.dev/log";
 
+const normalizeAuditDate = (value?: string): Date | undefined => {
+  if (!value) return undefined;
+
+  const direct = new Date(value);
+  if (!Number.isNaN(direct.getTime())) {
+    return direct;
+  }
+
+  const normalized = value.replace(/\//g, "-");
+  const segments = normalized.split("-");
+  if (segments.length === 3) {
+    const [a, b, c] = segments;
+    const candidate =
+      a.length === 4
+        ? `${a}-${b}-${c}`
+        : `${c}-${b.padStart(2, "0")}-${a.padStart(2, "0")}`;
+
+    const parsed = new Date(candidate);
+    if (!Number.isNaN(parsed.getTime())) {
+      return parsed;
+    }
+  }
+
+  log.warn("Unable to parse audit log date filter", { value });
+  return undefined;
+};
+
 /**
  * List audit logs with filtering
  */
-export const listAuditLogs = api(
-  { expose: true, method: "GET", path: "/guest-checkin/audit-logs", auth: true },
-  async (req: ListAuditLogsRequest): Promise<ListAuditLogsResponse> => {
+async function listAuditLogsHandler(req: ListAuditLogsRequest): Promise<ListAuditLogsResponse> {
     const authData = getAuthData()!;
     requireRole("ADMIN", "MANAGER", "OWNER")(authData);
 
     log.info("Listing audit logs", { userId: authData.userID, filters: req });
 
-    // Log this query action
-    await createAuditLog({
-      actionType: "query_audit_logs",
-      resourceType: "audit_log",
-      actionDetails: { filters: req },
-    });
+    const startDate = normalizeAuditDate(req.startDate);
+    const endDate = normalizeAuditDate(req.endDate);
+
+    // Note: We don't log "query_audit_logs" to avoid noise in the audit trail
+    // Querying audit logs is a read-only operation and doesn't need to be audited
 
     try {
       const limit = Math.min(req.limit || 50, 200);
       const offset = req.offset || 0;
 
-      // Build WHERE clause
-      let conditions = `org_id = ${authData.orgId}`;
-
-      if (req.startDate) {
-        conditions += ` AND timestamp >= '${req.startDate}'::timestamptz`;
-      }
-      if (req.endDate) {
-        conditions += ` AND timestamp <= '${req.endDate}'::timestamptz`;
-      }
-      if (req.userId) {
-        conditions += ` AND user_id = ${req.userId}`;
-      }
-      if (req.guestCheckInId) {
-        conditions += ` AND guest_checkin_id = ${req.guestCheckInId}`;
-      }
-      if (req.actionType) {
-        conditions += ` AND action_type = '${req.actionType}'`;
-      }
-      if (req.resourceType) {
-        conditions += ` AND resource_type = '${req.resourceType}'`;
-      }
-      if (req.success !== undefined) {
-        conditions += ` AND success = ${req.success}`;
-      }
-
-      // Note: Due to Encore's static SQL requirements, complex filtering is limited
-      // For full filter support, consider using a different query approach or post-filtering
-      
       // Get total count - simplified to only date filters
       let countResult: any;
       let logs: any[];
       
-      if (req.startDate && req.endDate) {
+      if (startDate && endDate) {
         countResult = await guestCheckinDB.queryRow`
           SELECT COUNT(*) as total
           FROM guest_audit_logs
           WHERE org_id = ${authData.orgId}
-            AND timestamp >= ${req.startDate}::timestamptz
-            AND timestamp <= ${req.endDate}::timestamptz
+            AND timestamp >= ${startDate}
+            AND timestamp <= ${endDate}
         `;
         
         logs = await guestCheckinDB.queryAll`
@@ -87,17 +83,17 @@ export const listAuditLogs = api(
             action_details, success, error_message, duration_ms
           FROM guest_audit_logs
           WHERE org_id = ${authData.orgId}
-            AND timestamp >= ${req.startDate}::timestamptz
-            AND timestamp <= ${req.endDate}::timestamptz
+            AND timestamp >= ${startDate}
+            AND timestamp <= ${endDate}
           ORDER BY timestamp DESC
           LIMIT ${limit} OFFSET ${offset}
         `;
-      } else if (req.startDate) {
+      } else if (startDate) {
         countResult = await guestCheckinDB.queryRow`
           SELECT COUNT(*) as total
           FROM guest_audit_logs
           WHERE org_id = ${authData.orgId}
-            AND timestamp >= ${req.startDate}::timestamptz
+            AND timestamp >= ${startDate}
         `;
         
         logs = await guestCheckinDB.queryAll`
@@ -108,16 +104,16 @@ export const listAuditLogs = api(
             action_details, success, error_message, duration_ms
           FROM guest_audit_logs
           WHERE org_id = ${authData.orgId}
-            AND timestamp >= ${req.startDate}::timestamptz
+            AND timestamp >= ${startDate}
           ORDER BY timestamp DESC
           LIMIT ${limit} OFFSET ${offset}
         `;
-      } else if (req.endDate) {
+      } else if (endDate) {
         countResult = await guestCheckinDB.queryRow`
           SELECT COUNT(*) as total
           FROM guest_audit_logs
           WHERE org_id = ${authData.orgId}
-            AND timestamp <= ${req.endDate}::timestamptz
+            AND timestamp <= ${endDate}
         `;
         
         logs = await guestCheckinDB.queryAll`
@@ -128,7 +124,7 @@ export const listAuditLogs = api(
             action_details, success, error_message, duration_ms
           FROM guest_audit_logs
           WHERE org_id = ${authData.orgId}
-            AND timestamp <= ${req.endDate}::timestamptz
+            AND timestamp <= ${endDate}
           ORDER BY timestamp DESC
           LIMIT ${limit} OFFSET ${offset}
         `;
@@ -216,14 +212,23 @@ export const listAuditLogs = api(
       throw APIError.internal("Failed to list audit logs");
     }
   }
+
+// Legacy endpoint
+export const listAuditLogs = api<ListAuditLogsRequest, ListAuditLogsResponse>(
+  { expose: true, method: "GET", path: "/guest-checkin/audit-logs", auth: true },
+  listAuditLogsHandler
+);
+
+// V1 endpoint
+export const listAuditLogsV1 = api<ListAuditLogsRequest, ListAuditLogsResponse>(
+  { expose: true, method: "GET", path: "/v1/guest-checkin/audit-logs", auth: true },
+  listAuditLogsHandler
 );
 
 /**
  * Get detailed audit log entry
  */
-export const getAuditLogDetail = api(
-  { expose: true, method: "GET", path: "/guest-checkin/audit-logs/:logId", auth: true },
-  async ({ logId }: { logId: number }): Promise<AuditLogDetailResponse> => {
+async function getAuditLogDetailHandler({ logId }: { logId: number }): Promise<AuditLogDetailResponse> {
     const authData = getAuthData()!;
     requireRole("ADMIN", "MANAGER", "OWNER")(authData);
 
@@ -281,18 +286,30 @@ export const getAuditLogDetail = api(
       throw APIError.internal("Failed to get audit log details");
     }
   }
+
+// Legacy endpoint
+export const getAuditLogDetail = api<{ logId: number }, AuditLogDetailResponse>(
+  { expose: true, method: "GET", path: "/guest-checkin/audit-logs/:logId", auth: true },
+  getAuditLogDetailHandler
+);
+
+// V1 endpoint
+export const getAuditLogDetailV1 = api<{ logId: number }, AuditLogDetailResponse>(
+  { expose: true, method: "GET", path: "/v1/guest-checkin/audit-logs/:logId", auth: true },
+  getAuditLogDetailHandler
 );
 
 /**
  * Get audit summary for security monitoring
  */
-export const getAuditSummary = api(
-  { expose: true, method: "GET", path: "/guest-checkin/audit-logs/summary", auth: true },
-  async (req: { startDate?: string; endDate?: string }): Promise<AuditSummaryResponse> => {
+async function getAuditSummaryHandler(req: { startDate?: string; endDate?: string }): Promise<AuditSummaryResponse> {
     const authData = getAuthData()!;
     requireRole("ADMIN", "OWNER")(authData);
 
     log.info("Getting audit summary", { userId: authData.userID });
+
+    const startDate = normalizeAuditDate(req.startDate);
+    const endDate = normalizeAuditDate(req.endDate);
 
     try {
       // Queries simplified for Encore's static SQL requirements
@@ -302,21 +319,21 @@ export const getAuditSummary = api(
       let unauthorizedResult: any;
       let failedResult: any;
       
-      if (req.startDate && req.endDate) {
+      if (startDate && endDate) {
         totalResult = await guestCheckinDB.queryRow`
           SELECT COUNT(*) as total
           FROM guest_audit_logs
           WHERE org_id = ${authData.orgId}
-            AND timestamp >= ${req.startDate}::timestamptz
-            AND timestamp <= ${req.endDate}::timestamptz
+            AND timestamp >= ${startDate}
+            AND timestamp <= ${endDate}
         `;
         
         byActionResults = await guestCheckinDB.queryAll`
           SELECT action_type, COUNT(*) as count
           FROM guest_audit_logs
           WHERE org_id = ${authData.orgId}
-            AND timestamp >= ${req.startDate}::timestamptz
-            AND timestamp <= ${req.endDate}::timestamptz
+            AND timestamp >= ${startDate}
+            AND timestamp <= ${endDate}
           GROUP BY action_type
           ORDER BY count DESC
         `;
@@ -328,8 +345,8 @@ export const getAuditSummary = api(
             MODE() WITHIN GROUP (ORDER BY action_type) as most_common_action
           FROM guest_audit_logs
           WHERE org_id = ${authData.orgId}
-            AND timestamp >= ${req.startDate}::timestamptz
-            AND timestamp <= ${req.endDate}::timestamptz
+            AND timestamp >= ${startDate}
+            AND timestamp <= ${endDate}
           GROUP BY user_id, user_email
           ORDER BY total_actions DESC
           LIMIT 10
@@ -339,8 +356,8 @@ export const getAuditSummary = api(
           SELECT COUNT(*) as count
           FROM guest_audit_logs
           WHERE org_id = ${authData.orgId}
-            AND timestamp >= ${req.startDate}::timestamptz
-            AND timestamp <= ${req.endDate}::timestamptz
+            AND timestamp >= ${startDate}
+            AND timestamp <= ${endDate}
             AND action_type = 'unauthorized_access_attempt'
         `;
         
@@ -348,23 +365,23 @@ export const getAuditSummary = api(
           SELECT COUNT(*) as count
           FROM guest_audit_logs
           WHERE org_id = ${authData.orgId}
-            AND timestamp >= ${req.startDate}::timestamptz
-            AND timestamp <= ${req.endDate}::timestamptz
+            AND timestamp >= ${startDate}
+            AND timestamp <= ${endDate}
             AND success = FALSE
         `;
-      } else if (req.startDate) {
+      } else if (startDate) {
         totalResult = await guestCheckinDB.queryRow`
           SELECT COUNT(*) as total
           FROM guest_audit_logs
           WHERE org_id = ${authData.orgId}
-            AND timestamp >= ${req.startDate}::timestamptz
+            AND timestamp >= ${startDate}
         `;
         
         byActionResults = await guestCheckinDB.queryAll`
           SELECT action_type, COUNT(*) as count
           FROM guest_audit_logs
           WHERE org_id = ${authData.orgId}
-            AND timestamp >= ${req.startDate}::timestamptz
+            AND timestamp >= ${startDate}
           GROUP BY action_type
           ORDER BY count DESC
         `;
@@ -376,7 +393,7 @@ export const getAuditSummary = api(
             MODE() WITHIN GROUP (ORDER BY action_type) as most_common_action
           FROM guest_audit_logs
           WHERE org_id = ${authData.orgId}
-            AND timestamp >= ${req.startDate}::timestamptz
+            AND timestamp >= ${startDate}
           GROUP BY user_id, user_email
           ORDER BY total_actions DESC
           LIMIT 10
@@ -386,7 +403,7 @@ export const getAuditSummary = api(
           SELECT COUNT(*) as count
           FROM guest_audit_logs
           WHERE org_id = ${authData.orgId}
-            AND timestamp >= ${req.startDate}::timestamptz
+            AND timestamp >= ${startDate}
             AND action_type = 'unauthorized_access_attempt'
         `;
         
@@ -394,22 +411,22 @@ export const getAuditSummary = api(
           SELECT COUNT(*) as count
           FROM guest_audit_logs
           WHERE org_id = ${authData.orgId}
-            AND timestamp >= ${req.startDate}::timestamptz
+            AND timestamp >= ${startDate}
             AND success = FALSE
         `;
-      } else if (req.endDate) {
+      } else if (endDate) {
         totalResult = await guestCheckinDB.queryRow`
           SELECT COUNT(*) as total
           FROM guest_audit_logs
           WHERE org_id = ${authData.orgId}
-            AND timestamp <= ${req.endDate}::timestamptz
+            AND timestamp <= ${endDate}
         `;
         
         byActionResults = await guestCheckinDB.queryAll`
           SELECT action_type, COUNT(*) as count
           FROM guest_audit_logs
           WHERE org_id = ${authData.orgId}
-            AND timestamp <= ${req.endDate}::timestamptz
+            AND timestamp <= ${endDate}
           GROUP BY action_type
           ORDER BY count DESC
         `;
@@ -421,7 +438,7 @@ export const getAuditSummary = api(
             MODE() WITHIN GROUP (ORDER BY action_type) as most_common_action
           FROM guest_audit_logs
           WHERE org_id = ${authData.orgId}
-            AND timestamp <= ${req.endDate}::timestamptz
+            AND timestamp <= ${endDate}
           GROUP BY user_id, user_email
           ORDER BY total_actions DESC
           LIMIT 10
@@ -431,7 +448,7 @@ export const getAuditSummary = api(
           SELECT COUNT(*) as count
           FROM guest_audit_logs
           WHERE org_id = ${authData.orgId}
-            AND timestamp <= ${req.endDate}::timestamptz
+            AND timestamp <= ${endDate}
             AND action_type = 'unauthorized_access_attempt'
         `;
         
@@ -439,7 +456,7 @@ export const getAuditSummary = api(
           SELECT COUNT(*) as count
           FROM guest_audit_logs
           WHERE org_id = ${authData.orgId}
-            AND timestamp <= ${req.endDate}::timestamptz
+            AND timestamp <= ${endDate}
             AND success = FALSE
         `;
       } else {
@@ -511,18 +528,30 @@ export const getAuditSummary = api(
       throw APIError.internal("Failed to get audit summary");
     }
   }
+
+// Legacy endpoint
+export const getAuditSummary = api<{}, AuditSummaryResponse>(
+  { expose: true, method: "GET", path: "/guest-checkin/audit-logs/summary", auth: true },
+  getAuditSummaryHandler
+);
+
+// V1 endpoint
+export const getAuditSummaryV1 = api<{}, AuditSummaryResponse>(
+  { expose: true, method: "GET", path: "/v1/guest-checkin/audit-logs/summary", auth: true },
+  getAuditSummaryHandler
 );
 
 /**
  * Export audit logs to CSV
  */
-export const exportAuditLogs = api(
-  { expose: true, method: "GET", path: "/guest-checkin/audit-logs/export", auth: true },
-  async (req: ListAuditLogsRequest): Promise<{ csv: string; filename: string }> => {
+async function exportAuditLogsHandler(req: ListAuditLogsRequest): Promise<{ csv: string; filename: string }> {
     const authData = getAuthData()!;
     requireRole("ADMIN", "OWNER")(authData);
 
     log.info("Exporting audit logs", { userId: authData.userID });
+
+    const startDate = normalizeAuditDate(req.startDate);
+    const endDate = normalizeAuditDate(req.endDate);
 
     // Log export action
     await createAuditLog({
@@ -535,37 +564,37 @@ export const exportAuditLogs = api(
       // Queries simplified for Encore's static SQL requirements
       let logs: any[];
       
-      if (req.startDate && req.endDate) {
+      if (startDate && endDate) {
         logs = await guestCheckinDB.queryAll`
           SELECT 
             timestamp, user_email, user_role, action_type, resource_type,
             resource_id, guest_name, ip_address, success, duration_ms
           FROM guest_audit_logs
           WHERE org_id = ${authData.orgId}
-            AND timestamp >= ${req.startDate}::timestamptz
-            AND timestamp <= ${req.endDate}::timestamptz
+            AND timestamp >= ${startDate}
+            AND timestamp <= ${endDate}
           ORDER BY timestamp DESC
           LIMIT 10000
         `;
-      } else if (req.startDate) {
+      } else if (startDate) {
         logs = await guestCheckinDB.queryAll`
           SELECT 
             timestamp, user_email, user_role, action_type, resource_type,
             resource_id, guest_name, ip_address, success, duration_ms
           FROM guest_audit_logs
           WHERE org_id = ${authData.orgId}
-            AND timestamp >= ${req.startDate}::timestamptz
+            AND timestamp >= ${startDate}
           ORDER BY timestamp DESC
           LIMIT 10000
         `;
-      } else if (req.endDate) {
+      } else if (endDate) {
         logs = await guestCheckinDB.queryAll`
           SELECT 
             timestamp, user_email, user_role, action_type, resource_type,
             resource_id, guest_name, ip_address, success, duration_ms
           FROM guest_audit_logs
           WHERE org_id = ${authData.orgId}
-            AND timestamp <= ${req.endDate}::timestamptz
+            AND timestamp <= ${endDate}
           ORDER BY timestamp DESC
           LIMIT 10000
         `;
@@ -624,5 +653,16 @@ export const exportAuditLogs = api(
       throw APIError.internal("Failed to export audit logs");
     }
   }
+
+// Legacy endpoint
+export const exportAuditLogs = api<ListAuditLogsRequest, { csv: string; filename: string }>(
+  { expose: true, method: "GET", path: "/guest-checkin/audit-logs/export", auth: true },
+  exportAuditLogsHandler
+);
+
+// V1 endpoint
+export const exportAuditLogsV1 = api<ListAuditLogsRequest, { csv: string; filename: string }>(
+  { expose: true, method: "GET", path: "/v1/guest-checkin/audit-logs/export", auth: true },
+  exportAuditLogsHandler
 );
 

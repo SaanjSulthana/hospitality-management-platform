@@ -61,10 +61,8 @@ export interface ListScheduleChangeRequestsResponse {
   };
 }
 
-// Lists schedule change requests with filtering and pagination
-export const listScheduleChangeRequests = api<ListScheduleChangeRequestsRequest, ListScheduleChangeRequestsResponse>(
-  { auth: true, expose: true, method: "GET", path: "/staff/schedule-change-requests" },
-  async (req) => {
+// Shared handler for listing schedule change requests
+async function listScheduleChangeRequestsHandler(req: ListScheduleChangeRequestsRequest): Promise<ListScheduleChangeRequestsResponse> {
     const authData = getAuthData();
     if (!authData) {
       throw APIError.unauthenticated("Authentication required");
@@ -320,5 +318,16 @@ export const listScheduleChangeRequests = api<ListScheduleChangeRequestsRequest,
       console.error('List schedule change requests error:', error);
       throw APIError.internal("Failed to fetch schedule change requests");
     }
-  }
+}
+
+// LEGACY: Lists schedule change requests (keep for backward compatibility)
+export const listScheduleChangeRequests = api<ListScheduleChangeRequestsRequest, ListScheduleChangeRequestsResponse>(
+  { auth: true, expose: true, method: "GET", path: "/staff/schedule-change-requests" },
+  listScheduleChangeRequestsHandler
+);
+
+// V1: Lists schedule change requests
+export const listScheduleChangeRequestsV1 = api<ListScheduleChangeRequestsRequest, ListScheduleChangeRequestsResponse>(
+  { auth: true, expose: true, method: "GET", path: "/v1/staff/schedule-change-requests" },
+  listScheduleChangeRequestsHandler
 );

@@ -1,0 +1,2481 @@
+# Encore Framework: Advanced Architecture Guide for Complex Projects
+## The Definitive Knowledge Base for Production Systems
+
+> **Target Audience:** Senior/Staff Engineers, Solutions Architects, Technical Leads  
+> **Prerequisites:** Strong understanding of distributed systems, microservices, Go/TypeScript, cloud infrastructure  
+> **Focus:** Enterprise-grade patterns, advanced architecture, production deployment strategies
+
+---
+
+## Table of Contents
+
+1. [Advanced System Architecture](#advanced-system-architecture)
+2. [Domain-Driven Design with Encore](#domain-driven-design-with-encore)
+3. [Event Sourcing & CQRS Implementation](#event-sourcing--cqrs-implementation)
+4. [Saga Pattern for Distributed Transactions](#saga-pattern-for-distributed-transactions)
+5. [Multi-Tenancy Architecture](#multi-tenancy-architecture)
+6. [Resilience Patterns](#resilience-patterns)
+7. [Performance Optimization at Scale](#performance-optimization-at-scale)
+8. [API Strategy & Versioning](#api-strategy--versioning)
+9. [Advanced Data Patterns](#advanced-data-patterns)
+10. [Production Deployment Architecture](#production-deployment-architecture)
+11. [Observability & Monitoring](#observability--monitoring)
+12. [Security Hardening](#security-hardening)
+13. [Real-World Architecture Examples](#real-world-architecture-examples)
+
+---
+
+## Advanced System Architecture
+
+### Bounded Context Modeling
+
+Encore's service-based architecture maps perfectly to Domain-Driven Design's bounded contexts. Structure your system around business capabilities:
+
+```
+/financial-platform
+├── encore.app
+│
+├── identity/                    # Identity & Access Context
+│   ├── auth/                    # Authentication Service
+│   ├── users/                   # User Management Service
+│   └── permissions/             # Authorization Service
+│
+├── accounts/                    # Account Management Context
+│   ├── onboarding/             # Customer Onboarding Service
+│   ├── profiles/               # Account Profile Service
+│   └── verification/           # KYC/Verification Service
+│
+├── payments/                    # Payment Processing Context
+│   ├── transactions/           # Transaction Service
+│   ├── settlement/             # Settlement Service
+│   ├── fraud/                  # Fraud Detection Service
+│   └── reconciliation/         # Reconciliation Service
+│
+├── ledger/                      # Financial Ledger Context
+│   ├── accounts/               # Ledger Account Service
+│   ├── entries/                # Double-Entry Bookkeeping Service
+│   └── reporting/              # Financial Reporting Service
+│
+├── notifications/               # Notification Context
+│   ├── engine/                 # Notification Engine Service
+│   ├── templates/              # Template Management Service
+│   └── delivery/               # Delivery Service (Email/SMS/Push)
+│
+└── shared/                      # Shared Kernel
+    ├── types/                   # Common Types
+    ├── errors/                  # Error Definitions
+    └── events/                  # Domain Events
+```
+
+### Service Communication Patterns
+
+#### 1. Synchronous Request-Response (for immediate consistency)
+
+```go
+// payments/transactions/service.go
+package transactions
+
+import (
+    "context"
+    "encore.app/accounts/profiles"
+    "encore.app/ledger/accounts"
+)
+
+type Service struct {
+    accountCache *cache.Keyspace[AccountCacheKey, *AccountInfo]
+}
+
+//encore:api public method=POST path=/transactions
+func (s *Service) InitiatePayment(ctx context.Context, req *PaymentRequest) (*PaymentResponse, error) {
+    // Synchronous call to verify account status
+    account, err := profiles.GetAccount(ctx, req.AccountID)
+    if err != nil {
+        return nil, errs.WrapCode(err, errs.FailedPrecondition, "account verification failed")
+    }
+    
+    if account.Status != "ACTIVE" {
+        return nil, errs.B().Code(errs.FailedPrecondition).Msg("account not active").Err()
+    }
+    
+    // Check balance synchronously for immediate validation
+    balance, err := accounts.GetBalance(ctx, req.AccountID)
+    if err != nil {
+        return nil, errs.WrapCode(err, errs.Internal, "balance check failed")
+    }
+    
+    if balance.Available < req.Amount {
+        return nil, errs.B().Code(errs.FailedPrecondition).Msg("insufficient funds").Err()
+    }
+    
+    // Create transaction
+    txn := s.createTransaction(req)
+    
+    // Publish event for async processing
+    _, err = TransactionCreated.Publish(ctx, &TransactionCreatedEvent{
+        TransactionID: txn.ID,
+        Amount:        txn.Amount,
+        AccountID:     txn.AccountID,
+    })
+    
+    return &PaymentResponse{
+        TransactionID: txn.ID,
+        Status:        "PENDING",
+    }, nil
+}
+```
+
+#### 2. Asynchronous Event-Driven (for eventual consistency)
+
+```go
+// ledger/entries/handlers.go
+package entries
+
+import (
+    "context"
+    "encore.dev/pubsub"
+    "encore.app/payments/transactions"
+)
+
+// Subscribe to transaction events
+var _ = pubsub.NewSubscription(
+    transactions.TransactionCreated,
+    "create-ledger-entries",
+    pubsub.SubscriptionConfig[*transactions.TransactionCreatedEvent]{
+        Handler: CreateLedgerEntries,
+        MaxRetries: 5,
+        MinRetryDelay: 1 * time.Second,
+        MaxRetryDelay: 30 * time.Second,
+        AckDeadline: 30 * time.Second,
+    },
+)
+
+func CreateLedgerEntries(ctx context.Context, event *transactions.TransactionCreatedEvent) error {
+    // Create double-entry bookkeeping entries
+    tx, err := db.Begin(ctx)
+    if err != nil {
+        return err
+    }
+    defer tx.Rollback()
+    
+    // Debit entry
+    _, err = tx.Exec(ctx, `
+        INSERT INTO ledger_entries (transaction_id, account_id, type, amount, timestamp)
+        VALUES ($1, $2, 'DEBIT', $3, NOW())
+    `, event.TransactionID, event.AccountID, event.Amount)
+    if err != nil {
+        return err
+    }
+    
+    // Credit entry (to receiving account)
+    _, err = tx.Exec(ctx, `
+        INSERT INTO ledger_entries (transaction_id, account_id, type, amount, timestamp)
+        VALUES ($1, $2, 'CREDIT', $3, NOW())
+    `, event.TransactionID, event.ToAccountID, event.Amount)
+    if err != nil {
+        return err
+    }
+    
+    // Publish ledger entries created event
+    _, err = LedgerEntriesCreated.Publish(ctx, &LedgerEntriesCreatedEvent{
+        TransactionID: event.TransactionID,
+    })
+    if err != nil {
+        tx.Rollback()
+        return err
+    }
+    
+    return tx.Commit()
+}
+```
+
+#### 3. Hybrid Pattern (Sync + Async)
+
+```go
+// fraud/detection/service.go
+package detection
+
+//encore:api private
+func (s *Service) CheckTransaction(ctx context.Context, req *CheckRequest) (*CheckResponse, error) {
+    // Synchronous rule-based checks (fast)
+    riskScore := s.calculateRiskScore(req)
+    
+    if riskScore > HighRiskThreshold {
+        // Block immediately
+        return &CheckResponse{
+            Approved: false,
+            Reason:   "High risk transaction",
+        }, nil
+    }
+    
+    if riskScore > MediumRiskThreshold {
+        // Trigger async ML model analysis
+        _, err := FraudAnalysisRequested.Publish(ctx, &FraudAnalysisRequest{
+            TransactionID: req.TransactionID,
+            Features:      s.extractFeatures(req),
+        })
+        
+        // But don't block the transaction
+        return &CheckResponse{
+            Approved:      true,
+            RequiresReview: true,
+        }, err
+    }
+    
+    // Low risk - approve immediately
+    return &CheckResponse{Approved: true}, nil
+}
+```
+
+---
+
+## Domain-Driven Design with Encore
+
+### Aggregate Root Pattern
+
+```go
+// accounts/profiles/aggregate.go
+package profiles
+
+import (
+    "time"
+    "encore.dev/beta/errs"
+)
+
+// AccountAggregate is the aggregate root for Account entity
+type AccountAggregate struct {
+    // Identity
+    ID        string
+    OwnerID   string
+    
+    // Value Objects
+    Profile   *AccountProfile
+    Settings  *AccountSettings
+    Metadata  *AccountMetadata
+    
+    // State
+    Status    AccountStatus
+    Version   int64
+    
+    // Audit
+    CreatedAt time.Time
+    UpdatedAt time.Time
+    
+    // Domain Events (uncommitted)
+    events []DomainEvent
+}
+
+// Factory Method
+func NewAccountAggregate(ownerID string, profile *AccountProfile) (*AccountAggregate, error) {
+    if ownerID == "" {
+        return nil, errs.B().Code(errs.InvalidArgument).Msg("owner ID required").Err()
+    }
+    
+    agg := &AccountAggregate{
+        ID:        generateID(),
+        OwnerID:   ownerID,
+        Profile:   profile,
+        Settings:  DefaultSettings(),
+        Metadata:  &AccountMetadata{},
+        Status:    AccountStatusPending,
+        CreatedAt: time.Now(),
+        UpdatedAt: time.Now(),
+        events:    make([]DomainEvent, 0),
+    }
+    
+    // Add domain event
+    agg.addEvent(&AccountCreatedEvent{
+        AccountID: agg.ID,
+        OwnerID:   ownerID,
+        Profile:   profile,
+        Timestamp: time.Now(),
+    })
+    
+    return agg, nil
+}
+
+// Business Logic Methods (maintain invariants)
+func (a *AccountAggregate) Activate() error {
+    if a.Status == AccountStatusActive {
+        return errs.B().Code(errs.FailedPrecondition).Msg("account already active").Err()
+    }
+    
+    if !a.Profile.IsComplete() {
+        return errs.B().Code(errs.FailedPrecondition).Msg("profile incomplete").Err()
+    }
+    
+    a.Status = AccountStatusActive
+    a.UpdatedAt = time.Now()
+    a.Version++
+    
+    a.addEvent(&AccountActivatedEvent{
+        AccountID: a.ID,
+        Timestamp: time.Now(),
+    })
+    
+    return nil
+}
+
+func (a *AccountAggregate) Suspend(reason string) error {
+    if a.Status != AccountStatusActive {
+        return errs.B().Code(errs.FailedPrecondition).Msg("only active accounts can be suspended").Err()
+    }
+    
+    a.Status = AccountStatusSuspended
+    a.Metadata.SuspensionReason = reason
+    a.UpdatedAt = time.Now()
+    a.Version++
+    
+    a.addEvent(&AccountSuspendedEvent{
+        AccountID: a.ID,
+        Reason:    reason,
+        Timestamp: time.Now(),
+    })
+    
+    return nil
+}
+
+func (a *AccountAggregate) UpdateProfile(profile *AccountProfile) error {
+    if err := profile.Validate(); err != nil {
+        return err
+    }
+    
+    oldProfile := a.Profile
+    a.Profile = profile
+    a.UpdatedAt = time.Now()
+    a.Version++
+    
+    a.addEvent(&AccountProfileUpdatedEvent{
+        AccountID:  a.ID,
+        OldProfile: oldProfile,
+        NewProfile: profile,
+        Timestamp:  time.Now(),
+    })
+    
+    return nil
+}
+
+// Domain Event Management
+func (a *AccountAggregate) addEvent(event DomainEvent) {
+    a.events = append(a.events, event)
+}
+
+func (a *AccountAggregate) GetUncommittedEvents() []DomainEvent {
+    return a.events
+}
+
+func (a *AccountAggregate) ClearEvents() {
+    a.events = make([]DomainEvent, 0)
+}
+```
+
+### Repository Pattern with Encore
+
+```go
+// accounts/profiles/repository.go
+package profiles
+
+import (
+    "context"
+    "encore.dev/storage/sqldb"
+    "encore.dev/pubsub"
+)
+
+var db = sqldb.NewDatabase("accounts", sqldb.DatabaseConfig{
+    Migrations: "./migrations",
+})
+
+type Repository struct {
+    cache *cache.Keyspace[string, *AccountAggregate]
+}
+
+func NewRepository() *Repository {
+    return &Repository{
+        cache: AccountCache,
+    }
+}
+
+// Save aggregate and publish domain events
+func (r *Repository) Save(ctx context.Context, aggregate *AccountAggregate) error {
+    tx, err := db.Begin(ctx)
+    if err != nil {
+        return err
+    }
+    defer tx.Rollback()
+    
+    // Optimistic locking check
+    var currentVersion int64
+    err = tx.QueryRow(ctx, `
+        SELECT version FROM accounts WHERE id = $1 FOR UPDATE
+    `, aggregate.ID).Scan(&currentVersion)
+    
+    if err != nil && err != sql.ErrNoRows {
+        return err
+    }
+    
+    if err == nil && currentVersion != aggregate.Version-1 {
+        return errs.B().Code(errs.FailedPrecondition).
+            Msg("version conflict - aggregate was modified").Err()
+    }
+    
+    // Upsert aggregate
+    _, err = tx.Exec(ctx, `
+        INSERT INTO accounts (id, owner_id, profile, settings, status, version, updated_at)
+        VALUES ($1, $2, $3, $4, $5, $6, $7)
+        ON CONFLICT (id) DO UPDATE SET
+            profile = EXCLUDED.profile,
+            settings = EXCLUDED.settings,
+            status = EXCLUDED.status,
+            version = EXCLUDED.version,
+            updated_at = EXCLUDED.updated_at
+    `, aggregate.ID, aggregate.OwnerID, aggregate.Profile, aggregate.Settings, 
+       aggregate.Status, aggregate.Version, aggregate.UpdatedAt)
+    
+    if err != nil {
+        return err
+    }
+    
+    // Store events in outbox table (transactional outbox pattern)
+    events := aggregate.GetUncommittedEvents()
+    for _, event := range events {
+        eventData, _ := json.Marshal(event)
+        _, err = tx.Exec(ctx, `
+            INSERT INTO event_outbox (aggregate_id, event_type, event_data, created_at)
+            VALUES ($1, $2, $3, NOW())
+        `, aggregate.ID, event.EventType(), eventData)
+        
+        if err != nil {
+            return err
+        }
+    }
+    
+    // Commit transaction
+    if err = tx.Commit(); err != nil {
+        return err
+    }
+    
+    // Publish events to Pub/Sub (after commit)
+    for _, event := range events {
+        switch e := event.(type) {
+        case *AccountCreatedEvent:
+            _, err = AccountCreatedTopic.Publish(ctx, e)
+        case *AccountActivatedEvent:
+            _, err = AccountActivatedTopic.Publish(ctx, e)
+        case *AccountSuspendedEvent:
+            _, err = AccountSuspendedTopic.Publish(ctx, e)
+        }
+        
+        if err != nil {
+            // Log error but don't fail (events are in outbox for retry)
+            rlog.Error("failed to publish event", "error", err, "event_type", event.EventType())
+        }
+    }
+    
+    // Clear events and update cache
+    aggregate.ClearEvents()
+    r.cache.Set(ctx, aggregate.ID, aggregate)
+    
+    return nil
+}
+
+func (r *Repository) GetByID(ctx context.Context, id string) (*AccountAggregate, error) {
+    // Try cache first
+    agg, err := r.cache.Get(ctx, id)
+    if err == nil {
+        return agg, nil
+    }
+    
+    // Load from database
+    var profile, settings json.RawMessage
+    var status string
+    agg = &AccountAggregate{}
+    
+    err = db.QueryRow(ctx, `
+        SELECT id, owner_id, profile, settings, status, version, created_at, updated_at
+        FROM accounts WHERE id = $1
+    `, id).Scan(&agg.ID, &agg.OwnerID, &profile, &settings, &status, 
+        &agg.Version, &agg.CreatedAt, &agg.UpdatedAt)
+    
+    if err != nil {
+        if err == sql.ErrNoRows {
+            return nil, errs.B().Code(errs.NotFound).Msg("account not found").Err()
+        }
+        return nil, err
+    }
+    
+    // Unmarshal value objects
+    json.Unmarshal(profile, &agg.Profile)
+    json.Unmarshal(settings, &agg.Settings)
+    agg.Status = AccountStatus(status)
+    
+    // Update cache
+    r.cache.Set(ctx, id, agg)
+    
+    return agg, nil
+}
+```
+
+### Value Objects
+
+```go
+// accounts/profiles/value_objects.go
+package profiles
+
+import (
+    "regexp"
+    "encore.dev/beta/errs"
+)
+
+// Value Objects are immutable and defined by their attributes
+
+// Email Value Object
+type Email struct {
+    value string
+}
+
+var emailRegex = regexp.MustCompile(`^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$`)
+
+func NewEmail(value string) (*Email, error) {
+    if !emailRegex.MatchString(value) {
+        return nil, errs.B().Code(errs.InvalidArgument).Msg("invalid email format").Err()
+    }
+    
+    return &Email{value: value}, nil
+}
+
+func (e *Email) Value() string {
+    return e.value
+}
+
+func (e *Email) Equals(other *Email) bool {
+    return e.value == other.value
+}
+
+// Money Value Object
+type Money struct {
+    amount   int64  // Store as cents to avoid floating point issues
+    currency string
+}
+
+func NewMoney(amount int64, currency string) (*Money, error) {
+    if amount < 0 {
+        return nil, errs.B().Code(errs.InvalidArgument).Msg("amount cannot be negative").Err()
+    }
+    
+    if !isValidCurrency(currency) {
+        return nil, errs.B().Code(errs.InvalidArgument).Msg("invalid currency code").Err()
+    }
+    
+    return &Money{amount: amount, currency: currency}, nil
+}
+
+func (m *Money) Amount() int64 {
+    return m.amount
+}
+
+func (m *Money) Currency() string {
+    return m.currency
+}
+
+func (m *Money) Add(other *Money) (*Money, error) {
+    if m.currency != other.currency {
+        return nil, errs.B().Code(errs.InvalidArgument).Msg("currency mismatch").Err()
+    }
+    
+    return &Money{
+        amount:   m.amount + other.amount,
+        currency: m.currency,
+    }, nil
+}
+
+func (m *Money) Subtract(other *Money) (*Money, error) {
+    if m.currency != other.currency {
+        return nil, errs.B().Code(errs.InvalidArgument).Msg("currency mismatch").Err()
+    }
+    
+    if m.amount < other.amount {
+        return nil, errs.B().Code(errs.InvalidArgument).Msg("insufficient funds").Err()
+    }
+    
+    return &Money{
+        amount:   m.amount - other.amount,
+        currency: m.currency,
+    }, nil
+}
+
+// Address Value Object
+type Address struct {
+    street     string
+    city       string
+    state      string
+    postalCode string
+    country    string
+}
+
+func NewAddress(street, city, state, postalCode, country string) (*Address, error) {
+    if street == "" || city == "" || country == "" {
+        return nil, errs.B().Code(errs.InvalidArgument).Msg("address incomplete").Err()
+    }
+    
+    return &Address{
+        street:     street,
+        city:       city,
+        state:      state,
+        postalCode: postalCode,
+        country:    country,
+    }, nil
+}
+
+func (a *Address) FullAddress() string {
+    return fmt.Sprintf("%s, %s, %s %s, %s", 
+        a.street, a.city, a.state, a.postalCode, a.country)
+}
+```
+
+---
+
+## Event Sourcing & CQRS Implementation
+
+### Event Store Implementation
+
+```go
+// ledger/eventstore/store.go
+package eventstore
+
+import (
+    "context"
+    "encore.dev/storage/sqldb"
+)
+
+var db = sqldb.NewDatabase("eventstore", sqldb.DatabaseConfig{
+    Migrations: "./migrations",
+})
+
+// Event interface
+type Event interface {
+    AggregateID() string
+    EventType() string
+    EventVersion() int
+    Timestamp() time.Time
+    Data() interface{}
+}
+
+// EventStore manages event storage and retrieval
+type EventStore struct {}
+
+// Append events to stream (with optimistic concurrency)
+func (es *EventStore) AppendEvents(ctx context.Context, aggregateID string, 
+    expectedVersion int, events []Event) error {
+    
+    tx, err := db.Begin(ctx)
+    if err != nil {
+        return err
+    }
+    defer tx.Rollback()
+    
+    // Check current version
+    var currentVersion int
+    err = tx.QueryRow(ctx, `
+        SELECT COALESCE(MAX(version), 0) 
+        FROM events 
+        WHERE aggregate_id = $1
+    `, aggregateID).Scan(&currentVersion)
+    
+    if err != nil {
+        return err
+    }
+    
+    // Optimistic concurrency check
+    if currentVersion != expectedVersion {
+        return errs.B().Code(errs.FailedPrecondition).
+            Msg("concurrency conflict").Err()
+    }
+    
+    // Insert events
+    for i, event := range events {
+        eventData, _ := json.Marshal(event.Data())
+        metadata, _ := json.Marshal(map[string]interface{}{
+            "user_id":    getCurrentUserID(ctx),
+            "ip_address": getCurrentIP(ctx),
+        })
+        
+        _, err = tx.Exec(ctx, `
+            INSERT INTO events (
+                aggregate_id, event_type, version, 
+                event_data, metadata, timestamp
+            ) VALUES ($1, $2, $3, $4, $5, $6)
+        `, aggregateID, event.EventType(), expectedVersion+i+1, 
+           eventData, metadata, event.Timestamp())
+        
+        if err != nil {
+            return err
+        }
+    }
+    
+    return tx.Commit()
+}
+
+// Load events for aggregate
+func (es *EventStore) LoadEvents(ctx context.Context, 
+    aggregateID string, fromVersion int) ([]Event, error) {
+    
+    rows, err := db.Query(ctx, `
+        SELECT event_type, version, event_data, timestamp
+        FROM events
+        WHERE aggregate_id = $1 AND version > $2
+        ORDER BY version ASC
+    `, aggregateID, fromVersion)
+    
+    if err != nil {
+        return nil, err
+    }
+    defer rows.Close()
+    
+    events := make([]Event, 0)
+    for rows.Next() {
+        var eventType string
+        var version int
+        var eventData json.RawMessage
+        var timestamp time.Time
+        
+        if err := rows.Scan(&eventType, &version, &eventData, &timestamp); err != nil {
+            return nil, err
+        }
+        
+        // Deserialize event based on type
+        event, err := deserializeEvent(eventType, aggregateID, version, eventData, timestamp)
+        if err != nil {
+            return nil, err
+        }
+        
+        events = append(events, event)
+    }
+    
+    return events, nil
+}
+
+// Create snapshot for performance
+func (es *EventStore) CreateSnapshot(ctx context.Context, 
+    aggregateID string, version int, state interface{}) error {
+    
+    stateData, _ := json.Marshal(state)
+    
+    _, err := db.Exec(ctx, `
+        INSERT INTO snapshots (aggregate_id, version, state, created_at)
+        VALUES ($1, $2, $3, NOW())
+        ON CONFLICT (aggregate_id) DO UPDATE SET
+            version = EXCLUDED.version,
+            state = EXCLUDED.state,
+            created_at = EXCLUDED.created_at
+    `, aggregateID, version, stateData)
+    
+    return err
+}
+
+// Load snapshot + events (optimized)
+func (es *EventStore) LoadAggregate(ctx context.Context, 
+    aggregateID string) (interface{}, []Event, error) {
+    
+    // Load latest snapshot
+    var version int
+    var stateData json.RawMessage
+    
+    err := db.QueryRow(ctx, `
+        SELECT version, state 
+        FROM snapshots 
+        WHERE aggregate_id = $1
+    `, aggregateID).Scan(&version, &stateData)
+    
+    var state interface{}
+    fromVersion := 0
+    
+    if err == nil {
+        // Deserialize snapshot
+        json.Unmarshal(stateData, &state)
+        fromVersion = version
+    }
+    
+    // Load events after snapshot
+    events, err := es.LoadEvents(ctx, aggregateID, fromVersion)
+    if err != nil {
+        return nil, nil, err
+    }
+    
+    return state, events, nil
+}
+```
+
+### CQRS Read Models
+
+```go
+// ledger/readmodels/account_balance.go
+package readmodels
+
+import (
+    "context"
+    "encore.dev/storage/sqldb"
+    "encore.dev/pubsub"
+)
+
+// Separate read database (denormalized)
+var readDB = sqldb.NewDatabase("ledger_read", sqldb.DatabaseConfig{
+    Migrations: "./migrations",
+})
+
+// Optimized read model for account balances
+type AccountBalanceReadModel struct {
+    AccountID        string
+    CurrentBalance   int64
+    AvailableBalance int64
+    PendingDebits    int64
+    PendingCredits   int64
+    LastUpdated      time.Time
+}
+
+// Subscribe to events and update read model
+var _ = pubsub.NewSubscription(
+    TransactionProcessedTopic,
+    "update-balance-read-model",
+    pubsub.SubscriptionConfig[*TransactionProcessedEvent]{
+        Handler:  UpdateBalanceReadModel,
+        MaxRetries: 5,
+    },
+)
+
+func UpdateBalanceReadModel(ctx context.Context, event *TransactionProcessedEvent) error {
+    tx, err := readDB.Begin(ctx)
+    if err != nil {
+        return err
+    }
+    defer tx.Rollback()
+    
+    // Update sender balance
+    _, err = tx.Exec(ctx, `
+        INSERT INTO account_balances (account_id, current_balance, available_balance, last_updated)
+        VALUES ($1, $2, $3, NOW())
+        ON CONFLICT (account_id) DO UPDATE SET
+            current_balance = account_balances.current_balance - $2,
+            available_balance = account_balances.available_balance - $2,
+            last_updated = NOW()
+    `, event.FromAccountID, event.Amount)
+    
+    if err != nil {
+        return err
+    }
+    
+    // Update receiver balance
+    _, err = tx.Exec(ctx, `
+        INSERT INTO account_balances (account_id, current_balance, available_balance, last_updated)
+        VALUES ($1, $2, $3, NOW())
+        ON CONFLICT (account_id) DO UPDATE SET
+            current_balance = account_balances.current_balance + $2,
+            available_balance = account_balances.available_balance + $2,
+            last_updated = NOW()
+    `, event.ToAccountID, event.Amount)
+    
+    if err != nil {
+        return err
+    }
+    
+    return tx.Commit()
+}
+
+// Query API (optimized for reads)
+//encore:api public method=GET path=/accounts/:accountID/balance
+func GetAccountBalance(ctx context.Context, accountID string) (*AccountBalanceReadModel, error) {
+    var balance AccountBalanceReadModel
+    
+    err := readDB.QueryRow(ctx, `
+        SELECT account_id, current_balance, available_balance, 
+               pending_debits, pending_credits, last_updated
+        FROM account_balances
+        WHERE account_id = $1
+    `, accountID).Scan(&balance.AccountID, &balance.CurrentBalance, 
+        &balance.AvailableBalance, &balance.PendingDebits, 
+        &balance.PendingCredits, &balance.LastUpdated)
+    
+    if err != nil {
+        return nil, err
+    }
+    
+    return &balance, nil
+}
+
+// Aggregated view (monthly summary)
+//encore:api public method=GET path=/accounts/:accountID/summary
+func GetAccountSummary(ctx context.Context, accountID string, 
+    month time.Time) (*AccountSummary, error) {
+    
+    var summary AccountSummary
+    
+    err := readDB.QueryRow(ctx, `
+        SELECT 
+            account_id,
+            COALESCE(SUM(CASE WHEN type = 'DEBIT' THEN amount ELSE 0 END), 0) as total_debits,
+            COALESCE(SUM(CASE WHEN type = 'CREDIT' THEN amount ELSE 0 END), 0) as total_credits,
+            COUNT(*) as transaction_count
+        FROM transactions_view
+        WHERE account_id = $1
+          AND date_trunc('month', timestamp) = $2
+        GROUP BY account_id
+    `, accountID, month).Scan(&summary.AccountID, &summary.TotalDebits, 
+        &summary.TotalCredits, &summary.TransactionCount)
+    
+    if err != nil {
+        return nil, err
+    }
+    
+    return &summary, nil
+}
+```
+
+---
+
+## Saga Pattern for Distributed Transactions
+
+### Orchestration-Based Saga
+
+```go
+// payments/sagas/payment_saga.go
+package sagas
+
+import (
+    "context"
+    "encore.dev/storage/sqldb"
+    "encore.app/accounts/profiles"
+    "encore.app/fraud/detection"
+    "encore.app/ledger/entries"
+    "encore.app/notifications/engine"
+)
+
+var sagaDB = sqldb.NewDatabase("sagas", sqldb.DatabaseConfig{
+    Migrations: "./migrations",
+})
+
+// Saga State Machine
+type PaymentSagaState string
+
+const (
+    StateInitiated         PaymentSagaState = "INITIATED"
+    StateAccountValidated  PaymentSagaState = "ACCOUNT_VALIDATED"
+    StateFraudChecked      PaymentSagaState = "FRAUD_CHECKED"
+    StateLedgerUpdated     PaymentSagaState = "LEDGER_UPDATED"
+    StateCompleted         PaymentSagaState = "COMPLETED"
+    StateCompensating      PaymentSagaState = "COMPENSATING"
+    StateFailed            PaymentSagaState = "FAILED"
+)
+
+type PaymentSaga struct {
+    ID              string
+    PaymentID       string
+    FromAccountID   string
+    ToAccountID     string
+    Amount          int64
+    State           PaymentSagaState
+    CompensationLog []CompensationStep
+    CreatedAt       time.Time
+    UpdatedAt       time.Time
+}
+
+type CompensationStep struct {
+    Step      string
+    Action    func(context.Context) error
+    Timestamp time.Time
+}
+
+// Saga Orchestrator Service
+type PaymentSagaOrchestrator struct {
+    repo *SagaRepository
+}
+
+func NewPaymentSagaOrchestrator() *PaymentSagaOrchestrator {
+    return &PaymentSagaOrchestrator{
+        repo: NewSagaRepository(),
+    }
+}
+
+// Start new saga
+func (o *PaymentSagaOrchestrator) Start(ctx context.Context, 
+    paymentID, fromAccountID, toAccountID string, amount int64) error {
+    
+    saga := &PaymentSaga{
+        ID:            generateSagaID(),
+        PaymentID:     paymentID,
+        FromAccountID: fromAccountID,
+        ToAccountID:   toAccountID,
+        Amount:        amount,
+        State:         StateInitiated,
+        CreatedAt:     time.Now(),
+        UpdatedAt:     time.Now(),
+    }
+    
+    // Save saga state
+    if err := o.repo.Save(ctx, saga); err != nil {
+        return err
+    }
+    
+    // Execute saga steps
+    return o.Execute(ctx, saga)
+}
+
+// Execute saga steps with compensation
+func (o *PaymentSagaOrchestrator) Execute(ctx context.Context, saga *PaymentSaga) error {
+    // Step 1: Validate accounts
+    if err := o.validateAccounts(ctx, saga); err != nil {
+        return o.compensate(ctx, saga, err)
+    }
+    
+    // Step 2: Check fraud
+    if err := o.checkFraud(ctx, saga); err != nil {
+        return o.compensate(ctx, saga, err)
+    }
+    
+    // Step 3: Reserve funds
+    if err := o.reserveFunds(ctx, saga); err != nil {
+        return o.compensate(ctx, saga, err)
+    }
+    
+    // Step 4: Update ledger (pivot transaction - point of no return)
+    if err := o.updateLedger(ctx, saga); err != nil {
+        // After pivot, we must complete or handle manually
+        return o.handlePivotFailure(ctx, saga, err)
+    }
+    
+    // Step 5: Transfer funds (retryable)
+    if err := o.transferFunds(ctx, saga); err != nil {
+        // Retry indefinitely
+        return o.retryTransfer(ctx, saga)
+    }
+    
+    // Step 6: Send notification
+    if err := o.sendNotification(ctx, saga); err != nil {
+        // Log but don't fail saga
+        rlog.Error("notification failed", "error", err, "saga_id", saga.ID)
+    }
+    
+    // Complete saga
+    saga.State = StateCompleted
+    saga.UpdatedAt = time.Now()
+    return o.repo.Save(ctx, saga)
+}
+
+// Step 1: Validate Accounts (Compensable)
+func (o *PaymentSagaOrchestrator) validateAccounts(ctx context.Context, saga *PaymentSaga) error {
+    // Validate sender account
+    fromAccount, err := profiles.GetAccount(ctx, saga.FromAccountID)
+    if err != nil {
+        return fmt.Errorf("sender account validation failed: %w", err)
+    }
+    
+    if fromAccount.Status != "ACTIVE" {
+        return fmt.Errorf("sender account not active")
+    }
+    
+    // Validate receiver account
+    toAccount, err := profiles.GetAccount(ctx, saga.ToAccountID)
+    if err != nil {
+        return fmt.Errorf("receiver account validation failed: %w", err)
+    }
+    
+    if toAccount.Status != "ACTIVE" {
+        return fmt.Errorf("receiver account not active")
+    }
+    
+    saga.State = StateAccountValidated
+    saga.UpdatedAt = time.Now()
+    
+    // No compensation needed (read-only operation)
+    
+    return o.repo.Save(ctx, saga)
+}
+
+// Step 2: Check Fraud (Compensable)
+func (o *PaymentSagaOrchestrator) checkFraud(ctx context.Context, saga *PaymentSaga) error {
+    result, err := detection.CheckTransaction(ctx, &detection.CheckRequest{
+        TransactionID: saga.PaymentID,
+        FromAccountID: saga.FromAccountID,
+        ToAccountID:   saga.ToAccountID,
+        Amount:        saga.Amount,
+    })
+    
+    if err != nil {
+        return fmt.Errorf("fraud check failed: %w", err)
+    }
+    
+    if !result.Approved {
+        return fmt.Errorf("transaction rejected by fraud check: %s", result.Reason)
+    }
+    
+    saga.State = StateFraudChecked
+    saga.UpdatedAt = time.Now()
+    
+    // No compensation needed (read-only operation)
+    
+    return o.repo.Save(ctx, saga)
+}
+
+// Step 3: Reserve Funds (Compensable)
+func (o *PaymentSagaOrchestrator) reserveFunds(ctx context.Context, saga *PaymentSaga) error {
+    err := profiles.ReserveFunds(ctx, saga.FromAccountID, saga.Amount, saga.PaymentID)
+    if err != nil {
+        return fmt.Errorf("fund reservation failed: %w", err)
+    }
+    
+    saga.UpdatedAt = time.Now()
+    
+    // Register compensation: Release reserved funds
+    saga.CompensationLog = append(saga.CompensationLog, CompensationStep{
+        Step: "ReserveFunds",
+        Action: func(ctx context.Context) error {
+            return profiles.ReleaseFunds(ctx, saga.FromAccountID, saga.PaymentID)
+        },
+        Timestamp: time.Now(),
+    })
+    
+    return o.repo.Save(ctx, saga)
+}
+
+// Step 4: Update Ledger (Pivot Transaction - Point of No Return)
+func (o *PaymentSagaOrchestrator) updateLedger(ctx context.Context, saga *PaymentSaga) error {
+    err := entries.CreatePaymentEntries(ctx, &entries.PaymentEntriesRequest{
+        PaymentID:     saga.PaymentID,
+        FromAccountID: saga.FromAccountID,
+        ToAccountID:   saga.ToAccountID,
+        Amount:        saga.Amount,
+    })
+    
+    if err != nil {
+        return fmt.Errorf("ledger update failed: %w", err)
+    }
+    
+    saga.State = StateLedgerUpdated
+    saga.UpdatedAt = time.Now()
+    
+    // No compensation after pivot - must complete or handle manually
+    
+    return o.repo.Save(ctx, saga)
+}
+
+// Step 5: Transfer Funds (Retryable, not compensable)
+func (o *PaymentSagaOrchestrator) transferFunds(ctx context.Context, saga *PaymentSaga) error {
+    err := profiles.ExecuteTransfer(ctx, &profiles.TransferRequest{
+        PaymentID:     saga.PaymentID,
+        FromAccountID: saga.FromAccountID,
+        ToAccountID:   saga.ToAccountID,
+        Amount:        saga.Amount,
+    })
+    
+    if err != nil {
+        return fmt.Errorf("fund transfer failed: %w", err)
+    }
+    
+    saga.UpdatedAt = time.Now()
+    return o.repo.Save(ctx, saga)
+}
+
+// Retry transfer indefinitely
+func (o *PaymentSagaOrchestrator) retryTransfer(ctx context.Context, saga *PaymentSaga) error {
+    maxRetries := 10
+    backoff := time.Second
+    
+    for i := 0; i < maxRetries; i++ {
+        time.Sleep(backoff)
+        
+        if err := o.transferFunds(ctx, saga); err == nil {
+            return nil
+        }
+        
+        backoff *= 2
+        if backoff > time.Minute {
+            backoff = time.Minute
+        }
+    }
+    
+    // After max retries, move to manual intervention queue
+    return o.moveToManualQueue(ctx, saga)
+}
+
+// Compensation Logic
+func (o *PaymentSagaOrchestrator) compensate(ctx context.Context, 
+    saga *PaymentSaga, originalErr error) error {
+    
+    saga.State = StateCompensating
+    saga.UpdatedAt = time.Now()
+    o.repo.Save(ctx, saga)
+    
+    // Execute compensation steps in reverse order
+    for i := len(saga.CompensationLog) - 1; i >= 0; i-- {
+        step := saga.CompensationLog[i]
+        
+        rlog.Info("executing compensation", 
+            "saga_id", saga.ID, 
+            "step", step.Step)
+        
+        if err := step.Action(ctx); err != nil {
+            rlog.Error("compensation failed", 
+                "saga_id", saga.ID, 
+                "step", step.Step, 
+                "error", err)
+            // Continue with other compensations
+        }
+    }
+    
+    saga.State = StateFailed
+    saga.UpdatedAt = time.Now()
+    o.repo.Save(ctx, saga)
+    
+    return fmt.Errorf("saga failed and compensated: %w", originalErr)
+}
+
+// Handle pivot failure (manual intervention required)
+func (o *PaymentSagaOrchestrator) handlePivotFailure(ctx context.Context, 
+    saga *PaymentSaga, err error) error {
+    
+    rlog.Error("saga pivot failed - manual intervention required", 
+        "saga_id", saga.ID, 
+        "error", err)
+    
+    // Move to manual intervention queue
+    return o.moveToManualQueue(ctx, saga)
+}
+
+func (o *PaymentSagaOrchestrator) moveToManualQueue(ctx context.Context, saga *PaymentSaga) error {
+    _, err := sagaDB.Exec(ctx, `
+        INSERT INTO manual_intervention_queue (saga_id, saga_type, reason, created_at)
+        VALUES ($1, 'PAYMENT', $2, NOW())
+    `, saga.ID, "pivot transaction failed or max retries exceeded")
+    
+    return err
+}
+```
+
+### Choreography-Based Saga
+
+```go
+// Alternative: Event-driven choreography
+// Each service publishes events and reacts to events from others
+
+// payments/transactions/service.go
+package transactions
+
+//encore:api public method=POST path=/transactions
+func InitiatePayment(ctx context.Context, req *PaymentRequest) (*PaymentResponse, error) {
+    // Create transaction
+    txn := createTransaction(req)
+    
+    // Publish event
+    _, err := TransactionInitiatedEvent.Publish(ctx, &TransactionInitiated{
+        TransactionID: txn.ID,
+        FromAccountID: req.FromAccountID,
+        ToAccountID:   req.ToAccountID,
+        Amount:        req.Amount,
+    })
+    
+    return &PaymentResponse{TransactionID: txn.ID}, err
+}
+
+// fraud/detection/handlers.go
+package detection
+
+var _ = pubsub.NewSubscription(
+    transactions.TransactionInitiatedEvent,
+    "fraud-check",
+    pubsub.SubscriptionConfig[*transactions.TransactionInitiated]{
+        Handler: CheckForFraud,
+    },
+)
+
+func CheckForFraud(ctx context.Context, event *transactions.TransactionInitiated) error {
+    // Check fraud
+    approved := performFraudCheck(event)
+    
+    if approved {
+        // Publish success event
+        FraudCheckPassedEvent.Publish(ctx, &FraudCheckPassed{
+            TransactionID: event.TransactionID,
+        })
+    } else {
+        // Publish failure event (triggers compensation)
+        FraudCheckFailedEvent.Publish(ctx, &FraudCheckFailed{
+            TransactionID: event.TransactionID,
+            Reason:        "High risk detected",
+        })
+    }
+    
+    return nil
+}
+
+// ledger/entries/handlers.go
+package entries
+
+var _ = pubsub.NewSubscription(
+    detection.FraudCheckPassedEvent,
+    "create-ledger-entries",
+    pubsub.SubscriptionConfig[*detection.FraudCheckPassed]{
+        Handler: CreateEntries,
+    },
+)
+
+func CreateEntries(ctx context.Context, event *detection.FraudCheckPassed) error {
+    // Create ledger entries
+    err := createLedgerEntries(ctx, event.TransactionID)
+    
+    if err == nil {
+        // Publish success
+        LedgerEntriesCreatedEvent.Publish(ctx, &LedgerEntriesCreated{
+            TransactionID: event.TransactionID,
+        })
+    } else {
+        // Publish failure (triggers compensation)
+        LedgerCreationFailedEvent.Publish(ctx, &LedgerCreationFailed{
+            TransactionID: event.TransactionID,
+            Reason:        err.Error(),
+        })
+    }
+    
+    return nil
+}
+
+// Compensation handler
+var _ = pubsub.NewSubscription(
+    detection.FraudCheckFailedEvent,
+    "compensate-transaction",
+    pubsub.SubscriptionConfig[*detection.FraudCheckFailed]{
+        Handler: CompensateTransaction,
+    },
+)
+
+func CompensateTransaction(ctx context.Context, event *detection.FraudCheckFailed) error {
+    // Undo any operations performed for this transaction
+    return releaseReservations(ctx, event.TransactionID)
+}
+```
+
+---
+
+## Multi-Tenancy Architecture
+
+### Tenant Isolation Strategies
+
+#### 1. Database Per Tenant (Highest Isolation)
+
+```go
+// shared/tenancy/database_per_tenant.go
+package tenancy
+
+import (
+    "context"
+    "fmt"
+    "encore.dev/storage/sqldb"
+)
+
+type TenantDatabaseManager struct {
+    databases map[string]*sqldb.Database
+    mu        sync.RWMutex
+}
+
+func NewTenantDatabaseManager() *TenantDatabaseManager {
+    return &TenantDatabaseManager{
+        databases: make(map[string]*sqldb.Database),
+    }
+}
+
+func (m *TenantDatabaseManager) GetDatabase(tenantID string) (*sqldb.Database, error) {
+    m.mu.RLock()
+    db, exists := m.databases[tenantID]
+    m.mu.RUnlock()
+    
+    if exists {
+        return db, nil
+    }
+    
+    m.mu.Lock()
+    defer m.mu.Unlock()
+    
+    // Double-check after acquiring write lock
+    if db, exists := m.databases[tenantID]; exists {
+        return db, nil
+    }
+    
+    // Create new database for tenant
+    dbName := fmt.Sprintf("tenant_%s", tenantID)
+    db = sqldb.NewDatabase(dbName, sqldb.DatabaseConfig{
+        Migrations: "./migrations",
+    })
+    
+    m.databases[tenantID] = db
+    
+    return db, nil
+}
+
+// Usage in service
+//encore:api public path=/tenants/:tenantID/data
+func GetTenantData(ctx context.Context, tenantID string) (*DataResponse, error) {
+    db, err := dbManager.GetDatabase(tenantID)
+    if err != nil {
+        return nil, err
+    }
+    
+    var data DataResponse
+    err = db.QueryRow(ctx, `SELECT * FROM tenant_data LIMIT 10`).Scan(&data)
+    
+    return &data, err
+}
+```
+
+#### 2. Shared Database with Row-Level Security (Cost Effective)
+
+```go
+// shared/tenancy/row_level_security.go
+package tenancy
+
+import (
+    "context"
+    "encore.dev/middleware"
+    "encore.dev/storage/sqldb"
+)
+
+var db = sqldb.NewDatabase("multi_tenant", sqldb.DatabaseConfig{
+    Migrations: "./migrations",
+})
+
+// Middleware to inject tenant context
+//encore:middleware target=all
+func TenantContextMiddleware(req middleware.Request, next middleware.Next) middleware.Response {
+    // Extract tenant ID from JWT, header, or subdomain
+    tenantID := extractTenantID(req)
+    
+    if tenantID == "" {
+        return middleware.Response{
+            Err: errs.B().Code(errs.Unauthenticated).Msg("tenant ID required").Err(),
+        }
+    }
+    
+    // Add to context
+    ctx := context.WithValue(req.Context(), TenantContextKey, tenantID)
+    req = req.WithContext(ctx)
+    
+    return next(req)
+}
+
+// Database query with automatic tenant filtering
+func QueryWithTenant(ctx context.Context, query string, args ...interface{}) (*sql.Rows, error) {
+    tenantID := ctx.Value(TenantContextKey).(string)
+    
+    // Set tenant ID in session (for PostgreSQL RLS)
+    _, err := db.Exec(ctx, `SET app.current_tenant = $1`, tenantID)
+    if err != nil {
+        return nil, err
+    }
+    
+    return db.Query(ctx, query, args...)
+}
+
+// Migration with RLS policies
+/*
+-- 1_create_tenant_aware_tables.up.sql
+
+-- Enable RLS
+ALTER TABLE orders ENABLE ROW LEVEL SECURITY;
+
+-- Create policy for tenant isolation
+CREATE POLICY tenant_isolation ON orders
+    USING (tenant_id = current_setting('app.current_tenant')::text);
+
+-- Grant access
+GRANT ALL ON orders TO app_user;
+*/
+
+// Usage
+//encore:api public method=GET path=/orders
+func ListOrders(ctx context.Context) ([]*Order, error) {
+    // Tenant ID automatically filtered via RLS
+    rows, err := QueryWithTenant(ctx, `
+        SELECT id, customer_id, amount, status
+        FROM orders
+        ORDER BY created_at DESC
+        LIMIT 100
+    `)
+    
+    if err != nil {
+        return nil, err
+    }
+    defer rows.Close()
+    
+    var orders []*Order
+    for rows.Next() {
+        var order Order
+        if err := rows.Scan(&order.ID, &order.CustomerID, &order.Amount, &order.Status); err != nil {
+            return nil, err
+        }
+        orders = append(orders, &order)
+    }
+    
+    return orders, nil
+}
+```
+
+#### 3. Schema Per Tenant (Balanced Approach)
+
+```go
+// shared/tenancy/schema_per_tenant.go
+package tenancy
+
+import (
+    "context"
+    "fmt"
+    "encore.dev/storage/sqldb"
+)
+
+var db = sqldb.NewDatabase("multi_tenant", sqldb.DatabaseConfig{
+    Migrations: "./migrations",
+})
+
+// Set search path to tenant schema
+func setTenantSchema(ctx context.Context, tenantID string) error {
+    schemaName := fmt.Sprintf("tenant_%s", tenantID)
+    
+    _, err := db.Exec(ctx, fmt.Sprintf(`SET search_path TO %s, public`, schemaName))
+    return err
+}
+
+// Auto-create tenant schema on first access
+func ensureTenantSchema(ctx context.Context, tenantID string) error {
+    schemaName := fmt.Sprintf("tenant_%s", tenantID)
+    
+    // Create schema
+    _, err := db.Exec(ctx, fmt.Sprintf(`CREATE SCHEMA IF NOT EXISTS %s`, schemaName))
+    if err != nil {
+        return err
+    }
+    
+    // Run tenant-specific migrations
+    return runTenantMigrations(ctx, schemaName)
+}
+
+// Middleware
+//encore:middleware target=all
+func TenantSchemaMiddleware(req middleware.Request, next middleware.Next) middleware.Response {
+    tenantID := extractTenantID(req)
+    
+    if err := ensureTenantSchema(req.Context(), tenantID); err != nil {
+        return middleware.Response{Err: err}
+    }
+    
+    if err := setTenantSchema(req.Context(), tenantID); err != nil {
+        return middleware.Response{Err: err}
+    }
+    
+    return next(req)
+}
+```
+
+### Tenant Configuration & Customization
+
+```go
+// shared/tenancy/config.go
+package tenancy
+
+import (
+    "context"
+    "encore.dev/storage/sqldb"
+    "encore.dev/storage/cache"
+)
+
+var configDB = sqldb.NewDatabase("tenant_config", sqldb.DatabaseConfig{
+    Migrations: "./migrations",
+})
+
+var configCache = cache.NewCluster("tenant_config", cache.ClusterConfig{
+    EvictionPolicy: cache.AllKeysLRU,
+})
+
+var TenantConfigCache = cache.NewStructKeyspace[string, *TenantConfig](
+    configCache,
+    cache.KeyspaceConfig{KeyPattern: "tenant:config:*"},
+)
+
+type TenantConfig struct {
+    TenantID            string
+    SubscriptionTier    string  // "FREE", "PRO", "ENTERPRISE"
+    Features            map[string]bool
+    Limits              *TenantLimits
+    Customization       *TenantCustomization
+    BillingAccountID    string
+}
+
+type TenantLimits struct {
+    MaxUsers            int
+    MaxAPICallsPerDay   int
+    MaxStorageGB        int
+    MaxDatabaseRows     int64
+}
+
+type TenantCustomization struct {
+    BrandColor          string
+    Logo                string
+    CustomDomain        string
+    WhitelabelEnabled   bool
+}
+
+// Get tenant config with caching
+func GetTenantConfig(ctx context.Context, tenantID string) (*TenantConfig, error) {
+    // Try cache
+    config, err := TenantConfigCache.Get(ctx, tenantID)
+    if err == nil {
+        return config, nil
+    }
+    
+    // Load from database
+    config = &TenantConfig{}
+    var features, limits, customization []byte
+    
+    err = configDB.QueryRow(ctx, `
+        SELECT tenant_id, subscription_tier, features, limits, 
+               customization, billing_account_id
+        FROM tenant_configs
+        WHERE tenant_id = $1
+    `, tenantID).Scan(&config.TenantID, &config.SubscriptionTier, 
+        &features, &limits, &customization, &config.BillingAccountID)
+    
+    if err != nil {
+        return nil, err
+    }
+    
+    // Deserialize JSON fields
+    json.Unmarshal(features, &config.Features)
+    json.Unmarshal(limits, &config.Limits)
+    json.Unmarshal(customization, &config.Customization)
+    
+    // Cache config
+    TenantConfigCache.Set(ctx, tenantID, config)
+    
+    return config, nil
+}
+
+// Feature flag checking
+func HasFeature(ctx context.Context, tenantID, feature string) bool {
+    config, err := GetTenantConfig(ctx, tenantID)
+    if err != nil {
+        return false
+    }
+    
+    return config.Features[feature]
+}
+
+// Rate limiting per tenant
+//encore:middleware target=tag:rate_limited
+func TenantRateLimitMiddleware(req middleware.Request, next middleware.Next) middleware.Response {
+    tenantID := getTenantID(req.Context())
+    config, err := GetTenantConfig(req.Context(), tenantID)
+    
+    if err != nil {
+        return middleware.Response{Err: err}
+    }
+    
+    // Check API call limit
+    key := fmt.Sprintf("rate_limit:%s:%s", tenantID, time.Now().Format("2006-01-02"))
+    count, _ := incrementCounter(req.Context(), key)
+    
+    if count > int64(config.Limits.MaxAPICallsPerDay) {
+        return middleware.Response{
+            Err: errs.B().Code(errs.ResourceExhausted).
+                Msg("daily API limit exceeded").Err(),
+        }
+    }
+    
+    return next(req)
+}
+```
+
+---
+
+## Resilience Patterns
+
+### Circuit Breaker Implementation
+
+```go
+// shared/resilience/circuit_breaker.go
+package resilience
+
+import (
+    "context"
+    "sync"
+    "time"
+)
+
+type State int
+
+const (
+    StateClosed State = iota
+    StateOpen
+    StateHalfOpen
+)
+
+type CircuitBreaker struct {
+    name              string
+    maxFailures       int
+    resetTimeout      time.Duration
+    halfOpenRequests  int
+    
+    mu                sync.Mutex
+    state             State
+    failures          int
+    lastFailureTime   time.Time
+    halfOpenSuccesses int
+}
+
+func NewCircuitBreaker(name string, maxFailures int, resetTimeout time.Duration) *CircuitBreaker {
+    return &CircuitBreaker{
+        name:             name,
+        maxFailures:      maxFailures,
+        resetTimeout:     resetTimeout,
+        halfOpenRequests: 3,
+        state:            StateClosed,
+    }
+}
+
+func (cb *CircuitBreaker) Call(ctx context.Context, fn func() error) error {
+    cb.mu.Lock()
+    
+    // Check if we should transition from Open to Half-Open
+    if cb.state == StateOpen {
+        if time.Since(cb.lastFailureTime) > cb.resetTimeout {
+            cb.state = StateHalfOpen
+            cb.halfOpenSuccesses = 0
+            rlog.Info("circuit breaker transitioning to half-open", "name", cb.name)
+        } else {
+            cb.mu.Unlock()
+            return errs.B().Code(errs.Unavailable).
+                Msgf("circuit breaker open for %s", cb.name).Err()
+        }
+    }
+    
+    currentState := cb.state
+    cb.mu.Unlock()
+    
+    // Execute function
+    err := fn()
+    
+    cb.mu.Lock()
+    defer cb.mu.Unlock()
+    
+    if err != nil {
+        cb.recordFailure()
+        return err
+    }
+    
+    cb.recordSuccess(currentState)
+    return nil
+}
+
+func (cb *CircuitBreaker) recordFailure() {
+    cb.failures++
+    cb.lastFailureTime = time.Now()
+    
+    if cb.state == StateHalfOpen {
+        // Any failure in half-open state reopens circuit
+        cb.state = StateOpen
+        rlog.Warn("circuit breaker opened", "name", cb.name)
+    } else if cb.failures >= cb.maxFailures {
+        cb.state = StateOpen
+        rlog.Warn("circuit breaker opened", "name", cb.name, "failures", cb.failures)
+    }
+}
+
+func (cb *CircuitBreaker) recordSuccess(previousState State) {
+    if previousState == StateHalfOpen {
+        cb.halfOpenSuccesses++
+        
+        if cb.halfOpenSuccesses >= cb.halfOpenRequests {
+            // Enough successes - close the circuit
+            cb.state = StateClosed
+            cb.failures = 0
+            rlog.Info("circuit breaker closed", "name", cb.name)
+        }
+    } else if cb.state == StateClosed {
+        // Reset failure count on success
+        cb.failures = 0
+    }
+}
+
+// Usage in service
+type ExternalService struct {
+    breaker *CircuitBreaker
+}
+
+func NewExternalService() *ExternalService {
+    return &ExternalService{
+        breaker: NewCircuitBreaker("external-api", 5, 30*time.Second),
+    }
+}
+
+//encore:api private
+func (s *ExternalService) CallExternalAPI(ctx context.Context, req *Request) (*Response, error) {
+    var resp *Response
+    var err error
+    
+    err = s.breaker.Call(ctx, func() error {
+        resp, err = s.makeHTTPRequest(ctx, req)
+        return err
+    })
+    
+    return resp, err
+}
+```
+
+### Retry with Exponential Backoff
+
+```go
+// shared/resilience/retry.go
+package resilience
+
+import (
+    "context"
+    "math"
+    "time"
+)
+
+type RetryConfig struct {
+    MaxAttempts     int
+    InitialDelay    time.Duration
+    MaxDelay        time.Duration
+    Multiplier      float64
+    RetryableErrors []errs.ErrCode
+}
+
+func DefaultRetryConfig() *RetryConfig {
+    return &RetryConfig{
+        MaxAttempts:  5,
+        InitialDelay: 100 * time.Millisecond,
+        MaxDelay:     10 * time.Second,
+        Multiplier:   2.0,
+        RetryableErrors: []errs.ErrCode{
+            errs.Unavailable,
+            errs.DeadlineExceeded,
+            errs.Internal,
+        },
+    }
+}
+
+func Retry(ctx context.Context, config *RetryConfig, fn func() error) error {
+    var lastErr error
+    
+    for attempt := 0; attempt < config.MaxAttempts; attempt++ {
+        // Execute function
+        err := fn()
+        
+        if err == nil {
+            return nil
+        }
+        
+        lastErr = err
+        
+        // Check if error is retryable
+        if !isRetryable(err, config.RetryableErrors) {
+            return err
+        }
+        
+        // Check context cancellation
+        if ctx.Err() != nil {
+            return ctx.Err()
+        }
+        
+        // Calculate backoff delay
+        delay := calculateBackoff(attempt, config)
+        
+        rlog.Info("retrying after error", 
+            "attempt", attempt+1, 
+            "max_attempts", config.MaxAttempts,
+            "delay", delay,
+            "error", err)
+        
+        // Wait before retry
+        select {
+        case <-time.After(delay):
+            // Continue to next attempt
+        case <-ctx.Done():
+            return ctx.Err()
+        }
+    }
+    
+    return fmt.Errorf("max retry attempts exceeded: %w", lastErr)
+}
+
+func calculateBackoff(attempt int, config *RetryConfig) time.Duration {
+    delay := float64(config.InitialDelay) * math.Pow(config.Multiplier, float64(attempt))
+    
+    if delay > float64(config.MaxDelay) {
+        delay = float64(config.MaxDelay)
+    }
+    
+    // Add jitter (±25%)
+    jitter := delay * 0.25 * (rand.Float64()*2 - 1)
+    delay += jitter
+    
+    return time.Duration(delay)
+}
+
+func isRetryable(err error, retryableCodes []errs.ErrCode) bool {
+    e, ok := err.(*errs.Error)
+    if !ok {
+        return false
+    }
+    
+    for _, code := range retryableCodes {
+        if e.Code == code {
+            return true
+        }
+    }
+    
+    return false
+}
+
+// Usage
+//encore:api private
+func ProcessPayment(ctx context.Context, req *PaymentRequest) (*PaymentResponse, error) {
+    var resp *PaymentResponse
+    
+    err := Retry(ctx, DefaultRetryConfig(), func() error {
+        var err error
+        resp, err = callPaymentGateway(ctx, req)
+        return err
+    })
+    
+    return resp, err
+}
+```
+
+### Rate Limiting (Distributed)
+
+```go
+// shared/resilience/rate_limiter.go
+package resilience
+
+import (
+    "context"
+    "encore.dev/storage/cache"
+    "time"
+)
+
+var rateLimitCache = cache.NewCluster("rate_limits", cache.ClusterConfig{
+    EvictionPolicy: cache.NoEviction,
+})
+
+// Token Bucket Algorithm
+type TokenBucket struct {
+    capacity    int64
+    refillRate  int64  // tokens per second
+    cache       *cache.Cluster
+}
+
+func NewTokenBucket(capacity, refillRate int64) *TokenBucket {
+    return &TokenBucket{
+        capacity:   capacity,
+        refillRate: refillRate,
+        cache:      rateLimitCache,
+    }
+}
+
+func (tb *TokenBucket) AllowRequest(ctx context.Context, key string) (bool, error) {
+    now := time.Now().Unix()
+    bucketKey := fmt.Sprintf("token_bucket:%s", key)
+    
+    // Lua script for atomic token bucket operations
+    script := `
+        local capacity = tonumber(ARGV[1])
+        local refill_rate = tonumber(ARGV[2])
+        local now = tonumber(ARGV[3])
+        local requested = tonumber(ARGV[4])
+        
+        local bucket = redis.call('HMGET', KEYS[1], 'tokens', 'last_refill')
+        local tokens = tonumber(bucket[1]) or capacity
+        local last_refill = tonumber(bucket[2]) or now
+        
+        -- Calculate tokens to add based on time elapsed
+        local elapsed = math.max(0, now - last_refill)
+        local tokens_to_add = elapsed * refill_rate
+        tokens = math.min(capacity, tokens + tokens_to_add)
+        
+        -- Check if request can be satisfied
+        if tokens >= requested then
+            tokens = tokens - requested
+            redis.call('HMSET', KEYS[1], 'tokens', tokens, 'last_refill', now)
+            redis.call('EXPIRE', KEYS[1], 3600)
+            return 1
+        else
+            return 0
+        end
+    `
+    
+    // Execute Lua script
+    result, err := execLuaScript(ctx, script, []string{bucketKey}, 
+        tb.capacity, tb.refillRate, now, 1)
+    
+    if err != nil {
+        return false, err
+    }
+    
+    return result.(int64) == 1, nil
+}
+
+// Sliding Window Rate Limiter
+type SlidingWindowRateLimiter struct {
+    limit       int
+    window      time.Duration
+    cache       *cache.Cluster
+}
+
+func NewSlidingWindowRateLimiter(limit int, window time.Duration) *SlidingWindowRateLimiter {
+    return &SlidingWindowRateLimiter{
+        limit:  limit,
+        window: window,
+        cache:  rateLimitCache,
+    }
+}
+
+func (rl *SlidingWindowRateLimiter) AllowRequest(ctx context.Context, key string) (bool, error) {
+    now := time.Now()
+    windowStart := now.Add(-rl.window)
+    
+    limiterKey := fmt.Sprintf("rate_limit:sliding:%s", key)
+    
+    // Lua script for sliding window
+    script := `
+        local key = KEYS[1]
+        local now = tonumber(ARGV[1])
+        local window_start = tonumber(ARGV[2])
+        local limit = tonumber(ARGV[3])
+        
+        -- Remove old entries
+        redis.call('ZREMRANGEBYSCORE', key, 0, window_start)
+        
+        -- Count current requests in window
+        local current = redis.call('ZCARD', key)
+        
+        if current < limit then
+            redis.call('ZADD', key, now, now)
+            redis.call('EXPIRE', key, 3600)
+            return 1
+        else
+            return 0
+        end
+    `
+    
+    result, err := execLuaScript(ctx, script, []string{limiterKey},
+        now.UnixNano(), windowStart.UnixNano(), rl.limit)
+    
+    if err != nil {
+        return false, err
+    }
+    
+    return result.(int64) == 1, nil
+}
+
+// Middleware for rate limiting
+//encore:middleware target=tag:rate_limited
+func RateLimitMiddleware(req middleware.Request, next middleware.Next) middleware.Response {
+    // Use user ID or IP as key
+    key := getUserIdentifier(req)
+    
+    limiter := NewSlidingWindowRateLimiter(100, time.Minute)
+    
+    allowed, err := limiter.AllowRequest(req.Context(), key)
+    if err != nil {
+        return middleware.Response{
+            Err: errs.WrapCode(err, errs.Internal, "rate limit check failed"),
+        }
+    }
+    
+    if !allowed {
+        return middleware.Response{
+            Err: errs.B().Code(errs.ResourceExhausted).
+                Msg("rate limit exceeded").Err(),
+            HTTPStatus: 429,
+        }
+    }
+    
+    return next(req)
+}
+```
+
+### Bulkhead Pattern
+
+```go
+// shared/resilience/bulkhead.go
+package resilience
+
+import (
+    "context"
+    "sync"
+)
+
+// Bulkhead isolates resources to prevent cascading failures
+type Bulkhead struct {
+    name       string
+    maxWorkers int
+    semaphore  chan struct{}
+    queue      chan *workItem
+    wg         sync.WaitGroup
+}
+
+type workItem struct {
+    ctx      context.Context
+    fn       func() error
+    resultCh chan error
+}
+
+func NewBulkhead(name string, maxWorkers, queueSize int) *Bulkhead {
+    b := &Bulkhead{
+        name:       name,
+        maxWorkers: maxWorkers,
+        semaphore:  make(chan struct{}, maxWorkers),
+        queue:      make(chan *workItem, queueSize),
+    }
+    
+    // Start worker pool
+    for i := 0; i < maxWorkers; i++ {
+        b.wg.Add(1)
+        go b.worker()
+    }
+    
+    return b
+}
+
+func (b *Bulkhead) worker() {
+    defer b.wg.Done()
+    
+    for work := range b.queue {
+        // Execute work item
+        err := work.fn()
+        
+        // Send result
+        work.resultCh <- err
+        close(work.resultCh)
+    }
+}
+
+func (b *Bulkhead) Execute(ctx context.Context, fn func() error) error {
+    work := &workItem{
+        ctx:      ctx,
+        fn:       fn,
+        resultCh: make(chan error, 1),
+    }
+    
+    // Try to queue work
+    select {
+    case b.queue <- work:
+        // Work queued successfully
+    case <-ctx.Done():
+        return ctx.Err()
+    default:
+        // Queue full
+        return errs.B().Code(errs.ResourceExhausted).
+            Msgf("bulkhead %s queue full", b.name).Err()
+    }
+    
+    // Wait for result
+    select {
+    case err := <-work.resultCh:
+        return err
+    case <-ctx.Done():
+        return ctx.Err()
+    }
+}
+
+func (b *Bulkhead) Shutdown() {
+    close(b.queue)
+    b.wg.Wait()
+}
+
+// Usage: Separate bulkheads for different external dependencies
+var (
+    PaymentGatewayBulkhead = NewBulkhead("payment-gateway", 10, 100)
+    NotificationBulkhead   = NewBulkhead("notifications", 20, 200)
+    ReportingBulkhead      = NewBulkhead("reporting", 5, 50)
+)
+
+//encore:api private
+func ProcessPaymentWithBulkhead(ctx context.Context, req *PaymentRequest) (*PaymentResponse, error) {
+    var resp *PaymentResponse
+    
+    err := PaymentGatewayBulkhead.Execute(ctx, func() error {
+        var err error
+        resp, err = callPaymentGateway(ctx, req)
+        return err
+    })
+    
+    return resp, err
+}
+```
+
+---
+
+## Performance Optimization at Scale
+
+### Database Connection Pooling
+
+```go
+// shared/database/pool.go
+package database
+
+import (
+    "context"
+    "encore.dev/storage/sqldb"
+)
+
+// Configure connection pool for high-traffic scenarios
+var db = sqldb.NewDatabase("main", sqldb.DatabaseConfig{
+    Migrations: "./migrations",
+})
+
+// Pool configuration is set via runtime config or environment
+/*
+Example runtime config:
+
+{
+  "sql_servers": [{
+    "host": "db.example.com:5432",
+    "database": "main",
+    "max_connections": 100,
+    "min_connections": 10,
+    "max_idle_time": "10m",
+    "max_lifetime": "1h"
+  }]
+}
+*/
+
+// Query optimization patterns
+
+// 1. Use prepared statements (Encore does this automatically)
+func GetUserByID(ctx context.Context, userID string) (*User, error) {
+    var user User
+    
+    // This is automatically prepared and cached
+    err := db.QueryRow(ctx, `
+        SELECT id, name, email, created_at
+        FROM users
+        WHERE id = $1
+    `, userID).Scan(&user.ID, &user.Name, &user.Email, &user.CreatedAt)
+    
+    return &user, err
+}
+
+// 2. Batch operations
+func GetUsersByIDs(ctx context.Context, userIDs []string) ([]*User, error) {
+    // Use ANY() for efficient batch queries
+    rows, err := db.Query(ctx, `
+        SELECT id, name, email, created_at
+        FROM users
+        WHERE id = ANY($1)
+    `, userIDs)
+    
+    if err != nil {
+        return nil, err
+    }
+    defer rows.Close()
+    
+    users := make([]*User, 0, len(userIDs))
+    for rows.Next() {
+        var user User
+        if err := rows.Scan(&user.ID, &user.Name, &user.Email, &user.CreatedAt); err != nil {
+            return nil, err
+        }
+        users = append(users, &user)
+    }
+    
+    return users, nil
+}
+
+// 3. Bulk inserts
+func CreateUsers(ctx context.Context, users []*User) error {
+    tx, err := db.Begin(ctx)
+    if err != nil {
+        return err
+    }
+    defer tx.Rollback()
+    
+    // Use COPY for maximum performance
+    stmt, err := tx.Prepare(ctx, "insert_users", `
+        COPY users (id, name, email, created_at) FROM STDIN
+    `)
+    
+    if err != nil {
+        return err
+    }
+    
+    for _, user := range users {
+        _, err = stmt.Exec(ctx, user.ID, user.Name, user.Email, user.CreatedAt)
+        if err != nil {
+            return err
+        }
+    }
+    
+    return tx.Commit()
+}
+```
+
+### Caching Strategies at Scale
+
+```go
+// shared/cache/strategies.go
+package cache
+
+import (
+    "context"
+    "encore.dev/storage/cache"
+    "time"
+)
+
+// Multi-tier caching strategy
+
+// L1: In-memory cache (per instance)
+var localCache = &sync.Map{}
+
+// L2: Redis cluster (shared)
+var redisCluster = cache.NewCluster("l2_cache", cache.ClusterConfig{
+    EvictionPolicy: cache.AllKeysLRU,
+})
+
+// Cache-aside pattern with L1 + L2
+func GetWithMultiTierCache(ctx context.Context, key string, 
+    fetchFn func() (interface{}, error)) (interface{}, error) {
+    
+    // L1: Check local cache
+    if value, ok := localCache.Load(key); ok {
+        return value, nil
+    }
+    
+    // L2: Check Redis
+    var cached interface{}
+    redisKey := cache.NewStructKeyspace[string, interface{}](redisCluster, 
+        cache.KeyspaceConfig{KeyPattern: "data:*"})
+    
+    cached, err := redisKey.Get(ctx, key)
+    if err == nil {
+        // Store in L1
+        localCache.Store(key, cached)
+        return cached, nil
+    }
+    
+    // Cache miss - fetch from source
+    value, err := fetchFn()
+    if err != nil {
+        return nil, err
+    }
+    
+    // Store in both caches
+    redisKey.Set(ctx, key, value)
+    localCache.Store(key, value)
+    
+    return value, nil
+}
+
+// Cache warming on startup
+func WarmCache(ctx context.Context) error {
+    // Preload frequently accessed data
+    hotKeys := []string{"config", "feature_flags", "popular_products"}
+    
+    g, ctx := errgroup.WithContext(ctx)
+    
+    for _, key := range hotKeys {
+        key := key
+        g.Go(func() error {
+            data, err := fetchDataFromDB(ctx, key)
+            if err != nil {
+                return err
+            }
+            
+            return cacheData(ctx, key, data)
+        })
+    }
+    
+    return g.Wait()
+}
+
+// Cache invalidation patterns
+
+// 1. TTL-based (time-based expiration)
+func SetWithTTL(ctx context.Context, key string, value interface{}, ttl time.Duration) error {
+    // Encore cache automatically handles TTL
+    return cache.Set(ctx, key, value, cache.WithExpiration(ttl))
+}
+
+// 2. Event-based invalidation
+var _ = pubsub.NewSubscription(
+    UserUpdatedTopic,
+    "invalidate-user-cache",
+    pubsub.SubscriptionConfig[*UserUpdatedEvent]{
+        Handler: func(ctx context.Context, event *UserUpdatedEvent) error {
+            // Invalidate specific user cache
+            cacheKey := fmt.Sprintf("user:%s", event.UserID)
+            return cache.Delete(ctx, cacheKey)
+        },
+    },
+)
+
+// 3. Write-through cache
+func UpdateUserWithCache(ctx context.Context, user *User) error {
+    tx, err := db.Begin(ctx)
+    if err != nil {
+        return err
+    }
+    defer tx.Rollback()
+    
+    // Update database
+    _, err = tx.Exec(ctx, `
+        UPDATE users SET name = $1, email = $2 WHERE id = $3
+    `, user.Name, user.Email, user.ID)
+    
+    if err != nil {
+        return err
+    }
+    
+    // Commit transaction
+    if err = tx.Commit(); err != nil {
+        return err
+    }
+    
+    // Update cache
+    cacheKey := fmt.Sprintf("user:%s", user.ID)
+    return cache.Set(ctx, cacheKey, user)
+}
+```
+
+### Query Optimization
+
+```sql
+-- Database migrations with performance optimizations
+
+-- Create indexes for common queries
+CREATE INDEX CONCURRENTLY idx_orders_user_id_created_at 
+ON orders(user_id, created_at DESC);
+
+CREATE INDEX CONCURRENTLY idx_orders_status_created_at 
+ON orders(status, created_at DESC) 
+WHERE status IN ('PENDING', 'PROCESSING');
+
+-- Partial indexes for filtered queries
+CREATE INDEX CONCURRENTLY idx_active_subscriptions 
+ON subscriptions(user_id, expires_at) 
+WHERE status = 'ACTIVE';
+
+-- Composite indexes for complex queries
+CREATE INDEX CONCURRENTLY idx_transactions_complex 
+ON transactions(account_id, status, created_at DESC)
+INCLUDE (amount, currency);
+
+-- Full-text search index
+CREATE INDEX CONCURRENTLY idx_products_search 
+ON products USING GIN(to_tsvector('english', name || ' ' || description));
+
+-- Partitioning for large tables
+CREATE TABLE transactions_2024_q1 PARTITION OF transactions
+FOR VALUES FROM ('2024-01-01') TO ('2024-04-01');
+
+CREATE TABLE transactions_2024_q2 PARTITION OF transactions
+FOR VALUES FROM ('2024-04-01') TO ('2024-07-01');
+```
+
+---
+
+This is Part 1 of the advanced documentation. Would you like me to continue with the remaining sections (API Strategy & Versioning, Advanced Data Patterns, Production Deployment Architecture, etc.)? The complete document would be approximately 15,000+ lines covering all enterprise patterns for complex Encore projects.

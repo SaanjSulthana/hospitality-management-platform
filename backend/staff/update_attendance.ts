@@ -27,15 +27,13 @@ export interface UpdateAttendanceResponse {
   updatedAt: Date;
 }
 
-// Updates attendance record (Admin only)
-export const updateAttendance = api<UpdateAttendanceRequest, UpdateAttendanceResponse>(
-  { auth: true, expose: true, method: "PUT", path: "/staff/attendance/:attendanceId" },
-  async (req) => {
-    const authData = getAuthData();
-    if (!authData) {
-      throw APIError.unauthenticated("Authentication required");
-    }
-    requireRole("ADMIN")(authData);
+// Shared handler for updating attendance record (Admin only)
+async function updateAttendanceHandler(req: UpdateAttendanceRequest): Promise<UpdateAttendanceResponse> {
+  const authData = getAuthData();
+  if (!authData) {
+    throw APIError.unauthenticated("Authentication required");
+  }
+  requireRole("ADMIN")(authData);
 
     const { attendanceId, checkInTime, checkOutTime, status, notes, reason } = req;
 
@@ -159,5 +157,16 @@ export const updateAttendance = api<UpdateAttendanceRequest, UpdateAttendanceRes
       }
       throw APIError.internal("Failed to update attendance record");
     }
-  }
+}
+
+// LEGACY: Update attendance record (keep for backward compatibility)
+export const updateAttendance = api<UpdateAttendanceRequest, UpdateAttendanceResponse>(
+  { auth: true, expose: true, method: "PUT", path: "/staff/attendance/:attendanceId" },
+  updateAttendanceHandler
+);
+
+// V1: Update attendance record
+export const updateAttendanceV1 = api<UpdateAttendanceRequest, UpdateAttendanceResponse>(
+  { auth: true, expose: true, method: "PUT", path: "/v1/staff/attendance/:attendanceId" },
+  updateAttendanceHandler
 );

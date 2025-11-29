@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { usePageTitle } from '../contexts/PageTitleContext';
@@ -15,12 +15,14 @@ import {
   Target,
   RefreshCw
 } from 'lucide-react';
+import { getFlagBool } from '../lib/feature-flags';
 
 export default function AnalyticsPage() {
   const { getAuthenticatedBackend } = useAuth();
   const { theme } = useTheme();
   const { setPageTitle } = usePageTitle();
   const [timeRange, setTimeRange] = useState('30');
+  const queryClient = useQueryClient();
 
   // Set page title and description
   useEffect(() => {
@@ -47,6 +49,12 @@ export default function AnalyticsPage() {
       }
       return false;
     },
+    // Disable polling; rely on RealtimeProvider
+    refetchInterval: false,
+    staleTime: 25000,
+    gcTime: 300000,
+    refetchOnWindowFocus: false,
+    refetchOnMount: true,
   });
 
   const isAnyLoading = analyticsLoading;
@@ -62,6 +70,53 @@ export default function AnalyticsPage() {
   const formatPercentage = (value: number) => {
     return `${value.toFixed(1)}%`;
   };
+  // Realtime: listen to analytics events and debounce invalidate
+  useEffect(() => {
+    try { (window as any).__analyticsSelectedPropertyId = 'all'; } catch {}
+
+    const enabled = getFlagBool('ANALYTICS_REALTIME_V1', true);
+    if (!enabled) return;
+
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const invalidate = () => {
+      // Invalidate analytics overview queries
+      queryClient.invalidateQueries({ queryKey: ['analytics'] });
+      // 2% telemetry
+      if (Math.random() < 0.02) {
+        try {
+          fetch(`/telemetry/client`, {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${localStorage.getItem('accessToken') || ''}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              sampleRate: 0.02,
+              events: [{
+                type: 'analytics_realtime_invalidation',
+                counts: { scopes: 1 },
+                ts: new Date().toISOString(),
+              }]
+            })
+          }).catch(() => {});
+        } catch {}
+      }
+    };
+
+    const onEvents = (e: any) => {
+      const events = e?.detail?.events || [];
+      if (!Array.isArray(events) || events.length === 0) return;
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(invalidate, Math.floor(400 + Math.random() * 400));
+    };
+    const onHealth = (_e: any) => {};
+
+    window.addEventListener('analytics-stream-events', onEvents as EventListener);
+    window.addEventListener('analytics-stream-health', onHealth as EventListener);
+    return () => {
+      window.removeEventListener('analytics-stream-events', onEvents as EventListener);
+      window.removeEventListener('analytics-stream-health', onHealth as EventListener);
+      if (timer) clearTimeout(timer);
+    };
+  }, [queryClient]);
+
 
   const getPerformanceColor = (value: number, threshold: number) => {
     if (value >= threshold) return 'text-green-600';

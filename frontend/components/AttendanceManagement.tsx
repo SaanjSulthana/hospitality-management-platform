@@ -150,7 +150,6 @@ export default function AttendanceManagement() {
     refetchInterval: 3000,
     staleTime: 0,
     gcTime: 0,
-    refetchOnWindowFocus: true,
     refetchOnMount: true,
   });
 
@@ -164,7 +163,6 @@ export default function AttendanceManagement() {
     refetchInterval: 10000,
     staleTime: 0,
     gcTime: 0,
-    refetchOnWindowFocus: true,
     refetchOnMount: true,
   });
 
@@ -178,7 +176,6 @@ export default function AttendanceManagement() {
     refetchInterval: 5000,
     staleTime: 0,
     gcTime: 0,
-    refetchOnWindowFocus: true,
     refetchOnMount: true,
   });
 

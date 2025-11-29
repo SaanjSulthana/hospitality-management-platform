@@ -1,3 +1,5 @@
+import { jest, describe, it, expect, afterEach } from '@jest/globals';
+
 // Test setup for backend tests
 
 // Mock Encore.js modules for testing
@@ -11,16 +13,6 @@ jest.mock('encore.dev/api', () => ({
       this.status = status;
       this.details = details;
     }
-  },
-}));
-
-jest.mock('encore.dev/storage/sqldb', () => ({
-  SQLDatabase: {
-    named: jest.fn(() => ({
-      query: jest.fn(),
-      exec: jest.fn(),
-      transaction: jest.fn(),
-    })),
   },
 }));
 

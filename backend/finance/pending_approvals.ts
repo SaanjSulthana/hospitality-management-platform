@@ -25,15 +25,13 @@ export interface PendingApprovalsResponse {
   totalCount: number;
 }
 
-// Get pending approvals for admin review
-export const getPendingApprovals = api<{}, PendingApprovalsResponse>(
-  { auth: true, expose: true, method: "GET", path: "/finance/pending-approvals" },
-  async () => {
-    const authData = getAuthData();
-    if (!authData) {
-      throw APIError.unauthenticated("Authentication required");
-    }
-    requireRole("ADMIN")(authData);
+// Shared handler for getting pending approvals (used by both legacy and v1 endpoints)
+async function getPendingApprovalsHandler(): Promise<PendingApprovalsResponse> {
+  const authData = getAuthData();
+  if (!authData) {
+    throw APIError.unauthenticated("Authentication required");
+  }
+  requireRole("ADMIN")(authData);
 
     // Check if status columns exist in both tables
     let hasStatusColumns = false;
@@ -154,5 +152,16 @@ export const getPendingApprovals = api<{}, PendingApprovalsResponse>(
       throw APIError.internal("Failed to get pending approvals");
     }
   }
+
+// LEGACY: Get pending approvals for admin review (keep for backward compatibility)
+export const getPendingApprovals = api<{}, PendingApprovalsResponse>(
+  { auth: true, expose: true, method: "GET", path: "/finance/pending-approvals" },
+  getPendingApprovalsHandler
+);
+
+// V1: Get pending approvals for admin review
+export const getPendingApprovalsV1 = api<{}, PendingApprovalsResponse>(
+  { auth: true, expose: true, method: "GET", path: "/v1/finance/pending-approvals" },
+  getPendingApprovalsHandler
 );
 

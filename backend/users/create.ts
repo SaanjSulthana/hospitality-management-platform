@@ -4,7 +4,10 @@ import { requireRole } from "../auth/middleware";
 import { usersDB } from "./db";
 import { UserRole } from "../auth/types";
 import { hashPassword } from "../auth/utils";
+import { v1Path } from "../shared/http";
 import log from "encore.dev/log";
+import { usersEvents } from "./events";
+import { v4 as uuidv4 } from "uuid";
 
 export interface CreateUserRequest {
   email: string;
@@ -27,9 +30,7 @@ export interface CreateUserResponse {
 }
 
 // Creates a new user in the organization (Admin only)
-export const create = api<CreateUserRequest, CreateUserResponse>(
-  { auth: true, expose: true, method: "POST", path: "/users" },
-  async (req) => {
+async function createUserHandler(req: CreateUserRequest): Promise<CreateUserResponse> {
     const authData = getAuthData();
     if (!authData) {
       throw APIError.unauthenticated("Authentication required");
@@ -114,6 +115,29 @@ export const create = api<CreateUserRequest, CreateUserResponse>(
         orgId: authData.orgId 
       });
 
+      // Publish user_created event
+      try {
+        await usersEvents.publish({
+          eventId: uuidv4(),
+          eventVersion: 'v1',
+          eventType: 'user_created',
+          orgId: authData.orgId,
+          propertyId: null,
+          userId: parseInt(authData.userID),
+          timestamp: new Date(),
+          entityId: userRow.id,
+          entityType: 'user',
+          metadata: {
+            email,
+            role,
+            displayName,
+            propertyIds: propertyIds || [],
+          },
+        });
+      } catch (e) {
+        log.warn("Users event publish failed (user_created)", { error: e instanceof Error ? e.message : String(e) });
+      }
+
       return {
         id: userRow.id,
         email: userRow.email,
@@ -158,6 +182,15 @@ export const create = api<CreateUserRequest, CreateUserResponse>(
       
       throw APIError.internal("Failed to create user");
     }
-  }
+}
+
+export const create = api<CreateUserRequest, CreateUserResponse>(
+  { auth: true, expose: true, method: "POST", path: "/users" },
+  createUserHandler
+);
+
+export const createV1 = api<CreateUserRequest, CreateUserResponse>(
+  { auth: true, expose: true, method: "POST", path: "/v1/users" },
+  createUserHandler
 );
 

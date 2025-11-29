@@ -31,10 +31,8 @@ export interface MarkScheduleCompletionResponse {
   message: string;
 }
 
-// Marks schedule as completed with actual times
-export const markScheduleCompletion = api<MarkScheduleCompletionRequest, MarkScheduleCompletionResponse>(
-  { auth: true, expose: true, method: "PUT", path: "/staff/schedules/:scheduleId/completion" },
-  async (req) => {
+// Shared handler for marking schedule completion
+async function markScheduleCompletionHandler(req: MarkScheduleCompletionRequest): Promise<MarkScheduleCompletionResponse> {
     const authData = getAuthData();
     if (!authData) {
       throw APIError.unauthenticated("Authentication required");
@@ -147,5 +145,16 @@ export const markScheduleCompletion = api<MarkScheduleCompletionRequest, MarkSch
       }
       throw APIError.internal("Failed to mark schedule completion");
     }
-  }
+}
+
+// LEGACY: Marks schedule completion (keep for backward compatibility)
+export const markScheduleCompletion = api<MarkScheduleCompletionRequest, MarkScheduleCompletionResponse>(
+  { auth: true, expose: true, method: "PUT", path: "/staff/schedules/:scheduleId/complete" },
+  markScheduleCompletionHandler
+);
+
+// V1: Marks schedule completion
+export const markScheduleCompletionV1 = api<MarkScheduleCompletionRequest, MarkScheduleCompletionResponse>(
+  { auth: true, expose: true, method: "PUT", path: "/v1/staff/schedules/:scheduleId/complete" },
+  markScheduleCompletionHandler
 );

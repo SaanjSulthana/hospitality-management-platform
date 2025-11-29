@@ -27,6 +27,7 @@ import { TaskImage } from '../lib/api/task-images';
 import { useTaskImageManagement } from '../hooks/use-task-image-management';
 import { ERROR_MESSAGES } from '../src/config/api';
 import { useStandardQuery, useStandardMutation, QUERY_KEYS, STANDARD_QUERY_CONFIGS } from '../src/utils/api-standardizer';
+import { getFlagBool } from '../lib/feature-flags';
 import { CreateTaskDialog } from '@/components/ui/create-task-dialog';
 
 export default function TasksPage() {
@@ -65,7 +66,13 @@ export default function TasksPage() {
   const { data: tasks, isLoading, error: tasksError } = useStandardQuery(
     QUERY_KEYS.TASKS,
     '/tasks',
-    STANDARD_QUERY_CONFIGS.REAL_TIME
+    {
+      refetchInterval: false,
+      staleTime: 25000,
+      gcTime: 300000,
+      refetchOnWindowFocus: false,
+      refetchOnMount: true,
+    }
   );
 
   const { data: properties } = useStandardQuery(
@@ -180,6 +187,89 @@ export default function TasksPage() {
     done: filteredTasks.filter((task: any) => task.status === 'done'),
   };
 
+  // Realtime: Tasks events listener (row-level cache patching + minimal refetch)
+  useEffect(() => {
+    // Expose optional property filter (not used here)
+    try { (window as any).__tasksSelectedPropertyId = 'all'; } catch {}
+
+    const enabled = getFlagBool('TASKS_REALTIME_V1', true);
+    if (!enabled) return;
+
+    const onEvents = (e: any) => {
+      const events = e?.detail?.events || [];
+      if (!Array.isArray(events) || events.length === 0) return;
+
+      let needsTasksRefetch = false;
+
+      for (const ev of events) {
+        const { eventType, entityId, metadata } = ev || {};
+        if (!eventType || !entityId) continue;
+
+        // For complex changes (create/delete/attachments), do a single refetch
+        if (
+          eventType === 'task_created' ||
+          eventType === 'task_deleted' ||
+          eventType === 'task_attachment_added' ||
+          eventType === 'task_hours_updated' ||
+          eventType === 'task_assigned' ||
+          eventType === 'task_assignment_cleared'
+        ) {
+          needsTasksRefetch = true;
+          continue;
+        }
+
+        // Row-level status update
+        if (eventType === 'task_status_updated') {
+          const newStatus = metadata?.newStatus || metadata?.status;
+          if (!newStatus) {
+            needsTasksRefetch = true;
+            continue;
+          }
+          queryClient.setQueryData(QUERY_KEYS.TASKS, (old: any) => {
+            if (!old?.tasks) return old;
+            return {
+              ...old,
+              tasks: old.tasks.map((task: any) =>
+                task.id === entityId ? { ...task, status: newStatus } : task
+              ),
+            };
+          });
+          continue;
+        }
+
+        // Generic task_updated patch (title/priority/dueAt/description, if provided)
+        if (eventType === 'task_updated') {
+          queryClient.setQueryData(QUERY_KEYS.TASKS, (old: any) => {
+            if (!old?.tasks) return old;
+            return {
+              ...old,
+              tasks: old.tasks.map((task: any) =>
+                task.id === entityId
+                  ? {
+                      ...task,
+                      title: metadata?.title ?? task.title,
+                      priority: metadata?.priority ?? task.priority,
+                      dueAt: metadata?.dueAt ?? task.dueAt,
+                      description: metadata?.description ?? task.description,
+                    }
+                  : task
+              ),
+            };
+          });
+          continue;
+        }
+      }
+
+      if (needsTasksRefetch) {
+        queryClient.invalidateQueries({ queryKey: QUERY_KEYS.TASKS });
+      }
+    };
+
+    window.addEventListener('tasks-stream-events', onEvents);
+    return () => {
+      window.removeEventListener('tasks-stream-events', onEvents);
+    };
+  }, [queryClient]);
 
   const handleStatusChange = (taskId: number, newStatus: string) => {
     updateTaskStatusMutation.mutate({ 

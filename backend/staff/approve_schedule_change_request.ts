@@ -30,10 +30,8 @@ export interface ApproveScheduleChangeRequestResponse {
   message: string;
 }
 
-// Approves or rejects a schedule change request
-export const approveScheduleChangeRequest = api<ApproveScheduleChangeRequest, ApproveScheduleChangeRequestResponse>(
-  { auth: true, expose: true, method: "PUT", path: "/staff/schedule-change-requests/:changeRequestId/approve" },
-  async (req) => {
+// Shared handler for approving schedule change request
+async function approveScheduleChangeRequestHandler(req: ApproveScheduleChangeRequest): Promise<ApproveScheduleChangeRequestResponse> {
     const authData = getAuthData();
     if (!authData) {
       throw APIError.unauthenticated("Authentication required");
@@ -143,5 +141,16 @@ export const approveScheduleChangeRequest = api<ApproveScheduleChangeRequest, Ap
       }
       throw APIError.internal("Failed to approve schedule change request");
     }
-  }
+}
+
+// LEGACY: Approves schedule change request (keep for backward compatibility)
+export const approveScheduleChangeRequest = api<ApproveScheduleChangeRequest, ApproveScheduleChangeRequestResponse>(
+  { auth: true, expose: true, method: "PUT", path: "/staff/schedule-change-requests/:changeRequestId/approve" },
+  approveScheduleChangeRequestHandler
+);
+
+// V1: Approves schedule change request
+export const approveScheduleChangeRequestV1 = api<ApproveScheduleChangeRequest, ApproveScheduleChangeRequestResponse>(
+  { auth: true, expose: true, method: "PUT", path: "/v1/staff/schedule-change-requests/:changeRequestId/approve" },
+  approveScheduleChangeRequestHandler
 );

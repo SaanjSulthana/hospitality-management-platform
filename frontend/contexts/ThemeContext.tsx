@@ -53,6 +53,25 @@ export function ThemeProvider({ children }: ThemeProviderProps) {
   const [isLoading, setIsLoading] = useState(false);
   const { user, getAuthenticatedBackend } = useAuth();
 
+  // Listen to branding realtime events to refresh theme across tabs
+  useEffect(() => {
+    const onBrandingEvents = async (_e: any) => {
+      try {
+        const backend = getAuthenticatedBackend();
+        if (!backend) return;
+        const resp = await backend.branding.getTheme();
+        if (resp?.theme) {
+          setTheme(prev => ({ ...prev, ...resp.theme }));
+          window.dispatchEvent(new CustomEvent('themeReloaded', { detail: resp.theme }));
+        }
+      } catch (err) {
+        console.warn('Failed to refresh theme on branding event:', err);
+      }
+    };
+    window.addEventListener('branding-stream-events', onBrandingEvents as EventListener);
+    return () => window.removeEventListener('branding-stream-events', onBrandingEvents as EventListener);
+  }, [getAuthenticatedBackend]);
+
   const updateTheme = async (updates: Partial<Theme>) => {
     try {
       setIsLoading(true);

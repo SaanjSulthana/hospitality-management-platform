@@ -35,6 +35,9 @@ export function DailyApprovalManager({ className, propertyId, startDate, endDate
   const { toast } = useToast();
   const queryClient = useQueryClient();
   
+  // Realtime is handled globally by FinancePage via useFinanceRealtimeV2.
+  // This component listens to cache updates and does not run its own polling.
+  
   const [selectedTransactions, setSelectedTransactions] = useState<Set<number>>(new Set());
 
   // Get today's pending transactions with filters
@@ -52,65 +55,93 @@ export function DailyApprovalManager({ className, propertyId, startDate, endDate
         params.append('endDate', endDate);
       }
       
-      const url = `${API_CONFIG.BASE_URL}/finance/today-pending-transactions${params.toString() ? `?${params.toString()}` : ''}`;
-      
-      const response = await fetch(url, {
-        method: 'GET',
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('accessToken')}`,
-        },
-      });
-      
-      if (!response.ok) {
-        throw new Error(`Failed to fetch pending transactions: ${response.statusText}`);
+      const backend = getAuthenticatedBackend();
+      if (!backend) {
+        throw new Error('Not authenticated');
       }
       
-      return response.json();
+      const response = await backend.finance.getTodayPendingTransactions({
+        propertyId: propertyId && propertyId !== 'all' ? parseInt(propertyId) : undefined,
+        startDate,
+        endDate,
+      });
+      return response;
     },
-    refetchInterval: 3000, // Refresh every 3 seconds for live updates
-    staleTime: 0,
-    gcTime: 0,
+    // ✅ Add these query options to match FinancePage behavior
+    refetchInterval: false, // No automatic polling - rely on pub/sub events
+    staleTime: 0, // Always refetch when invalidated by pub/sub ✅
+    gcTime: 300000, // Cache results for 5 minutes
+    refetchOnMount: true, // Refetch when component mounts
   });
 
   // Bulk approve transactions
   const bulkApproveMutation = useMutation({
     mutationFn: async ({ transactionIds, action }: { transactionIds: number[]; action: 'approve' | 'reject' }) => {
-      const response = await fetch(`${API_CONFIG.BASE_URL}/finance/bulk-approve`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('accessToken')}`,
-        },
-        body: JSON.stringify({
+      const backend = getAuthenticatedBackend();
+      if (!backend) {
+        throw new Error('Not authenticated');
+      }
+      
+      try {
+        const response = await backend.finance.bulkApproveTransactions({
           transactionIds,
           transactionType: 'all',
           action,
-        }),
-      });
-      
-      if (!response.ok) {
-        const error = await response.json();
+        });
+        return response;
+      } catch (error: any) {
+        console.error('Bulk approval error:', error);
         throw new Error(error.message || `Failed to ${action} transactions`);
       }
+    },
+    onMutate: async ({ transactionIds, action }) => {
+      // Cancel outgoing refetches
+      await queryClient.cancelQueries({ queryKey: ['today-pending-transactions'] });
       
-      return response.json();
+      // Snapshot previous value
+      const previousTransactions = queryClient.getQueryData(['today-pending-transactions']);
+      
+      // Optimistically update UI
+      queryClient.setQueryData(['today-pending-transactions'], (old: any) => {
+        if (!old?.transactions) return old;
+        
+        return {
+          ...old,
+          transactions: old.transactions.filter((t: any) => 
+            !transactionIds.includes(t.id)
+          )
+        };
+      });
+      
+      return { previousTransactions };
     },
     onSuccess: (data, variables) => {
       const action = variables.action === 'approve' ? 'approved' : 'rejected';
+      const count = variables.action === 'approve' ? data.results.approved : data.results.rejected;
       toast({
         title: `Transactions ${action}`,
-        description: `${data.results[variables.action]} transactions have been ${action} successfully.`,
+        description: `${count} transactions have been ${action} successfully.`,
       });
       
       // Clear selection and refresh data
       setSelectedTransactions(new Set());
+      
+      // Invalidate Daily Approval Manager queries
       queryClient.invalidateQueries({ queryKey: ['today-pending-transactions'] });
+      queryClient.invalidateQueries({ queryKey: ['daily-approval-check'] });
+      
+      // ✅ ADD: Invalidate Finance page queries so individual transactions update immediately
       queryClient.invalidateQueries({ queryKey: ['expenses'] });
       queryClient.invalidateQueries({ queryKey: ['revenues'] });
       queryClient.invalidateQueries({ queryKey: ['profit-loss'] });
-      queryClient.invalidateQueries({ queryKey: ['monthly-report'] }); // Invalidate monthly reports for real-time updates
+      
     },
-    onError: (error: any) => {
+    onError: (error: any, variables, context) => {
+      // Rollback on error
+      if (context?.previousTransactions) {
+        queryClient.setQueryData(['today-pending-transactions'], context.previousTransactions);
+      }
+      
       toast({
         variant: "destructive",
         title: "Error",
@@ -157,7 +188,7 @@ export function DailyApprovalManager({ className, propertyId, startDate, endDate
   };
 
   const formatCurrency = (amountCents: number) => {
-    return formatCurrencyUtil(amountCents, 'USD');
+    return formatCurrencyUtil(amountCents, 'INR');
   };
 
   const getStatusColor = (status: string) => {

@@ -3,6 +3,7 @@ import { backend, getAuthenticatedBackend } from '../services/backend';
 import type { AuthData } from '~backend/auth/types';
 import { useQueryClient } from '@tanstack/react-query';
 import { getUserLocation, getUserIP, getUserAgent, getUserLocale } from '../utils/geolocation';
+import { tokenManager } from '../services/token-manager';
 
 interface AuthContextType {
   user: AuthData | null;
@@ -18,6 +19,7 @@ interface AuthContextType {
   setIsTestingLogoutDialog: (testing: boolean) => void;
   clearCorruptedTokens: () => void;
   clearAllAuthData: () => void;
+  authError: 'expired' | null;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -39,6 +41,26 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [isInitializing, setIsInitializing] = useState(true);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
   const [isTestingLogoutDialog, setIsTestingLogoutDialog] = useState(false);
+  const [authError, setAuthError] = useState<'expired' | null>(null);
+
+  // Cross-tab coordination
+  const refreshChannelRef = useRef<BroadcastChannel | null>(null);
+  const isRefreshingRef = useRef<boolean>(false);
+  const refreshWaitersRef = useRef<Array<(ok: boolean) => void>>([]);
+  const retryStreakRef = useRef<number>(0);
+  const tabIdRef = useRef<string>((() => {
+    try {
+      const existing = sessionStorage.getItem('auth-tab-id');
+      if (existing) return existing;
+      const id = Math.random().toString(36).slice(2);
+      sessionStorage.setItem('auth-tab-id', id);
+      return id;
+    } catch {
+      return Math.random().toString(36).slice(2);
+    }
+  })());
+  const authControlChannelRef = useRef<BroadcastChannel | null>(null);
+  const receivedExternalLogoutRef = useRef<boolean>(false);
 
   // State change logging for debugging (development only)
   useEffect(() => {
@@ -144,7 +166,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const login = async (email: string, password: string) => {
     try {
-      console.log('Login started - setting isLoggingIn to true');
+      console.log('[AuthContext] Login started');
       setIsLoggingIn(true);
       
       // Reset logout progress state immediately to prevent popup after login
@@ -152,33 +174,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setIsLoggingOut(false);
       const response = await backend.auth.login({ email, password });
       
-      // Clean tokens before storing (remove ALL whitespace, newlines, tabs, and any other whitespace characters)
-      const cleanAccessToken = response.accessToken.trim().replace(/[\r\n\t]/g, '').replace(/\s/g, '');
-      const cleanRefreshToken = response.refreshToken.trim().replace(/[\r\n\t]/g, '').replace(/\s/g, '');
+      // Use TokenManager to store tokens (includes validation and cleaning)
+      const stored = tokenManager.setTokens(response.accessToken, response.refreshToken);
       
-      // Validate cleaned tokens
-      if (cleanAccessToken !== response.accessToken || cleanRefreshToken !== response.refreshToken) {
-        console.warn('Tokens contained whitespace characters, cleaned before storing');
-        console.log('Original access token length:', response.accessToken.length);
-        console.log('Cleaned access token length:', cleanAccessToken.length);
-        console.log('Original refresh token length:', response.refreshToken.length);
-        console.log('Cleaned refresh token length:', cleanRefreshToken.length);
-      }
-      
-      // Safely store tokens to prevent corruption
-      if (!safelyStoreTokens(cleanAccessToken, cleanRefreshToken)) {
+      if (!stored) {
         throw new Error('Failed to store tokens safely');
       }
       
-      // Set the token in state FIRST
-      setAccessToken(cleanAccessToken);
+      // Set the token in state
+      setAccessToken(response.accessToken);
       setUser({
         ...response.user,
         userID: response.user.id.toString()
       });
       
       // Clear any previous cached data to avoid stale views after user switch
-      console.log('Clearing query cache after login...');
+      console.log('[AuthContext] Clearing query cache after login...');
       queryClient.clear();
 
       // IMPORTANT: Wait a moment to ensure token is stored, then create authenticated backend
@@ -186,32 +197,31 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       const authenticatedBackend = getAuthenticatedBackend();
       if (!authenticatedBackend) {
-        console.error('Failed to create authenticated backend client');
+        console.error('[AuthContext] Failed to create authenticated backend client');
         throw new Error('Failed to create authenticated backend client');
       }
       
-      console.log('Calling /auth/me with authenticated backend...');
+      console.log('[AuthContext] Calling /auth/me with authenticated backend...');
       const meResponse = await authenticatedBackend.auth.me();
       setUser(meResponse.user);
       
       // Track login activity with geolocation (non-blocking)
       trackUserActivity(parseInt(meResponse.user.userID), 'login').catch(error => {
-        console.warn('Login activity tracking failed (non-critical):', error);
+        console.warn('[AuthContext] Login activity tracking failed (non-critical):', error);
       });
       
-      console.log('Login successful, user set:', meResponse.user);
+      console.log('[AuthContext] Login successful, user set:', meResponse.user);
     } catch (error) {
-      console.error('Login failed:', error);
+      console.error('[AuthContext] Login failed:', error);
       
-      // Clear any stored tokens on login failure
-      localStorage.removeItem('accessToken');
-      localStorage.removeItem('refreshToken');
+      // Clear tokens using TokenManager
+      tokenManager.clearTokens();
       setAccessToken(null);
       setUser(null);
       
       throw error;
     } finally {
-      console.log('Login completed - setting isLoggingIn to false');
+      console.log('[AuthContext] Login completed');
       setIsLoggingIn(false);
     }
   };
@@ -258,6 +268,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     });
     
     try {
+      // Broadcast logout to sibling tabs first (idempotent)
+      try {
+        const id = (window.crypto && 'randomUUID' in window.crypto) ? (window.crypto as any).randomUUID() : Math.random().toString(36).slice(2);
+        const payload = { t: 'logout', id, ts: Date.now() };
+        authControlChannelRef.current?.postMessage(payload);
+        try { localStorage.setItem('auth-logout', JSON.stringify(payload)); } catch {}
+      } catch {}
+
       // FORCE show progress dialog for testing
       console.log('🔧 FORCING showLogoutProgress to true for testing');
       setShowLogoutProgress(true);
@@ -318,13 +336,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       console.error('Logout error:', error);
     } finally {
       // Always clear local storage and state
-      console.log('Finally block - clearing state, shouldShowProgress:', shouldShowProgress);
-      localStorage.removeItem('accessToken');
-      localStorage.removeItem('refreshToken');
+      console.log('[AuthContext] Finally block - clearing state, shouldShowProgress:', shouldShowProgress);
+      tokenManager.clearTokens();
       setAccessToken(null);
       setUser(null);
       // Clear all cached queries so the next user/session gets fresh data
-      console.log('Clearing query cache after logout...');
+      console.log('[AuthContext] Clearing query cache after logout...');
       queryClient.clear();
       
       // If logout progress is showing, let it complete naturally
@@ -343,151 +360,183 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const refreshAccessToken = async (): Promise<string> => {
-    // If there's already a refresh in progress, return that promise
-    if (refreshPromiseRef.current) {
-      console.log('Token refresh already in progress, returning existing promise');
-      return refreshPromiseRef.current;
+    // Mutex (Web Locks if available, else localStorage lease)
+    if (isRefreshingRef.current) {
+      // Gate followers until leader completes
+      return await new Promise<string>((resolve, reject) => {
+        refreshWaitersRef.current.push((ok) => {
+          if (ok) {
+            const token = localStorage.getItem('accessToken');
+            if (token) resolve(token); else reject(new Error('No token after refresh'));
+          } else {
+            reject(new Error('Refresh failed'));
+          }
+        });
+      });
     }
 
-    try {
-      const refreshToken = localStorage.getItem('refreshToken');
-      if (!refreshToken) {
-        throw new Error('No refresh token available');
-      }
-
-      // Create the refresh promise and store it
-      const refreshPromise = (async () => {
-        try {
-          const response = await backend.auth.refresh({ refreshToken });
-          
-          // Clean tokens before storing (remove ALL whitespace, newlines, tabs, and any other whitespace characters)
-          const cleanAccessToken = response.accessToken.trim().replace(/[\r\n\t]/g, '').replace(/\s/g, '');
-          const cleanRefreshToken = response.refreshToken.trim().replace(/[\r\n\t]/g, '').replace(/\s/g, '');
-          
-          // Validate cleaned tokens
-          if (cleanAccessToken !== response.accessToken || cleanRefreshToken !== response.refreshToken) {
-            console.warn('Tokens contained whitespace characters, cleaned before storing');
-          }
-          
-          // Store refreshed tokens safely to prevent corruption
-          if (!safelyStoreTokens(cleanAccessToken, cleanRefreshToken)) {
-            throw new Error('Failed to store refreshed tokens safely');
-          }
-          
-          setAccessToken(cleanAccessToken);
-
-          return cleanAccessToken;
-        } catch (error) {
-          console.error('Token refresh failed:', error);
-          // Don't show logout modal for automatic token refresh failures
-          // Just clear tokens silently and redirect to login
-          clearCorruptedTokens();
-          window.location.href = '/login';
-          throw error;
+    const acquireLocalLease = (): boolean => {
+      try {
+        const key = 'auth_refresh_lock';
+        const raw = localStorage.getItem(key);
+        const now = Date.now();
+        const lease = raw ? JSON.parse(raw) : null;
+        if (!lease || lease.exp < now) {
+          localStorage.setItem(key, JSON.stringify({ owner: tabIdRef.current, exp: now + 10000 }));
+          return true;
         }
-      })();
+        return lease.owner === tabIdRef.current;
+      } catch { return true; }
+    };
 
-      // Store the promise reference
-      refreshPromiseRef.current = refreshPromise;
+    const releaseLocalLease = () => {
+      try { localStorage.removeItem('auth_refresh_lock'); } catch {}
+    };
 
-      // Wait for the refresh to complete
-      const result = await refreshPromise;
-      
-      // Clear the promise reference
-      refreshPromiseRef.current = null;
-      
-      return result;
-    } catch (error) {
-      // Clear the promise reference on error
-      refreshPromiseRef.current = null;
-      throw error;
-    }
+    isRefreshingRef.current = true;
+    refreshChannelRef.current?.postMessage({ t: 'refresh-started' });
+
+    const doRefresh = async () => {
+      try {
+        console.log('[AuthContext] Refreshing access token via TokenManager...');
+        const newToken = await tokenManager.getValidAccessToken();
+        setAccessToken(newToken);
+        retryStreakRef.current = 0;
+        setAuthError(null);
+        refreshChannelRef.current?.postMessage({ t: 'refresh-success', token: newToken });
+        // Wake gated followers
+        refreshWaitersRef.current.splice(0).forEach(fn => fn(true));
+        return newToken;
+      } catch (error) {
+        console.error('[AuthContext] Token refresh failed:', error);
+        retryStreakRef.current += 1;
+        if (retryStreakRef.current >= 2) {
+          setAuthError('expired');
+        }
+        refreshChannelRef.current?.postMessage({ t: 'refresh-failed' });
+        refreshWaitersRef.current.splice(0).forEach(fn => fn(false));
+        tokenManager.clearTokens();
+        setAccessToken(null);
+        setUser(null);
+        throw error;
+      } finally {
+        isRefreshingRef.current = false;
+        releaseLocalLease();
+      }
+    };
+
+    // Prefer Web Locks API where available
+    const runWithWebLock = async (): Promise<string> => {
+      // @ts-ignore
+      if (navigator?.locks?.request) {
+        // @ts-ignore
+        return await navigator.locks.request('auth-refresh', async () => await doRefresh());
+      }
+      if (!acquireLocalLease()) {
+        // Another tab owns the lease; wait for broadcast
+        return await new Promise<string>((resolve, reject) => {
+          refreshWaitersRef.current.push((ok) => {
+            if (ok) {
+              const token = localStorage.getItem('accessToken');
+              if (token) resolve(token); else reject(new Error('No token after refresh'));
+            } else reject(new Error('Refresh failed'));
+          });
+        });
+      }
+      return await doRefresh();
+    };
+
+    return await runWithWebLock();
   };
 
   useEffect(() => {
+    // Auth refresh coordination channel
+    if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
+      refreshChannelRef.current = new BroadcastChannel('auth-refresh');
+      refreshChannelRef.current.onmessage = (ev) => {
+        const msg = ev.data || {};
+        if (msg.t === 'refresh-success') {
+          if (msg.token) {
+            localStorage.setItem('accessToken', msg.token);
+            setAccessToken(msg.token);
+          }
+          retryStreakRef.current = 0;
+          setAuthError(null);
+          refreshWaitersRef.current.splice(0).forEach(fn => fn(true));
+        } else if (msg.t === 'refresh-failed') {
+          retryStreakRef.current += 1;
+          if (retryStreakRef.current >= 2) setAuthError('expired');
+          refreshWaitersRef.current.splice(0).forEach(fn => fn(false));
+        }
+      };
+
+      // Cross-tab auth control (logout broadcast)
+      try {
+        authControlChannelRef.current = new BroadcastChannel('auth-control');
+        authControlChannelRef.current.onmessage = (ev) => {
+          const msg = ev.data || {};
+          if (msg.t === 'logout') {
+            if (receivedExternalLogoutRef.current) return;
+            receivedExternalLogoutRef.current = true;
+            try {
+              tokenManager.clearTokens();
+              setAccessToken(null);
+              setUser(null);
+              queryClient.clear();
+            } catch {}
+            // Navigate away promptly to stop any polling
+            try { window.location.assign('/login'); } catch {}
+          }
+        };
+      } catch {}
+    }
+
+    // localStorage fallback for browsers without BroadcastChannel (fires only in other tabs)
+    const onStorage = (e: StorageEvent) => {
+      if (e.key === 'auth-logout' && e.newValue) {
+        if (receivedExternalLogoutRef.current) return;
+        receivedExternalLogoutRef.current = true;
+        try {
+          tokenManager.clearTokens();
+          setAccessToken(null);
+          setUser(null);
+          queryClient.clear();
+        } catch {}
+        try { window.location.assign('/login'); } catch {}
+      }
+    };
+    window.addEventListener('storage', onStorage);
+
     const initAuth = async () => {
       try {
-        const storedAccessToken = localStorage.getItem('accessToken');
-        if (!storedAccessToken) {
+        console.log('[AuthContext] Initializing authentication...');
+        
+        // Use TokenManager to check authentication
+        if (!tokenManager.isAuthenticated()) {
+          console.log('[AuthContext] No valid token found');
           setIsLoading(false);
           return;
         }
 
-        // Validate stored token format
-        if (typeof storedAccessToken !== 'string' || storedAccessToken.trim() === '') {
-          console.error('Invalid stored token format, clearing...');
-          localStorage.removeItem('accessToken');
-          localStorage.removeItem('refreshToken');
-          setIsLoading(false);
-          return;
-        }
-
-        // Check if token looks like a valid JWT
-        const tokenParts = storedAccessToken.split('.');
-        if (tokenParts.length !== 3) {
-          console.error('Stored token does not appear to be a valid JWT, clearing...');
-          localStorage.removeItem('accessToken');
-          localStorage.removeItem('refreshToken');
-          setIsLoading(false);
-          return;
-        }
-
-        // Check for suspicious token length (tokens should be 200-300 chars, not 500+)
-        if (storedAccessToken.length > 400) {
-          console.error(`SUSPICIOUS: Stored token length ${storedAccessToken.length} chars indicates corruption, clearing...`);
-          localStorage.removeItem('accessToken');
-          localStorage.removeItem('refreshToken');
-          setIsLoading(false);
-          return;
-        }
-
-        // Check if token is expired by decoding the payload
+        // Get valid token (automatically refreshes if needed)
         try {
-          const payload = JSON.parse(atob(tokenParts[1]));
-          const currentTime = Math.floor(Date.now() / 1000);
-          if (payload.exp && payload.exp < currentTime) {
-            console.log('Stored token is expired, attempting refresh...');
-            // Token is expired, try to refresh it
-            try {
-              await refreshAccessToken();
-              const authenticatedBackend = getAuthenticatedBackend();
-              if (!authenticatedBackend) {
-                console.error('Failed to create authenticated backend client after token refresh');
-                clearCorruptedTokens();
-                setIsLoading(false);
-                return;
-              }
-              
-              const meResponse = await authenticatedBackend.auth.me();
-              setUser(meResponse.user);
-              console.log('Auth initialized after token refresh, user:', meResponse.user);
-            } catch (refreshError) {
-              console.error('Token refresh failed during init:', refreshError);
-              clearCorruptedTokens();
-            }
+          const validToken = await tokenManager.getValidAccessToken();
+          setAccessToken(validToken);
+          
+          const authenticatedBackend = getAuthenticatedBackend();
+          if (!authenticatedBackend) {
+            console.error('[AuthContext] Failed to create authenticated backend client');
+            tokenManager.clearTokens();
             setIsLoading(false);
             return;
           }
-        } catch (decodeError) {
-          console.error('Failed to decode token payload:', decodeError);
-          clearCorruptedTokens();
-          setIsLoading(false);
-          return;
-        }
-
-        setAccessToken(storedAccessToken);
-
-        // Try to get user data with stored token
-        try {
-          const authenticatedBackend = getAuthenticatedBackend();
+          
           const meResponse = await authenticatedBackend.auth.me();
           setUser(meResponse.user);
-          console.log('Auth initialized with existing token, user:', meResponse.user);
+          console.log('[AuthContext] Auth initialized with user:', meResponse.user);
         } catch (error) {
-          // If the first attempt failed, don't try to refresh again
-          // The token refresh was already attempted above if the token was expired
-          console.error('Auth initialization failed:', error);
-          clearCorruptedTokens();
+          console.error('[AuthContext] Auth initialization failed:', error);
+          tokenManager.clearTokens();
         }
       } catch (error) {
         console.error('Auth initialization error:', error);
@@ -500,6 +549,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     };
 
     initAuth();
+    return () => {
+      try { refreshChannelRef.current?.close(); } catch {}
+      try { authControlChannelRef.current?.close(); } catch {}
+      window.removeEventListener('storage', onStorage);
+    };
   }, []);
 
   // Add global debug function for development
@@ -747,6 +801,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setIsTestingLogoutDialog,
       clearCorruptedTokens,
       clearAllAuthData,
+      authError,
     }}>
       {children}
     </AuthContext.Provider>

@@ -1,6 +1,8 @@
 import { api, APIError } from "encore.dev/api";
 import { getAuthData } from "~encore/auth";
 import { brandingDB } from "./db";
+import { brandingEvents } from "./events";
+import { v4 as uuidv4 } from "uuid";
 import { requireRole } from "../auth/middleware";
 
 export interface UpdateThemeRequest {
@@ -20,10 +22,8 @@ export interface UpdateThemeResponse {
   success: boolean;
 }
 
-// Updates the theme configuration for the organization
-export const updateTheme = api<UpdateThemeRequest, UpdateThemeResponse>(
-  { auth: true, expose: true, method: "PATCH", path: "/branding/theme" },
-  async (req) => {
+// Shared handler for updating theme configuration
+async function updateThemeHandler(req: UpdateThemeRequest): Promise<UpdateThemeResponse> {
     try {
       const authData = getAuthData();
       if (!authData) {
@@ -183,6 +183,26 @@ export const updateTheme = api<UpdateThemeRequest, UpdateThemeResponse>(
         themeJsonLength: JSON.stringify(updatedTheme).length
       });
 
+      // Publish event
+      try {
+        await brandingEvents.publish({
+          eventId: uuidv4(),
+          eventVersion: "v1",
+          eventType: "theme_updated",
+          orgId: authData.orgId,
+          userId: Number(authData.userID) || null,
+          propertyId: null,
+          timestamp: new Date(),
+          entityId: authData.orgId,
+          entityType: "branding",
+          metadata: {
+            ...cleanedRequest,
+          },
+        });
+      } catch (pubErr) {
+        console.warn("[BrandingRealtime] Failed to publish theme_updated event:", pubErr);
+      }
+
       return { success: true };
     } catch (error: any) {
       console.error('Theme update failed:', error);
@@ -202,13 +222,22 @@ export const updateTheme = api<UpdateThemeRequest, UpdateThemeResponse>(
       // Convert other errors to internal server error
       throw APIError.internal("Failed to update theme configuration");
     }
-  }
+}
+
+// LEGACY: Updates theme configuration (keep for backward compatibility)
+export const updateTheme = api<UpdateThemeRequest, UpdateThemeResponse>(
+  { auth: true, expose: true, method: "PATCH", path: "/branding/theme" },
+  updateThemeHandler
 );
 
-// Helper function to clean up corrupted theme data
-export const cleanupCorruptedTheme = api<void, { success: boolean }>(
-  { auth: true, expose: true, method: "POST", path: "/branding/cleanup-theme" },
-  async (req) => {
+// V1: Updates theme configuration
+export const updateThemeV1 = api<UpdateThemeRequest, UpdateThemeResponse>(
+  { auth: true, expose: true, method: "PATCH", path: "/v1/branding/theme" },
+  updateThemeHandler
+);
+
+// Shared handler for cleaning up corrupted theme data
+async function cleanupCorruptedThemeHandler(req: void): Promise<{ success: boolean }> {
     try {
       const authData = getAuthData();
       if (!authData) {
@@ -237,12 +266,42 @@ export const cleanupCorruptedTheme = api<void, { success: boolean }>(
         WHERE id = ${authData.orgId}
       `;
 
+      // Publish event
+      try {
+        await brandingEvents.publish({
+          eventId: uuidv4(),
+          eventVersion: "v1",
+          eventType: "theme_cleaned",
+          orgId: authData.orgId,
+          userId: Number(authData.userID) || null,
+          propertyId: null,
+          timestamp: new Date(),
+          entityId: authData.orgId,
+          entityType: "branding",
+          metadata: {
+            action: "cleanup",
+          },
+        });
+      } catch (pubErr) {
+        console.warn("[BrandingRealtime] Failed to publish theme_cleaned event:", pubErr);
+      }
+
       console.log('Theme cleanup completed successfully');
       return { success: true };
     } catch (error: any) {
       console.error('Theme cleanup failed:', error);
       throw APIError.internal("Failed to cleanup theme data");
     }
-  }
+}
+
+// LEGACY: Cleans up corrupted theme (keep for backward compatibility)
+export const cleanupCorruptedTheme = api<void, { success: boolean }>(
+  { auth: true, expose: true, method: "POST", path: "/branding/cleanup-theme" },
+  cleanupCorruptedThemeHandler
 );
 
+// V1: Cleans up corrupted theme
+export const cleanupCorruptedThemeV1 = api<void, { success: boolean }>(
+  { auth: true, expose: true, method: "POST", path: "/v1/branding/cleanup-theme" },
+  cleanupCorruptedThemeHandler
+);

@@ -15,10 +15,8 @@ export interface InviteUserResponse {
   token: string;
 }
 
-// Invites a user to join the organization (Admin only, invites MANAGERs)
-export const invite = api<InviteUserRequest, InviteUserResponse>(
-  { auth: true, expose: true, method: "POST", path: "/orgs/invite" },
-  async (req) => {
+// Shared handler for inviting a user to the organization
+async function inviteUserHandler(req: InviteUserRequest): Promise<InviteUserResponse> {
     const authData = getAuthData();
     if (!authData) {
       throw APIError.unauthenticated("Authentication required");
@@ -74,6 +72,16 @@ export const invite = api<InviteUserRequest, InviteUserResponse>(
       inviteUrl,
       token,
     };
-  }
+}
+
+// LEGACY: Invites a user to organization (keep for backward compatibility)
+export const invite = api<InviteUserRequest, InviteUserResponse>(
+  { auth: true, expose: true, method: "POST", path: "/orgs/invite" },
+  inviteUserHandler
 );
 
+// V1: Invites a user to organization
+export const inviteV1 = api<InviteUserRequest, InviteUserResponse>(
+  { auth: true, expose: true, method: "POST", path: "/v1/orgs/invite" },
+  inviteUserHandler
+);

@@ -2,6 +2,9 @@ import { Service } from "encore.dev/service";
 
 export default new Service("staff");
 
+// Ensure subscriptions are registered by importing modules for side effects
+import "./staff_realtime_subscriber";
+
 // Export all staff endpoints
 export { create } from "./create";
 export { update } from "./update";
@@ -47,6 +50,7 @@ export { getPayslip } from "./payslips";
 export { updatePayslipStatus } from "./payslips";
 export { createSalaryComponent } from "./salary_components";
 export { listSalaryComponents } from "./salary_components";
+export { subscribeStaffRealtime } from "./subscribe_realtime";
 export { getLeaveBalance } from "./leave_balance";
 export { updateLeaveBalance } from "./leave_balance";
 export { fixSchema } from "./fix_schema_endpoint";

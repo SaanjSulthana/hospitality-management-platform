@@ -95,14 +95,13 @@ export interface UpdatePayslipStatusResponse {
 }
 
 // Lists payslips with filtering and pagination
-export const listPayslips = api<ListPayslipsRequest, ListPayslipsResponse>(
-  { auth: true, expose: true, method: "GET", path: "/staff/payslips" },
-  async (req) => {
-    const authData = getAuthData();
-    if (!authData) {
-      throw APIError.unauthenticated("Authentication required");
-    }
-    requireRole("ADMIN", "MANAGER")(authData);
+// Shared handler for listing payslips
+async function listPayslipsHandler(req: ListPayslipsRequest): Promise<ListPayslipsResponse> {
+  const authData = getAuthData();
+  if (!authData) {
+    throw APIError.unauthenticated("Authentication required");
+  }
+  requireRole("ADMIN", "MANAGER")(authData);
 
     const { 
       staffId, 
@@ -278,22 +277,30 @@ export const listPayslips = api<ListPayslipsRequest, ListPayslipsResponse>(
           draftCount: parseInt(summary?.draft_count || '0') || 0,
         },
       };
-    } catch (error) {
-      console.error('List payslips error:', error);
-      throw APIError.internal("Failed to fetch payslips");
-    }
+  } catch (error) {
+    console.error('List payslips error:', error);
+    throw APIError.internal("Failed to fetch payslips");
   }
+}
+
+// LEGACY: Lists payslips (keep for backward compatibility)
+export const listPayslips = api<ListPayslipsRequest, ListPayslipsResponse>(
+  { auth: true, expose: true, method: "GET", path: "/staff/payslips" },
+  listPayslipsHandler
 );
 
-// Gets detailed payslip information
-export const getPayslip = api<GetPayslipRequest, GetPayslipResponse>(
-  { auth: true, expose: true, method: "GET", path: "/staff/payslips/:payslipId" },
-  async (req) => {
-    const authData = getAuthData();
-    if (!authData) {
-      throw APIError.unauthenticated("Authentication required");
-    }
-    requireRole("ADMIN", "MANAGER")(authData);
+// V1: Lists payslips
+export const listPayslipsV1 = api<ListPayslipsRequest, ListPayslipsResponse>(
+  { auth: true, expose: true, method: "GET", path: "/v1/staff/payslips" },
+  listPayslipsHandler
+);
+// Shared handler for getting payslip
+async function getPayslipHandler(req: GetPayslipRequest): Promise<GetPayslipResponse> {
+  const authData = getAuthData();
+  if (!authData) {
+    throw APIError.unauthenticated("Authentication required");
+  }
+  requireRole("ADMIN", "MANAGER")(authData);
 
     const { payslipId } = req;
 
@@ -370,18 +377,26 @@ export const getPayslip = api<GetPayslipRequest, GetPayslipResponse>(
       }
       throw APIError.internal("Failed to fetch payslip");
     }
-  }
+}
+
+// LEGACY: Gets detailed payslip information (keep for backward compatibility)
+export const getPayslip = api<GetPayslipRequest, GetPayslipResponse>(
+  { auth: true, expose: true, method: "GET", path: "/staff/payslips/:payslipId" },
+  getPayslipHandler
 );
 
-// Updates payslip status
-export const updatePayslipStatus = api<UpdatePayslipStatusRequest, UpdatePayslipStatusResponse>(
-  { auth: true, expose: true, method: "PUT", path: "/staff/payslips/:payslipId/status" },
-  async (req) => {
-    const authData = getAuthData();
-    if (!authData) {
-      throw APIError.unauthenticated("Authentication required");
-    }
-    requireRole("ADMIN")(authData);
+// V1: Gets detailed payslip information
+export const getPayslipV1 = api<GetPayslipRequest, GetPayslipResponse>(
+  { auth: true, expose: true, method: "GET", path: "/v1/staff/payslips/:payslipId" },
+  getPayslipHandler
+);
+// Shared handler for updating payslip status
+async function updatePayslipStatusHandler(req: UpdatePayslipStatusRequest): Promise<UpdatePayslipStatusResponse> {
+  const authData = getAuthData();
+  if (!authData) {
+    throw APIError.unauthenticated("Authentication required");
+  }
+  requireRole("ADMIN")(authData);
 
     const { payslipId, status, notes } = req;
 
@@ -428,5 +443,16 @@ export const updatePayslipStatus = api<UpdatePayslipStatusRequest, UpdatePayslip
       }
       throw APIError.internal("Failed to update payslip status");
     }
-  }
+}
+
+// LEGACY: Updates payslip status (keep for backward compatibility)
+export const updatePayslipStatus = api<UpdatePayslipStatusRequest, UpdatePayslipStatusResponse>(
+  { auth: true, expose: true, method: "PUT", path: "/staff/payslips/:payslipId/status" },
+  updatePayslipStatusHandler
+);
+
+// V1: Updates payslip status
+export const updatePayslipStatusV1 = api<UpdatePayslipStatusRequest, UpdatePayslipStatusResponse>(
+  { auth: true, expose: true, method: "PUT", path: "/v1/staff/payslips/:payslipId/status" },
+  updatePayslipStatusHandler
 );

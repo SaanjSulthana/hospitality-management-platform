@@ -8,10 +8,8 @@ export interface MeResponse {
   permissions: string[];
 }
 
-// Returns current user information and permissions
-export const me = api<{}, MeResponse>(
-  { auth: true, expose: true, method: "GET", path: "/auth/me" },
-  async (req) => {
+// Shared handler for getting current user info
+async function meHandler(req: {}): Promise<MeResponse> {
     const authData = getAuthData();
     if (!authData) {
       throw APIError.unauthenticated("Authentication required");
@@ -51,7 +49,18 @@ export const me = api<{}, MeResponse>(
       user: freshUserData,
       permissions,
     };
-  }
+}
+
+// LEGACY: Returns current user information and permissions (keep for backward compatibility)
+export const me = api<{}, MeResponse>(
+  { auth: true, expose: true, method: "GET", path: "/auth/me" },
+  meHandler
+);
+
+// V1: Returns current user information and permissions
+export const meV1 = api<{}, MeResponse>(
+  { auth: true, expose: true, method: "GET", path: "/v1/auth/me" },
+  meHandler
 );
 
 function getPermissionsForRole(role: string): string[] {

@@ -55,10 +55,8 @@ export interface ApproveEmergencyLeaveResponse {
   message: string;
 }
 
-// Creates an emergency leave request
-export const createEmergencyLeave = api<CreateEmergencyLeaveRequest, CreateEmergencyLeaveResponse>(
-  { auth: true, expose: true, method: "POST", path: "/staff/emergency-leave" },
-  async (req) => {
+// Shared handler for creating emergency leave
+async function createEmergencyLeaveHandler(req: CreateEmergencyLeaveRequest): Promise<CreateEmergencyLeaveResponse> {
     const authData = getAuthData();
     if (!authData) {
       throw APIError.unauthenticated("Authentication required");
@@ -197,18 +195,27 @@ export const createEmergencyLeave = api<CreateEmergencyLeaveRequest, CreateEmerg
       }
       throw APIError.internal("Failed to create emergency leave request");
     }
-  }
+}
+
+// LEGACY: Creates emergency leave (keep for backward compatibility)
+export const createEmergencyLeave = api<CreateEmergencyLeaveRequest, CreateEmergencyLeaveResponse>(
+  { auth: true, expose: true, method: "POST", path: "/staff/emergency-leave" },
+  createEmergencyLeaveHandler
 );
 
-// Approves or rejects an emergency leave request
-export const approveEmergencyLeave = api<ApproveEmergencyLeaveRequest, ApproveEmergencyLeaveResponse>(
-  { auth: true, expose: true, method: "PUT", path: "/staff/emergency-leave/:leaveRequestId/approve" },
-  async (req) => {
-    const authData = getAuthData();
-    if (!authData) {
-      throw APIError.unauthenticated("Authentication required");
-    }
-    requireRole("ADMIN", "MANAGER")(authData);
+// V1: Creates emergency leave
+export const createEmergencyLeaveV1 = api<CreateEmergencyLeaveRequest, CreateEmergencyLeaveResponse>(
+  { auth: true, expose: true, method: "POST", path: "/v1/staff/emergency-leave" },
+  createEmergencyLeaveHandler
+);
+
+// Shared handler for approving or rejecting an emergency leave request
+async function approveEmergencyLeaveHandler(req: ApproveEmergencyLeaveRequest): Promise<ApproveEmergencyLeaveResponse> {
+  const authData = getAuthData();
+  if (!authData) {
+    throw APIError.unauthenticated("Authentication required");
+  }
+  requireRole("ADMIN", "MANAGER")(authData);
 
     const { leaveRequestId, action, approvalNotes } = req;
 
@@ -333,5 +340,16 @@ export const approveEmergencyLeave = api<ApproveEmergencyLeaveRequest, ApproveEm
       }
       throw APIError.internal("Failed to approve emergency leave request");
     }
-  }
+}
+
+// LEGACY: Approves or rejects emergency leave request (keep for backward compatibility)
+export const approveEmergencyLeave = api<ApproveEmergencyLeaveRequest, ApproveEmergencyLeaveResponse>(
+  { auth: true, expose: true, method: "PUT", path: "/staff/emergency-leave/:leaveRequestId/approve" },
+  approveEmergencyLeaveHandler
+);
+
+// V1: Approves emergency leave
+export const approveEmergencyLeaveV1 = api<ApproveEmergencyLeaveRequest, ApproveEmergencyLeaveResponse>(
+  { auth: true, expose: true, method: "PUT", path: "/v1/staff/emergency-leave/:leaveRequestId/approve" },
+  approveEmergencyLeaveHandler
 );

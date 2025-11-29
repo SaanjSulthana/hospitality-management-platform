@@ -4,15 +4,15 @@ import { guestCheckinDB } from "./db";
 import { UpdateCheckInRequest, UpdateCheckInResponse } from "./types";
 import { createAuditLog } from "./audit-middleware";
 import log from "encore.dev/log";
+import { guestCheckinEvents, type GuestEventPayload } from "./guest-checkin-events";
+import { recordGuestEventPublished } from "./event-metrics";
 
 interface UpdateCheckInParams {
   id: number;
   req: UpdateCheckInRequest;
 }
 
-export const updateCheckIn = api(
-  { expose: true, method: "PUT", path: "/guest-checkin/:id/update", auth: true },
-  async ({ id, req }: UpdateCheckInParams): Promise<UpdateCheckInResponse> => {
+async function updateCheckInHandler({ id, req }: UpdateCheckInParams): Promise<UpdateCheckInResponse> {
     const authData = getAuthData()!;
     const startTime = Date.now();
 
@@ -61,6 +61,10 @@ export const updateCheckIn = api(
                         req.email !== undefined || 
                         req.phone !== undefined || 
                         req.address !== undefined || 
+                        req.aadharNumber !== undefined ||
+                        req.panNumber !== undefined ||
+                        req.drivingLicenseNumber !== undefined ||
+                        req.electionCardNumber !== undefined ||
                         req.roomNumber !== undefined || 
                         req.numberOfGuests !== undefined || 
                         req.expectedCheckoutDate !== undefined;
@@ -105,6 +109,26 @@ export const updateCheckIn = api(
           UPDATE guest_checkins SET expected_checkout_date = ${req.expectedCheckoutDate}::timestamp, updated_at = NOW() WHERE id = ${id}
         `;
       }
+      if (req.aadharNumber !== undefined) {
+        await guestCheckinDB.exec`
+          UPDATE guest_checkins SET aadhar_number = ${req.aadharNumber}, updated_at = NOW() WHERE id = ${id}
+        `;
+      }
+      if (req.panNumber !== undefined) {
+        await guestCheckinDB.exec`
+          UPDATE guest_checkins SET pan_number = ${req.panNumber}, updated_at = NOW() WHERE id = ${id}
+        `;
+      }
+      if (req.drivingLicenseNumber !== undefined) {
+        await guestCheckinDB.exec`
+          UPDATE guest_checkins SET driving_license_number = ${req.drivingLicenseNumber}, updated_at = NOW() WHERE id = ${id}
+        `;
+      }
+      if (req.electionCardNumber !== undefined) {
+        await guestCheckinDB.exec`
+          UPDATE guest_checkins SET election_card_number = ${req.electionCardNumber}, updated_at = NOW() WHERE id = ${id}
+        `;
+      }
 
       // Get the updated timestamp
       const result = await guestCheckinDB.queryRow`
@@ -124,6 +148,10 @@ export const updateCheckIn = api(
       if (req.address !== undefined) changedFields.address = { before: checkIn.address, after: req.address };
       if (req.roomNumber !== undefined) changedFields.roomNumber = { before: checkIn.room_number, after: req.roomNumber };
       if (req.numberOfGuests !== undefined) changedFields.numberOfGuests = { before: checkIn.number_of_guests, after: req.numberOfGuests };
+      if (req.aadharNumber !== undefined) changedFields.aadharNumber = { before: checkIn.aadhar_number, after: req.aadharNumber };
+      if (req.panNumber !== undefined) changedFields.panNumber = { before: checkIn.pan_number, after: req.panNumber };
+      if (req.drivingLicenseNumber !== undefined) changedFields.drivingLicenseNumber = { before: checkIn.driving_license_number, after: req.drivingLicenseNumber };
+      if (req.electionCardNumber !== undefined) changedFields.electionCardNumber = { before: checkIn.election_card_number, after: req.electionCardNumber };
 
       await createAuditLog({
         actionType: "update_checkin",
@@ -133,6 +161,24 @@ export const updateCheckIn = api(
         guestName: checkIn.full_name,
         actionDetails: { changedFields },
         durationMs: Date.now() - startTime,
+      });
+
+      // Publish guest_updated event
+      const event: GuestEventPayload = {
+        eventId: `${authData.orgId}-${id}-${Date.now()}`,
+        eventVersion: "v1",
+        eventType: "guest_updated",
+        orgId: Number(authData.orgId),
+        propertyId: checkIn.property_id,
+        userId: parseInt(authData.userID),
+        timestamp: new Date(),
+        entityType: "guest_checkin",
+        entityId: id,
+        metadata: { guestName: checkIn.full_name },
+      };
+      recordGuestEventPublished(event);
+      guestCheckinEvents.publish(event).catch((e) => {
+        log.warn("Failed to publish guest_updated event", { error: e });
       });
 
       return {
@@ -159,4 +205,15 @@ export const updateCheckIn = api(
       throw APIError.internal("Failed to update check-in");
     }
   }
+
+// Legacy endpoint
+export const updateCheckIn = api<UpdateCheckInParams, UpdateCheckInResponse>(
+  { expose: true, method: "PUT", path: "/guest-checkin/:id/update", auth: true },
+  updateCheckInHandler
+);
+
+// V1 endpoint
+export const updateCheckInV1 = api<UpdateCheckInParams, UpdateCheckInResponse>(
+  { expose: true, method: "PUT", path: "/v1/guest-checkin/:id/update", auth: true },
+  updateCheckInHandler
 );

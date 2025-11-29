@@ -1,0 +1,472 @@
+# Encore Event-Driven Patterns
+
+---
+patterns: ["**/events/**", "**/subscribers/**", "**/pubsub/**", "**/topics.ts"]
+description: "Pub/Sub patterns, event sourcing, CQRS, and saga orchestration"
+priority: 80
+---
+
+## Pub/Sub Basics
+
+### Define Topics
+
+```typescript
+import { Topic } from "encore.dev/pubsub";
+
+interface UserCreatedEvent {
+  userId: string;
+  email: string;
+  timestamp: Date;
+}
+
+export const UserCreated = new Topic<UserCreatedEvent>("user-created", {
+  deliveryGuarantee: "at-least-once",
+});
+
+interface OrderPlacedEvent {
+  orderId: string;
+  userId: string;
+  amount: number;
+  items: OrderItem[];
+}
+
+export const OrderPlaced = new Topic<OrderPlacedEvent>("order-placed", {
+  deliveryGuarantee: "at-least-once",
+});
+```
+
+### Publish Events
+
+```typescript
+import { api } from "encore.dev/api";
+import { UserCreated } from "./events";
+
+export const createUser = api(
+  { method: "POST", path: "/users" },
+  async (req: CreateUserRequest): Promise<UserResponse> => {
+    // Create user in database
+    const user = await DB.insert(req);
+
+    // Publish event for async processing
+    await UserCreated.publish({
+      userId: user.id,
+      email: user.email,
+      timestamp: new Date(),
+    });
+
+    return { id: user.id, email: user.email };
+  }
+);
+```
+
+### Subscribe to Events
+
+```typescript
+import { Subscription } from "encore.dev/pubsub";
+import { UserCreated } from "../events";
+
+// Subscription configuration
+const subscription = new Subscription(UserCreated, "send-welcome-email", {
+  handler: async (event) => {
+    await sendEmail({
+      to: event.email,
+      subject: "Welcome!",
+      body: `Welcome user ${event.userId}`,
+    });
+  },
+  maxRetries: 5,
+  minRetryDelay: 1, // seconds
+  maxRetryDelay: 300, // 5 minutes
+  ackDeadline: 30, // seconds
+});
+```
+
+## Event Sourcing Pattern
+
+### Event Store
+
+```typescript
+// Event base interface
+interface DomainEvent {
+  aggregateId: string;
+  eventType: string;
+  version: number;
+  timestamp: Date;
+  data: any;
+}
+
+// Store events
+export async function appendEvents(
+  aggregateId: string,
+  expectedVersion: number,
+  events: DomainEvent[]
+): Promise<void> {
+  const tx = await EventDB.begin();
+
+  try {
+    // Check current version (optimistic locking)
+    const current = await tx.queryRow<{ version: number }>`
+      SELECT COALESCE(MAX(version), 0) as version
+      FROM events
+      WHERE aggregate_id = ${aggregateId}
+    `;
+
+    if (current.version !== expectedVersion) {
+      throw APIError.failedPrecondition("version conflict");
+    }
+
+    // Insert events
+    for (const event of events) {
+      await tx.exec`
+        INSERT INTO events (
+          aggregate_id, event_type, version, 
+          event_data, timestamp
+        ) VALUES (
+          ${aggregateId}, ${event.eventType}, ${event.version},
+          ${JSON.stringify(event.data)}, ${event.timestamp}
+        )
+      `;
+    }
+
+    await tx.commit();
+  } catch (err) {
+    await tx.rollback();
+    throw err;
+  }
+}
+
+// Load events
+export async function loadEvents(
+  aggregateId: string,
+  fromVersion: number = 0
+): Promise<DomainEvent[]> {
+  return await EventDB.query<DomainEvent>`
+    SELECT aggregate_id, event_type, version, event_data, timestamp
+    FROM events
+    WHERE aggregate_id = ${aggregateId} 
+      AND version > ${fromVersion}
+    ORDER BY version ASC
+  `;
+}
+```
+
+### Rebuild Aggregate from Events
+
+```typescript
+interface Account {
+  id: string;
+  balance: number;
+  status: string;
+  version: number;
+}
+
+export async function rebuildAccount(accountId: string): Promise<Account> {
+  const events = await loadEvents(accountId);
+
+  // Start with empty state
+  const account: Account = {
+    id: accountId,
+    balance: 0,
+    status: "PENDING",
+    version: 0,
+  };
+
+  // Apply events in order
+  for (const event of events) {
+    switch (event.eventType) {
+      case "AccountCreated":
+        account.status = "ACTIVE";
+        break;
+
+      case "MoneyDeposited":
+        account.balance += event.data.amount;
+        break;
+
+      case "MoneyWithdrawn":
+        account.balance -= event.data.amount;
+        break;
+
+      case "AccountSuspended":
+        account.status = "SUSPENDED";
+        break;
+    }
+
+    account.version = event.version;
+  }
+
+  return account;
+}
+```
+
+## CQRS Pattern
+
+### Separate Read and Write Models
+
+```typescript
+// Write model (command side)
+export const createOrder = api(
+  { method: "POST", path: "/orders", auth: true },
+  async (req: CreateOrderRequest): Promise<OrderResponse> => {
+    const order = await OrderAggregate.create(req);
+    
+    // Publish event
+    await OrderCreated.publish({
+      orderId: order.id,
+      userId: order.userId,
+      items: order.items,
+      total: order.total,
+    });
+
+    return { orderId: order.id };
+  }
+);
+
+// Read model (query side) - separate database
+const ReadDB = new SQLDatabase("orders_read", {
+  migrations: "./read_migrations",
+});
+
+// Subscribe to events and update read model
+const updateReadModel = new Subscription(OrderCreated, "update-order-view", {
+  handler: async (event) => {
+    await ReadDB.exec`
+      INSERT INTO order_summary (
+        order_id, user_id, total, item_count, created_at
+      ) VALUES (
+        ${event.orderId}, ${event.userId}, ${event.total},
+        ${event.items.length}, NOW()
+      )
+    `;
+  },
+});
+
+// Fast queries from read model
+export const getOrderSummary = api(
+  { method: "GET", path: "/orders/:id/summary" },
+  async ({ id }: { id: string }): Promise<OrderSummary> => {
+    return await ReadDB.queryRow<OrderSummary>`
+      SELECT order_id, user_id, total, item_count, created_at
+      FROM order_summary
+      WHERE order_id = ${id}
+    `;
+  }
+);
+```
+
+## Saga Pattern (Orchestration)
+
+### Saga State Machine
+
+```typescript
+type SagaState = 
+  | "INITIATED"
+  | "PAYMENT_RESERVED"
+  | "INVENTORY_RESERVED"
+  | "COMPLETED"
+  | "COMPENSATING"
+  | "FAILED";
+
+interface OrderSaga {
+  id: string;
+  orderId: string;
+  state: SagaState;
+  compensations: Array<() => Promise<void>>;
+}
+
+export class OrderSagaOrchestrator {
+  async execute(orderId: string): Promise<void> {
+    const saga: OrderSaga = {
+      id: generateId(),
+      orderId,
+      state: "INITIATED",
+      compensations: [],
+    };
+
+    try {
+      // Step 1: Reserve payment
+      await this.reservePayment(saga);
+      saga.state = "PAYMENT_RESERVED";
+
+      // Step 2: Reserve inventory
+      await this.reserveInventory(saga);
+      saga.state = "INVENTORY_RESERVED";
+
+      // Step 3: Complete order
+      await this.completeOrder(saga);
+      saga.state = "COMPLETED";
+
+    } catch (err) {
+      // Execute compensations in reverse order
+      await this.compensate(saga);
+      throw err;
+    }
+  }
+
+  private async reservePayment(saga: OrderSaga): Promise<void> {
+    await paymentService.reserve(saga.orderId);
+
+    // Register compensation
+    saga.compensations.push(async () => {
+      await paymentService.release(saga.orderId);
+    });
+  }
+
+  private async reserveInventory(saga: OrderSaga): Promise<void> {
+    await inventoryService.reserve(saga.orderId);
+
+    // Register compensation
+    saga.compensations.push(async () => {
+      await inventoryService.release(saga.orderId);
+    });
+  }
+
+  private async compensate(saga: OrderSaga): Promise<void> {
+    saga.state = "COMPENSATING";
+
+    // Execute compensations in reverse order
+    for (const compensation of saga.compensations.reverse()) {
+      try {
+        await compensation();
+      } catch (err) {
+        // Log but continue with other compensations
+        console.error("Compensation failed:", err);
+      }
+    }
+
+    saga.state = "FAILED";
+  }
+}
+```
+
+## Saga Pattern (Choreography)
+
+### Event-Driven Saga
+
+```typescript
+// Step 1: Initiate order
+export const createOrder = api(
+  { method: "POST", path: "/orders" },
+  async (req: CreateOrderRequest): Promise<OrderResponse> => {
+    const order = await saveOrder(req);
+    
+    await OrderInitiated.publish({
+      orderId: order.id,
+      userId: req.userId,
+      items: req.items,
+      total: order.total,
+    });
+
+    return { orderId: order.id };
+  }
+);
+
+// Step 2: Payment service reacts
+new Subscription(OrderInitiated, "process-payment", {
+  handler: async (event) => {
+    try {
+      await processPayment(event.orderId, event.total);
+      await PaymentSucceeded.publish({ orderId: event.orderId });
+    } catch (err) {
+      await PaymentFailed.publish({ 
+        orderId: event.orderId, 
+        reason: err.message 
+      });
+    }
+  },
+});
+
+// Step 3: Inventory service reacts to payment success
+new Subscription(PaymentSucceeded, "reserve-inventory", {
+  handler: async (event) => {
+    try {
+      await reserveInventory(event.orderId);
+      await InventoryReserved.publish({ orderId: event.orderId });
+    } catch (err) {
+      await InventoryFailed.publish({ 
+        orderId: event.orderId,
+        reason: err.message 
+      });
+      // Trigger payment refund
+      await RefundRequested.publish({ orderId: event.orderId });
+    }
+  },
+});
+
+// Compensation: Refund on inventory failure
+new Subscription(InventoryFailed, "refund-payment", {
+  handler: async (event) => {
+    await refundPayment(event.orderId);
+    await PaymentRefunded.publish({ orderId: event.orderId });
+  },
+});
+```
+
+## Idempotent Event Handlers
+
+```typescript
+// Track processed events to handle duplicates
+new Subscription(UserCreated, "send-welcome-email", {
+  handler: async (event) => {
+    const messageId = `welcome-email-${event.userId}`;
+
+    // Check if already processed
+    const processed = await DB.queryRow<{ exists: boolean }>`
+      SELECT EXISTS(
+        SELECT 1 FROM processed_messages WHERE message_id = ${messageId}
+      ) as exists
+    `;
+
+    if (processed.exists) {
+      return; // Already processed, skip
+    }
+
+    // Process event
+    await sendEmail(event.email, "Welcome!");
+
+    // Mark as processed
+    await DB.exec`
+      INSERT INTO processed_messages (message_id, processed_at)
+      VALUES (${messageId}, NOW())
+      ON CONFLICT (message_id) DO NOTHING
+    `;
+  },
+});
+```
+
+## Dead Letter Queue Pattern
+
+```typescript
+// Configure max retries
+new Subscription(PaymentProcessed, "update-ledger", {
+  handler: async (event) => {
+    await updateLedger(event);
+  },
+  maxRetries: 5,
+});
+
+// Separate subscription for failed messages
+new Subscription(PaymentProcessed, "dlq-handler", {
+  handler: async (event, metadata) => {
+    if (metadata.deliveryAttempt > 5) {
+      // Move to DLQ table for manual investigation
+      await DB.exec`
+        INSERT INTO dead_letter_queue (
+          event_type, event_data, error, created_at
+        ) VALUES (
+          'PaymentProcessed', ${JSON.stringify(event)},
+          ${metadata.error}, NOW()
+        )
+      `;
+
+      // Alert operations team
+      await alertOps({
+        message: "Event moved to DLQ",
+        eventType: "PaymentProcessed",
+        eventId: event.paymentId,
+      });
+    }
+  },
+});
+```
+
+Reference: @Docs Encore for Pub/Sub details

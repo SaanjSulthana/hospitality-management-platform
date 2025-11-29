@@ -19,7 +19,9 @@ import {
   CheckCircle,
   LogOut,
   Edit,
-  Shield
+  Shield,
+  Clock,
+  User
 } from 'lucide-react';
 import type { AuditLog } from '../../hooks/useAuditLogs';
 
@@ -27,6 +29,12 @@ interface AuditLogTableProps {
   logs: AuditLog[];
   isLoading: boolean;
   error: string | null;
+  pagination?: {
+    total: number;
+    limit: number;
+    offset: number;
+    hasMore: boolean;
+  };
   onRefresh: () => void;
   onExport: () => void;
   onViewDetails?: (log: AuditLog) => void;
@@ -37,6 +45,7 @@ export function AuditLogTable({
   logs,
   isLoading,
   error,
+  pagination,
   onRefresh,
   onExport,
   onViewDetails,
@@ -55,6 +64,8 @@ export function AuditLogTable({
       download_document: Download,
       delete_document: Trash2,
       verify_document: CheckCircle,
+      generate_c_form: FileText,
+      download_c_form: Download,
       query_audit_logs: FileText,
       export_audit_logs: Download,
       unauthorized_access_attempt: Shield,
@@ -72,9 +83,12 @@ export function AuditLogTable({
       update_checkin: { color: 'bg-blue-100 text-blue-800 border-blue-300', label: 'Update' },
       delete_checkin: { color: 'bg-red-100 text-red-800 border-red-300', label: 'Delete' },
       checkout_guest: { color: 'bg-purple-100 text-purple-800 border-purple-300', label: 'Checkout' },
-      view_guest_details: { color: 'bg-gray-100 text-gray-800 border-gray-300', label: 'View' },
+      view_guest_details: { color: 'bg-gray-100 text-gray-800 border-gray-300', label: 'View Details' },
       upload_document: { color: 'bg-green-100 text-green-800 border-green-300', label: 'Upload' },
+      view_documents: { color: 'bg-gray-100 text-gray-800 border-gray-300', label: 'View Docs' },
       download_document: { color: 'bg-blue-100 text-blue-800 border-blue-300', label: 'Download' },
+      generate_c_form: { color: 'bg-blue-100 text-blue-800 border-blue-300', label: 'C-Form' },
+      download_c_form: { color: 'bg-blue-100 text-blue-800 border-blue-300', label: 'C-Form DL' },
       unauthorized_access_attempt: { color: 'bg-red-100 text-red-800 border-red-300', label: 'Unauthorized' },
     };
 
@@ -98,15 +112,22 @@ export function AuditLogTable({
   };
 
   return (
-    <Card className={`border-l-4 border-l-blue-500 shadow-sm ${className}`}>
-      <CardHeader className="pb-4">
+    <Card className={`border-l-4 border-l-blue-500 shadow-lg hover:shadow-xl transition-shadow duration-200 ${className}`}>
+      <CardHeader className="pb-4 bg-gradient-to-r from-blue-50 to-transparent dark:from-blue-900/20">
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
           <div>
-            <CardTitle className="text-lg font-bold text-gray-900 flex items-center gap-2">
-              <Shield className="h-5 w-5 text-blue-600" />
+            <CardTitle className="text-xl font-bold text-gray-900 dark:text-gray-100 flex items-center gap-2">
+              <div className="p-2 bg-blue-100 dark:bg-blue-900/30 rounded-lg">
+                <Shield className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+              </div>
               Audit Trail
+              <span className="text-xs bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 px-3 py-1 rounded-full font-medium">
+                {pagination?.total || logs.length} {(pagination?.total || logs.length) === 1 ? 'Entry' : 'Entries'}
+              </span>
             </CardTitle>
-            <CardDescription>Complete history of actions on guest records</CardDescription>
+            <CardDescription className="mt-1">
+              Complete history of actions on guest records with full context
+            </CardDescription>
           </div>
 
           <div className="flex gap-2">
@@ -115,20 +136,20 @@ export function AuditLogTable({
               size="sm"
               onClick={onRefresh}
               disabled={isLoading}
-              className="flex-shrink-0"
+              className="flex-shrink-0 hover:bg-blue-50 hover:border-blue-300 transition-colors"
             >
               <RefreshCw className={`h-4 w-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />
-              Refresh
+              <span className="hidden sm:inline">Refresh</span>
             </Button>
 
             <Button
               variant="outline"
               size="sm"
               onClick={onExport}
-              className="flex-shrink-0"
+              className="flex-shrink-0 hover:bg-green-50 hover:border-green-300 transition-colors"
             >
               <Download className="h-4 w-4 mr-2" />
-              Export CSV
+              <span className="hidden sm:inline">Export CSV</span>
             </Button>
           </div>
         </div>
@@ -159,78 +180,93 @@ export function AuditLogTable({
             </div>
           </div>
         ) : (
-          <div className="overflow-x-auto">
+          <div className="overflow-x-auto rounded-lg border border-gray-200 dark:border-gray-700">
             <table className="w-full text-left">
-              <thead className="border-b-2 border-gray-200 bg-gray-50">
+              <thead className="border-b-2 border-gray-200 dark:border-gray-700 bg-gradient-to-r from-gray-50 to-gray-100 dark:from-gray-800 dark:to-gray-800/50">
                 <tr>
-                  <th className="p-3 text-sm font-semibold text-gray-700">Timestamp</th>
-                  <th className="p-3 text-sm font-semibold text-gray-700">User</th>
-                  <th className="p-3 text-sm font-semibold text-gray-700">Action</th>
-                  <th className="p-3 text-sm font-semibold text-gray-700">Guest</th>
-                  <th className="p-3 text-sm font-semibold text-gray-700">Duration</th>
-                  <th className="p-3 text-sm font-semibold text-gray-700">Actions</th>
+                  <th className="p-4 text-xs font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider">Timestamp</th>
+                  <th className="p-4 text-xs font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider">User</th>
+                  <th className="p-4 text-xs font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider">Action</th>
+                  <th className="p-4 text-xs font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider">Guest</th>
+                  <th className="p-4 text-xs font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider">Duration</th>
+                  <th className="p-4 text-xs font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider">Details</th>
                 </tr>
               </thead>
-              <tbody>
+              <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
                 {logs.map((log, index) => (
                   <tr
                     key={log.id}
                     className={`
-                      border-b border-gray-200 hover:bg-gray-50 transition-colors
-                      ${!log.success ? 'bg-red-50/30' : index % 2 === 0 ? 'bg-white' : 'bg-gray-50/30'}
+                      hover:bg-blue-50 dark:hover:bg-blue-900/10 transition-colors duration-150
+                      ${!log.success ? 'bg-red-50 dark:bg-red-900/10' : index % 2 === 0 ? 'bg-white dark:bg-gray-850' : 'bg-gray-50/50 dark:bg-gray-800/30'}
                     `}
                   >
-                    <td className="p-3">
-                      <div className="text-sm font-medium text-gray-900">
-                        {formatTimestamp(log.timestamp)}
+                    <td className="p-4">
+                      <div className="flex items-center gap-2">
+                        <Clock className="h-4 w-4 text-gray-400 flex-shrink-0" />
+                        <div className="text-sm font-medium text-gray-900 dark:text-gray-100">
+                          {formatTimestamp(log.timestamp)}
+                        </div>
                       </div>
                     </td>
 
-                    <td className="p-3">
-                      <div>
-                        <p className="text-sm font-medium text-gray-900 truncate" style={{ maxWidth: '200px' }}>
-                          {log.user.email}
-                        </p>
-                        <Badge variant="outline" className="mt-1 text-xs">
-                          {log.user.role}
-                        </Badge>
+                    <td className="p-4">
+                      <div className="flex items-center gap-2">
+                        <div className="w-8 h-8 bg-blue-100 dark:bg-blue-900/30 rounded-full flex items-center justify-center flex-shrink-0">
+                          <User className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+                        </div>
+                        <div className="min-w-0">
+                          <p className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate" style={{ maxWidth: '180px' }}>
+                            {log.user.email}
+                          </p>
+                          <Badge variant="outline" className="mt-0.5 text-xs">
+                            {log.user.role}
+                          </Badge>
+                        </div>
                       </div>
                     </td>
 
-                    <td className="p-3">
+                    <td className="p-4">
                       {getActionBadge(log.action.type, log.success)}
                     </td>
 
-                    <td className="p-3">
+                    <td className="p-4">
                       {log.guest.name ? (
-                        <div>
-                          <p className="text-sm font-medium text-gray-900 truncate" style={{ maxWidth: '150px' }}>
-                            {log.guest.name}
-                          </p>
-                          <p className="text-xs text-gray-500">ID: {log.guest.checkInId}</p>
+                        <div className="flex items-start gap-2">
+                          <User className="h-4 w-4 text-gray-400 mt-0.5 flex-shrink-0" />
+                          <div className="min-w-0">
+                            <p className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate" style={{ maxWidth: '140px' }}>
+                              {log.guest.name}
+                            </p>
+                            <p className="text-xs text-gray-500">ID: {log.guest.checkInId}</p>
+                          </div>
                         </div>
                       ) : (
                         <span className="text-sm text-gray-400">—</span>
                       )}
                     </td>
 
-                    <td className="p-3">
+                    <td className="p-4">
                       {log.durationMs ? (
-                        <span className="text-sm text-gray-600">{log.durationMs}ms</span>
+                        <span className="text-sm font-mono text-gray-600 dark:text-gray-400 bg-gray-100 dark:bg-gray-800 px-2 py-1 rounded">
+                          {log.durationMs}ms
+                        </span>
                       ) : (
                         <span className="text-sm text-gray-400">—</span>
                       )}
                     </td>
 
-                    <td className="p-3">
+                    <td className="p-4">
                       {onViewDetails && (
                         <Button
                           variant="ghost"
                           size="sm"
                           onClick={() => onViewDetails(log)}
-                          className="h-8"
+                          className="h-8 hover:bg-blue-100 dark:hover:bg-blue-900/30 transition-colors"
+                          title="View detailed audit information"
                         >
-                          <Eye className="h-4 w-4" />
+                          <Eye className="h-4 w-4 mr-1" />
+                          <span className="text-xs hidden lg:inline">View</span>
                         </Button>
                       )}
                     </td>

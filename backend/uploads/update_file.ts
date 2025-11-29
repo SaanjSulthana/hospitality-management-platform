@@ -20,10 +20,8 @@ export interface UpdateFileResponse {
   message: string;
 }
 
-// Update/replace a file (receipt, document, etc.)
-export const updateFile = api<UpdateFileRequest, UpdateFileResponse>(
-  { auth: true, expose: true, method: "PUT", path: "/uploads/file/:fileId" },
-  async (req) => {
+// Shared handler for updating/replacing a file (receipt, document, etc.)
+async function updateFileHandler(req: UpdateFileRequest): Promise<UpdateFileResponse> {
     const { fileId, fileData, filename, mimeType } = req;
     const authData = getAuthData();
     if (!authData) {
@@ -48,10 +46,10 @@ export const updateFile = api<UpdateFileRequest, UpdateFileResponse>(
     // Decode base64 file data
     const fileBuffer = Buffer.from(fileData, 'base64');
     
-    // Validate file size (max 50MB)
-    const maxSize = 50 * 1024 * 1024; // 50MB
+    // Validate file size (max 100MB)
+    const maxSize = 100 * 1024 * 1024; // 100MB
     if (fileBuffer.length > maxSize) {
-      throw APIError.invalidArgument("File size too large. Maximum size is 50MB.");
+      throw APIError.invalidArgument("File size too large. Maximum size is 100MB.");
     }
 
     // Get existing file info and verify access
@@ -118,17 +116,28 @@ export const updateFile = api<UpdateFileRequest, UpdateFileResponse>(
         // Don't fail the operation if old file cleanup fails
       }
 
-      return {
-        fileId: updatedFile.id,
-        filename: updatedFile.filename,
-        url: `/uploads/file/${updatedFile.id}`,
-        message: "File updated successfully"
-      };
-    } catch (error: any) {
-      console.error('Update file error:', error);
-      throw APIError.internal(`Failed to update file: ${error.message}`);
-    }
+    return {
+      fileId: updatedFile.id,
+      filename: updatedFile.filename,
+      url: `/uploads/file/${updatedFile.id}`,
+      message: "File updated successfully"
+    };
+  } catch (error: any) {
+    console.error('Update file error:', error);
+    throw APIError.internal(`Failed to update file: ${error.message}`);
   }
+}
+
+// LEGACY: Update/replace a file (keep for backward compatibility)
+export const updateFile = api<UpdateFileRequest, UpdateFileResponse>(
+  { auth: true, expose: true, method: "PUT", path: "/uploads/file/:fileId" },
+  updateFileHandler
+);
+
+// V1: Update/replace a file
+export const updateFileV1 = api<UpdateFileRequest, UpdateFileResponse>(
+  { auth: true, expose: true, method: "PUT", path: "/v1/uploads/file/:fileId" },
+  updateFileHandler
 );
 
 function getExtensionFromMimeType(mimeType: string): string {

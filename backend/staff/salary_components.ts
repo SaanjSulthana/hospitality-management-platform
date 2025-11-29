@@ -2,6 +2,8 @@ import { api, APIError } from "encore.dev/api";
 import { getAuthData } from "~encore/auth";
 import { requireRole } from "../auth/middleware";
 import { staffDB } from "./db";
+import { staffEvents } from "./events";
+import { v4 as uuidv4 } from "uuid";
 
 export interface CreateSalaryComponentRequest {
   staffId: number;
@@ -85,7 +87,7 @@ export const createSalaryComponent = api<CreateSalaryComponentRequest, CreateSal
     try {
       // Verify staff record exists and belongs to organization
       const staff = await tx.queryRow`
-        SELECT s.id, s.user_id, u.display_name, u.email
+        SELECT s.id, s.user_id, s.property_id, u.display_name, u.email
         FROM staff s
         JOIN users u ON s.user_id = u.id
         WHERE s.id = ${staffId} AND s.org_id = ${authData.orgId}
@@ -132,6 +134,35 @@ export const createSalaryComponent = api<CreateSalaryComponentRequest, CreateSal
       }
 
       await tx.commit();
+
+      // Publish salary_component_added event
+      try {
+        await staffEvents.publish({
+          eventId: uuidv4(),
+          eventVersion: 'v1',
+          eventType: 'salary_component_added',
+          orgId: authData.orgId,
+          propertyId: staff.property_id ?? null,
+          userId: parseInt(authData.userID),
+          timestamp: new Date(),
+          entityId: component.id,
+          entityType: 'salary_component',
+          metadata: {
+            staffId,
+            staffName: staff.display_name,
+            baseSalaryCents,
+            hourlyRateCents,
+            overtimeRateCents,
+            bonusCents,
+            allowanceCents,
+            deductionCents,
+            effectiveFrom,
+            effectiveTo: effectiveTo || null,
+          },
+        });
+      } catch (e) {
+        console.warn("[Staff Events] Failed to publish salary_component_added", e);
+      }
 
       return {
         id: component.id,

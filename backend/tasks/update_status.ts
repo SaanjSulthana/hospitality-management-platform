@@ -3,7 +3,10 @@ import { getAuthData } from "~encore/auth";
 import { requireRole } from "../auth/middleware";
 import { tasksDB } from "./db";
 import { TaskStatus } from "./types";
+import { v1Path } from "../shared/http";
 import log from "encore.dev/log";
+import { taskEvents } from "./events";
+import { v4 as uuidv4 } from "uuid";
 
 export interface UpdateTaskStatusRequest {
   id: number;
@@ -14,10 +17,8 @@ export interface UpdateTaskStatusResponse {
   success: boolean;
 }
 
-// Updates the status of a task
-export const updateStatus = api<UpdateTaskStatusRequest, UpdateTaskStatusResponse>(
-  { auth: true, expose: true, method: "PATCH", path: "/tasks/:id/status" },
-  async (req) => {
+// Handler function for updating task status
+async function updateTaskStatusHandler(req: UpdateTaskStatusRequest): Promise<UpdateTaskStatusResponse> {
     const authData = getAuthData();
     if (!authData) {
       throw APIError.unauthenticated("Authentication required");
@@ -87,6 +88,27 @@ export const updateStatus = api<UpdateTaskStatusRequest, UpdateTaskStatusRespons
         orgId: authData.orgId 
       });
 
+      // Publish task_status_updated
+      try {
+        await taskEvents.publish({
+          eventId: uuidv4(),
+          eventVersion: 'v1',
+          eventType: 'task_status_updated',
+          orgId: authData.orgId,
+          propertyId: taskRow.property_id,
+          userId: parseInt(authData.userID),
+          timestamp: new Date(),
+          entityId: id,
+          entityType: 'task',
+          metadata: {
+            oldStatus: taskRow.current_status,
+            newStatus: status,
+          },
+        });
+      } catch (e) {
+        log.warn("Task event publish failed (task_status_updated)", { error: e instanceof Error ? e.message : String(e) });
+      }
+
       return { success: true };
     } catch (error) {
       await tx.rollback();
@@ -104,6 +126,17 @@ export const updateStatus = api<UpdateTaskStatusRequest, UpdateTaskStatusRespons
       
       throw APIError.internal("Failed to update task status");
     }
-  }
+}
+
+// Legacy path
+export const updateStatus = api<UpdateTaskStatusRequest, UpdateTaskStatusResponse>(
+  { auth: true, expose: true, method: "PATCH", path: "/tasks/:id/status" },
+  updateTaskStatusHandler
+);
+
+// Versioned path
+export const updateStatusV1 = api<UpdateTaskStatusRequest, UpdateTaskStatusResponse>(
+  { auth: true, expose: true, method: "PATCH", path: "/v1/tasks/:id/status" },
+  updateTaskStatusHandler
 );
 

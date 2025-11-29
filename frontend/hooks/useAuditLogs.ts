@@ -3,7 +3,7 @@
  * Custom hook for fetching and managing audit logs
  */
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { API_CONFIG } from '../src/config/api';
 
 export interface AuditLog {
@@ -47,6 +47,11 @@ export interface AuditLogsFilters {
   offset?: number;
 }
 
+type FetchOptions = {
+  silent?: boolean;
+  replace?: boolean;
+};
+
 export function useAuditLogs(filters: AuditLogsFilters = {}, autoFetch = true) {
   const [logs, setLogs] = useState<AuditLog[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -58,11 +63,14 @@ export function useAuditLogs(filters: AuditLogsFilters = {}, autoFetch = true) {
     hasMore: false,
   });
 
-  const fetchLogs = async (customFilters?: AuditLogsFilters) => {
-    setIsLoading(true);
+  const fetchLogs = useCallback(async (customFilters: AuditLogsFilters = {}, options: FetchOptions = {}) => {
+    if (!options.silent) {
+      setIsLoading(true);
+    }
     setError(null);
 
-    const activeFilters = { ...filters, ...customFilters };
+    const baseFilters = options.replace ? {} : filters;
+    const activeFilters = { ...baseFilters, ...customFilters };
 
     try {
       const params = new URLSearchParams();
@@ -89,16 +97,35 @@ export function useAuditLogs(filters: AuditLogsFilters = {}, autoFetch = true) {
         throw new Error('Failed to fetch audit logs');
       }
 
-      const data = await response.json();
-      setLogs(data.logs);
-      setPagination(data.pagination);
+      // Safe JSON parsing
+      let data: { logs: AuditLog[]; pagination: typeof pagination };
+      try {
+        const text = await response.text();
+        if (!text) {
+          data = { logs: [], pagination: { total: 0, limit: 50, offset: 0, hasMore: false } };
+        } else {
+          data = JSON.parse(text);
+        }
+      } catch (parseError) {
+        console.error('Failed to parse audit logs response:', parseError);
+        data = { logs: [], pagination: { total: 0, limit: 50, offset: 0, hasMore: false } };
+      }
+      console.log('✅ Audit logs fetched successfully:', {
+        count: data.logs?.length || 0,
+        total: data.pagination?.total || 0
+      });
+      setLogs(data.logs || []);
+      setPagination(data.pagination || { total: 0, limit: 50, offset: 0, hasMore: false });
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Failed to fetch audit logs';
+      console.error('❌ Failed to fetch audit logs:', errorMessage);
       setError(errorMessage);
     } finally {
-      setIsLoading(false);
+      if (!options.silent) {
+        setIsLoading(false);
+      }
     }
-  };
+  }, [filters]);
 
   const exportToCsv = async () => {
     try {
@@ -121,7 +148,16 @@ export function useAuditLogs(filters: AuditLogsFilters = {}, autoFetch = true) {
 
       if (!response.ok) throw new Error('Export failed');
 
-      const data = await response.json();
+      // Safe JSON parsing
+      let data: { csv: string; filename: string };
+      try {
+        const text = await response.text();
+        if (!text) throw new Error('Empty response');
+        data = JSON.parse(text);
+      } catch (parseError) {
+        console.error('Failed to parse export response:', parseError);
+        throw new Error('Failed to parse export response');
+      }
       
       // Trigger download
       const blob = new Blob([data.csv], { type: 'text/csv' });
@@ -139,9 +175,9 @@ export function useAuditLogs(filters: AuditLogsFilters = {}, autoFetch = true) {
 
   useEffect(() => {
     if (autoFetch) {
-      fetchLogs();
+      fetchLogs(undefined, { replace: true });
     }
-  }, []);
+  }, [autoFetch, fetchLogs]);
 
   return {
     logs,

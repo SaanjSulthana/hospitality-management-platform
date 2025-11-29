@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
@@ -6,7 +6,11 @@ import { usePageTitle } from '../contexts/PageTitleContext';
 import { formatCurrency as formatCurrencyUtil } from '../lib/currency';
 import { formatCardDateTime } from '../lib/datetime';
 import { formatDateForAPI, getCurrentDateString, getCurrentDateTimeString, formatDateForInput, formatDateForDisplay } from '../lib/date-utils';
+import { compressImageIfNeeded, bufferToBase64 } from '../lib/image-compression';
 import { API_CONFIG } from '../src/config/api';
+import { useRouteActive } from '@/hooks/use-route-aware-query';
+import { QUERY_CATEGORIES } from '@/src/config/query-config';
+import { getFlagNumber } from '../lib/feature-flags';
 import { FileUpload } from '@/components/ui/file-upload';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -40,10 +44,13 @@ import {
   Trash2
 } from 'lucide-react';
 
+// Development flag (use Vite's dev indicator consistently across this module)
+const __DEV__ = import.meta.env.DEV;
+
 // Helper function to get current timestamp (deprecated - use date utils instead)
 const getCurrentTimestamp = (): string => {
   const timestamp = getCurrentDateTimeString();
-  console.log('Current timestamp being sent:', timestamp);
+  if (__DEV__) console.log('Current timestamp being sent:', timestamp);
   return timestamp;
 };
 
@@ -52,12 +59,394 @@ export default function FinancePage() {
   const { theme } = useTheme();
   const { setPageTitle } = usePageTitle();
   const { toast } = useToast();
+  const routeActive = useRouteActive(['/finance']);
 
   // Set page title and description
   useEffect(() => {
     setPageTitle('Financial Management', 'Track expenses, revenues, and financial performance');
   }, [setPageTitle]);
+
+  // Subscribe to real-time finance events (transport handled globally by RealtimeProvider)
+  const [selectedPropertyId, setSelectedPropertyId] = useState<string>('all');
   const queryClient = useQueryClient();
+  const processedEventIdsRef = useRef<Set<string>>(new Set());
+  // Soft refresh timer to backstop any missed cache patches
+  const financeSoftRefreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Health from global RealtimeProvider (emits 'finance-stream-health')
+  const [realtimeHealth, setRealtimeHealth] = useState<any>({ isLive: true });
+  useEffect(() => {
+    const onHealth = (e: any) => {
+      const h = e?.detail || {};
+      setRealtimeHealth(h);
+    };
+    window.addEventListener('finance-stream-health', onHealth as EventListener);
+    return () => window.removeEventListener('finance-stream-health', onHealth as EventListener);
+  }, []);
+  const isFinanceEvent = (ev: any): ev is {
+    eventId: string; eventType: string; entityId: number; timestamp: string | Date; metadata?: any; propertyId: number; orgId: number; userId: number; entityType: string;
+  } => {
+    return !!ev
+      && typeof ev.eventId === 'string'
+      && typeof ev.eventType === 'string'
+      && typeof ev.entityId === 'number'
+      && (typeof ev.timestamp === 'string' || ev.timestamp instanceof Date)
+      && typeof ev.propertyId === 'number'
+      && typeof ev.orgId === 'number'
+      && typeof ev.userId === 'number'
+      && typeof ev.entityType === 'string';
+  };
+  // Apply cache updates to all matching queries for a cache group ('expenses' | 'revenues'),
+  // respecting each query's property/date filters encoded in its queryKey.
+  const applyToMatchingQueries = (
+    cacheGroup: 'expenses' | 'revenues',
+    eventPropertyId: number | undefined,
+    eventDateISO: string | undefined,
+    apply: (old: any) => any
+  ) => {
+    const candidates = queryClient.getQueriesData({ queryKey: [cacheGroup] });
+    for (const [qk, _data] of candidates) {
+      // Keys look like: ['expenses' | 'revenues', selectedPropertyId, dateRange]
+      const keyArr = Array.isArray(qk) ? qk : [qk];
+      const keyGroup = keyArr[0];
+      if (keyGroup !== cacheGroup) continue;
+      const propFilter = keyArr[1]; // string 'all' | propertyId string | undefined
+      const dr = keyArr[2] as { startDate?: string; endDate?: string } | undefined;
+      const propertyMatches =
+        eventPropertyId == null
+          ? true
+          : (!propFilter ||
+             propFilter === 'all' ||
+             String(eventPropertyId) === String(propFilter));
+      let dateMatches = true;
+      if (dr && (dr.startDate || dr.endDate) && eventDateISO) {
+        const d = new Date(eventDateISO);
+        const start = dr.startDate ? new Date(dr.startDate) : undefined;
+        const end = dr.endDate ? new Date(dr.endDate) : undefined;
+        if (start && d < start) dateMatches = false;
+        if (end && d > end) dateMatches = false;
+      }
+      if (propertyMatches && dateMatches) {
+        queryClient.setQueryData(qk as any, (old: any) => apply(old));
+      }
+    }
+  };
+  // Small jitter utility for degraded-mode polling
+  const jitterMs = (minMs: number, maxMs: number) => {
+    const delta = maxMs - minMs;
+    return Math.floor(minMs + Math.random() * (delta <= 0 ? 0 : delta));
+  };
+  
+  // Incremental aggregates for summary cards
+  const [totals, setTotals] = useState<{
+    cashRevenue: number;
+    bankRevenue: number;
+    cashExpense: number;
+    bankExpense: number;
+  }>({ cashRevenue: 0, bankRevenue: 0, cashExpense: 0, bankExpense: 0 });
+  // Debounced derived invalidations (profit-loss, approvals)
+  const derivedPendingRef = useRef<{ profitLoss: boolean; approvals: boolean; todayPending: boolean }>({
+    profitLoss: false,
+    approvals: false,
+    todayPending: false,
+  });
+  const derivedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const scheduleDerivedInvalidations = (changes: { profitLoss?: boolean; approvals?: boolean; todayPending?: boolean }) => {
+    // Merge pending flags
+    derivedPendingRef.current = {
+      profitLoss: derivedPendingRef.current.profitLoss || !!changes.profitLoss,
+      approvals: derivedPendingRef.current.approvals || !!changes.approvals,
+      todayPending: derivedPendingRef.current.todayPending || !!changes.todayPending,
+    };
+    if (derivedTimerRef.current) return;
+    const debounceMs = getFlagNumber('FIN_DERIVED_DEBOUNCE_MS', 1000);
+    derivedTimerRef.current = setTimeout(() => {
+      const pending = derivedPendingRef.current;
+      derivedTimerRef.current = null;
+      derivedPendingRef.current = { profitLoss: false, approvals: false, todayPending: false };
+      if (pending.profitLoss) queryClient.invalidateQueries({ queryKey: ['profit-loss'] });
+      if (pending.approvals) queryClient.invalidateQueries({ queryKey: ['daily-approval-check'] });
+      if (pending.todayPending) queryClient.invalidateQueries({ queryKey: ['today-pending-transactions'] });
+    }, Math.max(50, debounceMs));
+  };
+  
+  // ROW-LEVEL cache patching: update specific items instead of invalidating entire lists
+  useEffect(() => {
+    const onFinanceEvents = (e: any) => {
+      try {
+        const raw = e?.detail?.events || [];
+        if (!Array.isArray(raw) || raw.length === 0) return;
+        // Deduplicate by eventId and validate structure
+        const unique = raw.filter((ev: any) => {
+          if (!ev?.eventId) return false;
+          if (processedEventIdsRef.current.has(ev.eventId)) return false;
+          processedEventIdsRef.current.add(ev.eventId);
+          return true;
+        });
+        const safeEvents = unique.filter(isFinanceEvent).sort((a: any, b: any) => {
+          const ta = new Date(a.timestamp as any).getTime();
+          const tb = new Date(b.timestamp as any).getTime();
+          if (ta !== tb) return ta - tb;
+          return String(a.eventId).localeCompare(String(b.eventId));
+        });
+      
+        // Incremental totals update for immediate UI response
+        setTotals(prev => {
+          let next = { ...prev };
+          for (const ev of safeEvents) {
+            const type: string = ev?.eventType || '';
+            const amount: number | undefined = ev?.metadata?.amountCents;
+            const mode: string | undefined = ev?.metadata?.paymentMode;
+            if (!type || typeof amount !== 'number' || !mode) continue;
+            
+            const isRevenue = type.startsWith('revenue_');
+            const isExpense = type.startsWith('expense_');
+            const isApproved = type.endsWith('_approved');
+            const isDeleted = type.endsWith('_deleted');
+            
+            const bucket = (isRevenue ? (mode === 'cash' ? 'cashRevenue' : 'bankRevenue') 
+                                      : (mode === 'cash' ? 'cashExpense' : 'bankExpense')) as keyof typeof prev;
+            
+            if (isApproved) {
+              next[bucket] = Math.max(0, (next[bucket] || 0) + amount);
+            } else if (isDeleted) {
+              next[bucket] = Math.max(0, (next[bucket] || 0) - amount);
+            }
+          }
+          return next;
+        });
+      
+        // Row-level cache updates for each event
+        let hasExpenseChange = false;
+        let hasRevenueChange = false;
+        let hasApprovalChange = false;
+      
+        for (const ev of safeEvents) {
+          try {
+            const { eventType, entityId, entityType, metadata, propertyId } = ev;
+            if (!eventType || !entityId || !entityType) continue;
+            const eventDateISO: string | undefined = metadata?.transactionDate || (typeof ev.timestamp === 'string' ? ev.timestamp : undefined);
+        
+            const isExpense = entityType === 'expense';
+            const isRevenue = entityType === 'revenue';
+            const cacheKey = isExpense ? 'expenses' : isRevenue ? 'revenues' : null;
+        
+            if (!cacheKey) {
+              // Handle special events
+              if (eventType === 'daily_approval_granted') {
+                hasApprovalChange = true;
+              }
+              continue;
+            }
+        
+            // Track which types changed for derived queries
+            if (isExpense) hasExpenseChange = true;
+            if (isRevenue) hasRevenueChange = true;
+            if (eventType.includes('approved') || eventType.includes('rejected')) {
+              hasApprovalChange = true;
+            }
+        
+            // Update cache based on event type
+            if (eventType.endsWith('_added')) {
+              // Treat newly added pending transactions as approval-list affecting
+              const isPending =
+                metadata?.newStatus === 'pending' || !metadata?.newStatus;
+              if (isPending) {
+                hasApprovalChange = true;
+              }
+
+              // Insert new row at top, preferring replacement of matching optimistic rows to avoid duplicates
+              applyToMatchingQueries(cacheKey, propertyId, eventDateISO, (old: any) => {
+                if (!old || !Array.isArray(old[cacheKey])) return old;
+                const list = old[cacheKey] as any[];
+                // Build row from event metadata
+                const newRow: any = {
+                  id: entityId,
+                  propertyId: propertyId,
+                  // Prefer backend-provided name, then derive from existing caches
+                  propertyName:
+                    metadata?.propertyName ||
+                    (propertyId != null ? getPropertyName(propertyId) : 'Property'),
+                  amountCents: metadata?.amountCents || 0,
+                  currency: metadata?.currency || 'INR',
+                  paymentMode: metadata?.paymentMode || 'cash',
+                  status: metadata?.newStatus || 'pending',
+                  createdAt: ev.timestamp || new Date().toISOString(),
+                };
+                if (isExpense) {
+                  newRow.category = metadata?.category || 'other';
+                  newRow.expenseDate =
+                    metadata?.transactionDate ||
+                    new Date().toISOString().split('T')[0];
+                } else {
+                  newRow.source = metadata?.source || 'other';
+                  newRow.occurredAt =
+                    metadata?.transactionDate || new Date().toISOString();
+                }
+                // If a real row already exists, skip
+                if (list.find((item: any) => item.id === entityId)) return old;
+                // Try to replace a matching optimistic row
+                const matchIndex = list.findIndex((item: any) => {
+                  if (!item?.isOptimistic) return false;
+                  if (item.propertyId !== propertyId) return false;
+                  if (item.amountCents !== newRow.amountCents) return false;
+                  if (item.paymentMode !== newRow.paymentMode) return false;
+                  if (isExpense) {
+                    return (
+                      item.category === newRow.category &&
+                      String(item.expenseDate).slice(0, 10) ===
+                        String(newRow.expenseDate).slice(0, 10)
+                    );
+                  } else {
+                    return (
+                      item.source === newRow.source &&
+                      String(item.occurredAt).slice(0, 10) ===
+                        String(newRow.occurredAt).slice(0, 10)
+                    );
+                  }
+                });
+                if (matchIndex >= 0) {
+                  const newList = [...list];
+                  newList[matchIndex] = { ...newRow };
+                  return { ...old, [cacheKey]: newList };
+                }
+                return { ...old, [cacheKey]: [newRow, ...list] };
+              });
+            } 
+        
+            else if (eventType.endsWith('_updated')) {
+              // Patch existing row with new values
+              applyToMatchingQueries(cacheKey, propertyId, eventDateISO, (old: any) => {
+                if (!old || !Array.isArray(old[cacheKey])) return old;
+                const list = old[cacheKey];
+                const idx = list.findIndex((item: any) => item.id === entityId);
+                if (idx === -1) return old; // Not in cache, skip
+                
+                // Merge metadata into existing row
+                const updated = {
+                  ...list[idx],
+                  amountCents: metadata?.amountCents ?? list[idx].amountCents,
+                  currency: metadata?.currency ?? list[idx].currency,
+                  paymentMode: metadata?.paymentMode ?? list[idx].paymentMode,
+                  status: metadata?.newStatus ?? list[idx].status,
+                  updatedAt: new Date().toISOString(),
+                };
+                
+                if (isExpense && metadata?.category) {
+                  updated.category = metadata.category;
+                }
+                if (isRevenue && metadata?.source) {
+                  updated.source = metadata.source;
+                }
+                if (metadata?.transactionDate) {
+                  if (isExpense) updated.expenseDate = metadata.transactionDate;
+                  else updated.occurredAt = metadata.transactionDate;
+                }
+                
+                const newList = [...list];
+                newList[idx] = updated;
+                return { ...old, [cacheKey]: newList };
+              });
+            } 
+        
+            else if (eventType.endsWith('_approved') || eventType.endsWith('_rejected')) {
+              // Patch status and approval fields
+              applyToMatchingQueries(cacheKey, propertyId, eventDateISO, (old: any) => {
+                if (!old || !Array.isArray(old[cacheKey])) return old;
+                const list = old[cacheKey];
+                const idx = list.findIndex((item: any) => item.id === entityId);
+                if (idx === -1) return old;
+                
+                const updated = {
+                  ...list[idx],
+                  status: metadata?.newStatus || (eventType.endsWith('_approved') ? 'approved' : 'rejected'),
+                  approvedByUserId: ev.userId,
+                  approvedAt: ev.timestamp || new Date().toISOString(),
+                };
+                
+                const newList = [...list];
+                newList[idx] = updated;
+                return { ...old, [cacheKey]: newList };
+              });
+            } 
+        
+            else if (eventType.endsWith('_deleted')) {
+              // Remove row from cache
+              applyToMatchingQueries(cacheKey, propertyId, eventDateISO, (old: any) => {
+                if (!old || !Array.isArray(old[cacheKey])) return old;
+                return {
+                  ...old,
+                  [cacheKey]: old[cacheKey].filter((item: any) => item.id !== entityId)
+                };
+              });
+            }
+          } catch (innerErr) {
+            console.error('[Finance] Event processing error', innerErr);
+          }
+        }
+        
+        // Only invalidate DERIVED queries (not the lists themselves)
+        scheduleDerivedInvalidations({
+          profitLoss: hasExpenseChange || hasRevenueChange,
+          approvals: hasApprovalChange,
+          todayPending: hasApprovalChange,
+        });
+
+        // Soft refresh safety net: ensure lists converge even if a patch was missed
+        if (financeSoftRefreshTimerRef.current) {
+          clearTimeout(financeSoftRefreshTimerRef.current);
+        }
+        financeSoftRefreshTimerRef.current = setTimeout(() => {
+          queryClient.invalidateQueries({ queryKey: ['revenues'] });
+          queryClient.invalidateQueries({ queryKey: ['expenses'] });
+        }, 400);
+      } catch (outerErr) {
+        console.error('[Finance] Event batch failed', outerErr);
+      }
+    };
+    window.addEventListener('finance-stream-events', onFinanceEvents as EventListener);
+    return () => window.removeEventListener('finance-stream-events', onFinanceEvents as EventListener);
+  }, [queryClient]);
+
+  // Fallback refresh is now handled by RealtimeProvider (global hardRecover on long disconnections).
+
+  const formatAgo = (value?: Date | number | string) => {
+    if (!value) return '—';
+
+    // Normalize to Date instance; handle timestamps and ISO strings safely
+    const d = value instanceof Date ? value : new Date(value);
+    if (!(d instanceof Date) || isNaN(d.getTime())) return '—';
+
+    const sec = Math.floor((Date.now() - d.getTime()) / 1000);
+    if (sec <= 0) return 'now';
+    return `${sec}s ago`;
+  };
+  
+  // Helper function to invalidate all expense-related queries
+  const invalidateAllExpenseQueries = () => {
+    queryClient.invalidateQueries({ queryKey: ['expenses'] }); // This will invalidate all expense queries with any filters
+    queryClient.invalidateQueries({ queryKey: ['profit-loss'] });
+    queryClient.invalidateQueries({ queryKey: ['pending-approvals'] });
+    queryClient.invalidateQueries({ queryKey: ['daily-approval-check'] });
+    queryClient.invalidateQueries({ queryKey: ['analytics'] });
+    queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+    queryClient.invalidateQueries({ queryKey: ['daily-report'] });
+    queryClient.invalidateQueries({ queryKey: ['monthly-report'] });
+    queryClient.invalidateQueries({ queryKey: ['today-pending-transactions'] });
+  };
+  
+  // Helper function to invalidate all revenue-related queries
+  const invalidateAllRevenueQueries = () => {
+    queryClient.invalidateQueries({ queryKey: ['revenues'] }); // This will invalidate all revenue queries with any filters
+    queryClient.invalidateQueries({ queryKey: ['expenses'] });
+    queryClient.invalidateQueries({ queryKey: ['profit-loss'] });
+    queryClient.invalidateQueries({ queryKey: ['pending-approvals'] });
+    queryClient.invalidateQueries({ queryKey: ['daily-approval-check'] });
+    queryClient.invalidateQueries({ queryKey: ['analytics'] });
+    queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+    queryClient.invalidateQueries({ queryKey: ['daily-report'] });        // ✅ ADD
+    queryClient.invalidateQueries({ queryKey: ['monthly-report'] });      // ✅ ADD
+    queryClient.invalidateQueries({ queryKey: ['today-pending-transactions'] }); // ✅ ADD
+  };
   
   const [isExpenseDialogOpen, setIsExpenseDialogOpen] = useState(false);
   const [isRevenueDialogOpen, setIsRevenueDialogOpen] = useState(false);
@@ -85,7 +474,6 @@ export default function FinancePage() {
     approvedByName?: string;
     approvedAt?: Date;
   } | null>(null);
-  const [selectedPropertyId, setSelectedPropertyId] = useState<string>('all');
   const [dateRange, setDateRange] = useState({
     startDate: '',
     endDate: ''
@@ -93,8 +481,10 @@ export default function FinancePage() {
 
   // Debug date range changes
   React.useEffect(() => {
-    console.log('=== DATE RANGE STATE CHANGED ===');
-    console.log('New dateRange:', dateRange);
+    if (__DEV__) {
+      console.log('=== DATE RANGE STATE CHANGED ===');
+      console.log('New dateRange:', dateRange);
+    }
   }, [dateRange]);
 
   // Date validation function
@@ -116,38 +506,40 @@ export default function FinancePage() {
 
   // Enhanced date range change handler
   const handleDateRangeChange = (field: 'startDate' | 'endDate', value: string) => {
-    console.log('=== DATE RANGE CHANGE DEBUG ===');
-    console.log('Field:', field);
-    console.log('Value:', value);
-    console.log('Current dateRange:', dateRange);
+    if (__DEV__) {
+      console.log('=== DATE RANGE CHANGE DEBUG ===');
+      console.log('Field:', field);
+      console.log('Value:', value);
+      console.log('Current dateRange:', dateRange);
+    }
     
     const newDateRange = { ...dateRange, [field]: value };
     
     // If only start date is provided, set end date to the same date for full day filtering
     if (field === 'startDate' && value && !newDateRange.endDate) {
       newDateRange.endDate = value;
-      console.log('Auto-setting endDate to:', value);
+      if (__DEV__) console.log('Auto-setting endDate to:', value);
     }
     
     // If only end date is provided, set start date to the same date for full day filtering
     if (field === 'endDate' && value && !newDateRange.startDate) {
       newDateRange.startDate = value;
-      console.log('Auto-setting startDate to:', value);
+      if (__DEV__) console.log('Auto-setting startDate to:', value);
     }
     
     if (field === 'startDate' && newDateRange.endDate && value > newDateRange.endDate) {
       // Auto-adjust end date if it's before start date
       newDateRange.endDate = value;
-      console.log('Auto-adjusting endDate to:', value);
+      if (__DEV__) console.log('Auto-adjusting endDate to:', value);
     }
     
-    console.log('New dateRange:', newDateRange);
+    if (__DEV__) console.log('New dateRange:', newDateRange);
     
     if (validateDateRange(newDateRange.startDate, newDateRange.endDate)) {
       setDateRange(newDateRange);
-      console.log('Date range updated successfully');
+      if (__DEV__) console.log('Date range updated successfully');
     } else {
-      console.log('Date range validation failed');
+      if (__DEV__) console.log('Date range validation failed');
     }
   };
   const [expenseForm, setExpenseForm] = useState({
@@ -179,12 +571,39 @@ export default function FinancePage() {
       const backend = getAuthenticatedBackend();
       return backend.properties.list({});
     },
+    enabled: routeActive,
+    staleTime: 300000, // 5 minutes
+    gcTime: 600000, // 10 minutes
+    refetchOnWindowFocus: false,
+    refetchOnMount: false,
+    refetchInterval: false,
   });
+
+  // Helper to resolve property name for optimistic rows
+  const getPropertyName = (propertyId: number): string => {
+    const fromProps = (properties?.properties || []).find((p: any) => p.id === propertyId)?.name;
+    if (fromProps) return fromProps;
+    try {
+      const candidates = queryClient.getQueriesData({ queryKey: ['revenues'] });
+      for (const [, data] of candidates) {
+        const found = (data as any)?.revenues?.find((r: any) => r.propertyId === propertyId);
+        if (found?.propertyName) return found.propertyName;
+      }
+    } catch {}
+    try {
+      const candidates = queryClient.getQueriesData({ queryKey: ['expenses'] });
+      for (const [, data] of candidates) {
+        const found = (data as any)?.expenses?.find((e: any) => e.propertyId === propertyId);
+        if (found?.propertyName) return found.propertyName;
+      }
+    } catch {}
+    return `Property #${propertyId}`;
+  };
 
   const { data: expenses, isLoading: expensesLoading } = useQuery({
     queryKey: ['expenses', selectedPropertyId, dateRange],
     queryFn: async () => {
-      console.log('Fetching expenses with filters:', {
+      if (__DEV__) console.log('Fetching expenses with filters:', {
         propertyId: selectedPropertyId,
         startDate: dateRange.startDate,
         endDate: dateRange.endDate
@@ -194,10 +613,12 @@ export default function FinancePage() {
         propertyId: selectedPropertyId && selectedPropertyId !== 'all' ? parseInt(selectedPropertyId) : undefined,
         startDate: dateRange.startDate || undefined,
         endDate: dateRange.endDate || undefined,
+        limit: 100,
+        offset: 0
       });
       
       // Debug logging for approval information
-      if (result?.expenses) {
+      if (__DEV__ && result?.expenses) {
         console.log('Expenses with approval info:', result.expenses.map((expense: any) => ({
           id: expense.id,
           status: expense.status,
@@ -209,26 +630,25 @@ export default function FinancePage() {
       
       return result;
     },
-    refetchInterval: 3000, // Refresh every 3 seconds for real-time updates (increased frequency)
-    staleTime: 0, // Consider data immediately stale
-    gcTime: 0, // Don't cache results
-    refetchOnWindowFocus: true, // Refetch when window gains focus
-    refetchOnMount: true, // Refetch when component mounts
+    enabled: routeActive,
+    ...QUERY_CATEGORIES.expenses,
   });
 
   const { data: revenues, isLoading: revenuesLoading } = useQuery({
     queryKey: ['revenues', selectedPropertyId, dateRange],
     queryFn: async () => {
-      console.log('=== REVENUE FILTER DEBUG ===');
-      console.log('Date range state:', dateRange);
-      console.log('Selected property ID:', selectedPropertyId);
-      console.log('Start date:', dateRange.startDate);
-      console.log('End date:', dateRange.endDate);
-      console.log('Will send to backend:', {
+      if (__DEV__) {
+        console.log('=== REVENUE FILTER DEBUG ===');
+        console.log('Date range state:', dateRange);
+        console.log('Selected property ID:', selectedPropertyId);
+        console.log('Start date:', dateRange.startDate);
+        console.log('End date:', dateRange.endDate);
+        console.log('Will send to backend:', {
         propertyId: selectedPropertyId && selectedPropertyId !== 'all' ? parseInt(selectedPropertyId) : undefined,
         startDate: dateRange.startDate || undefined,
         endDate: dateRange.endDate || undefined,
-      });
+        });
+      }
       
       const backend = getAuthenticatedBackend();
       const result = await backend.finance.listRevenues({
@@ -238,7 +658,7 @@ export default function FinancePage() {
       });
       
       // Debug logging for approval information
-      if (result?.revenues) {
+      if (__DEV__ && result?.revenues) {
         console.log('Revenues with approval info:', result.revenues.map((revenue: any) => ({
           id: revenue.id,
           status: revenue.status,
@@ -250,17 +670,36 @@ export default function FinancePage() {
       
       return result;
     },
-    refetchInterval: 3000, // Refresh every 3 seconds for real-time updates (increased frequency)
-    staleTime: 0, // Consider data immediately stale
-    gcTime: 0, // Don't cache results
-    refetchOnWindowFocus: true, // Refetch when window gains focus
-    refetchOnMount: true, // Refetch when component mounts
+    enabled: routeActive,
+    ...QUERY_CATEGORIES.revenues,
   });
+
+  // Reconcile totals from server lists (base truth)
+  useEffect(() => {
+    const cashRev = revenues?.revenues
+      ?.filter((r: any) => r.paymentMode === 'cash' && r.status === 'approved')
+      ?.reduce((sum: number, r: any) => sum + r.amountCents, 0) || 0;
+    const bankRev = revenues?.revenues
+      ?.filter((r: any) => r.paymentMode === 'bank' && r.status === 'approved')
+      ?.reduce((sum: number, r: any) => sum + r.amountCents, 0) || 0;
+    const cashExp = expenses?.expenses
+      ?.filter((e: any) => e.paymentMode === 'cash' && e.status === 'approved')
+      ?.reduce((sum: number, e: any) => sum + e.amountCents, 0) || 0;
+    const bankExp = expenses?.expenses
+      ?.filter((e: any) => e.paymentMode === 'bank' && e.status === 'approved')
+      ?.reduce((sum: number, e: any) => sum + e.amountCents, 0) || 0;
+    setTotals({
+      cashRevenue: cashRev,
+      bankRevenue: bankRev,
+      cashExpense: cashExp,
+      bankExpense: bankExp,
+    });
+  }, [expenses, revenues]);
 
   const { data: profitLoss } = useQuery({
     queryKey: ['profit-loss', selectedPropertyId, dateRange],
     queryFn: async () => {
-      console.log('Fetching profit-loss with filters:', {
+      if (__DEV__) console.log('Fetching profit-loss with filters:', {
         propertyId: selectedPropertyId,
         startDate: dateRange.startDate,
         endDate: dateRange.endDate
@@ -272,11 +711,8 @@ export default function FinancePage() {
         endDate: dateRange.endDate || undefined,
       });
     },
-    staleTime: 0, // Always consider data stale for testing
-    gcTime: 0, // Don't cache results
-    refetchInterval: 3000, // Refresh every 3 seconds for testing (increased frequency)
-    refetchOnWindowFocus: true, // Refetch when window gains focus
-    refetchOnMount: true, // Refetch when component mounts
+    enabled: routeActive,
+    ...QUERY_CATEGORIES.analytics,
   });
 
   // Check daily approval status for managers
@@ -300,17 +736,19 @@ export default function FinancePage() {
       return response.json();
     },
     enabled: user?.role === 'MANAGER',
-    refetchInterval: 2000, // Refresh every 2 seconds for real-time updates (increased frequency)
-    staleTime: 0, // Consider data immediately stale
-    gcTime: 0, // Don't cache results
-    refetchOnWindowFocus: true, // Refetch when window gains focus
+    refetchInterval: false, // No automatic polling - rely on events
+    staleTime: 10000, // Consider data fresh for 10 seconds
+    gcTime: 300000, // Cache results for 5 minutes
+    refetchOnWindowFocus: false,
     refetchOnMount: true, // Refetch when component mounts
   });
 
   const addExpenseMutation = useMutation({
     mutationFn: async (data: any) => {
-      console.log('=== ADD EXPENSE MUTATION ===');
-      console.log('Input data:', data);
+      if (__DEV__) {
+        console.log('=== ADD EXPENSE MUTATION ===');
+        console.log('Input data:', data);
+      }
       
       const backend = getAuthenticatedBackend();
       const result = await backend.finance.addExpense({
@@ -323,7 +761,7 @@ export default function FinancePage() {
         bankReference: data.bankReference || undefined,
       });
       
-      console.log('Add expense result:', result);
+      if (__DEV__) console.log('Add expense result:', result);
       return result;
     },
     onMutate: async (newExpense) => {
@@ -333,47 +771,91 @@ export default function FinancePage() {
       // Snapshot the previous value
       const previousExpenses = queryClient.getQueryData(['expenses']);
       
-      // Optimistically update the cache
-      queryClient.setQueryData(['expenses'], (old: any) => {
-        if (!old?.expenses) return old;
-        
-        const optimisticExpense = {
-          id: Date.now(), // Temporary ID
-          ...newExpense,
-          amountCents: parseInt(newExpense.amountCents),
-          propertyId: parseInt(newExpense.propertyId),
-          status: 'pending',
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-        };
-        
-        return {
-          ...old,
-          expenses: [optimisticExpense, ...old.expenses]
-        };
-      });
+      // Generate a unique temporary ID for optimistic update
+      const tempId = `temp_${Date.now()}_${Math.random()}`;
+      
+      // Optimistically update the cache across matching queries
+      applyToMatchingQueries(
+        'expenses',
+        parseInt(newExpense.propertyId),
+        formatDateForAPI(newExpense.expenseDate),
+        (old: any) => {
+          if (!old?.expenses) return old;
+          const statusForRole = user?.role === 'ADMIN' ? 'approved' : 'pending';
+          const approvedFields = user?.role === 'ADMIN'
+            ? { approvedByUserId: parseInt(user.userID), approvedAt: new Date().toISOString() }
+            : {};
+          const optimisticExpense = {
+            id: tempId, // Unique temporary ID
+            ...newExpense,
+            amountCents: parseInt(newExpense.amountCents),
+            propertyId: parseInt(newExpense.propertyId),
+            propertyName: getPropertyName(parseInt(newExpense.propertyId)),
+            status: statusForRole,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+            isOptimistic: true,
+            ...approvedFields,
+          };
+          return {
+            ...old,
+            expenses: [optimisticExpense, ...old.expenses],
+            totalAmount: (old.totalAmount || 0) + parseInt(newExpense.amountCents),
+          };
+        }
+      );
+      
+      // Store temp ID for later removal
+      (newExpense as any).tempId = tempId;
       
       return { previousExpenses };
     },
-    onSuccess: () => {
-      console.log('Expense added successfully');
+    onSuccess: (data, variables) => {
+      if (__DEV__) console.log('Expense added successfully:', data);
       
-      // Aggressive cache invalidation for real-time updates
-      queryClient.invalidateQueries({ queryKey: ['expenses'] });
-      queryClient.invalidateQueries({ queryKey: ['revenues'] });
-      queryClient.invalidateQueries({ queryKey: ['profit-loss'] });
-      queryClient.invalidateQueries({ queryKey: ['pending-approvals'] });
-      queryClient.invalidateQueries({ queryKey: ['daily-approval-check'] });
-      queryClient.invalidateQueries({ queryKey: ['analytics'] });
-      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
-      queryClient.invalidateQueries({ queryKey: ['daily-report'] }); // Reports page
-      queryClient.invalidateQueries({ queryKey: ['monthly-report'] }); // Monthly reports
-      
-      // Force immediate refetch for all users
-      queryClient.refetchQueries({ queryKey: ['expenses'] });
-      queryClient.refetchQueries({ queryKey: ['profit-loss'] });
-      queryClient.refetchQueries({ queryKey: ['pending-approvals'] });
-      queryClient.refetchQueries({ queryKey: ['daily-approval-check'] });
+      // Update the cache with real data from the server across matching queries
+      applyToMatchingQueries(
+        'expenses',
+        data.propertyId,
+        data.expenseDate ? new Date(data.expenseDate as any).toISOString() : undefined,
+        (old: any) => {
+          if (!old?.expenses) return old;
+          const tempId = (variables as any).tempId;
+          // Remove optimistic placeholder if present
+          const filteredExpenses = tempId ? old.expenses.filter((expense: any) => expense.id !== tempId) : [...old.expenses];
+          // If realtime already inserted the real row, avoid duplicate
+          if (filteredExpenses.some((e: any) => e.id === data.id)) {
+            return { ...old, expenses: filteredExpenses };
+          }
+          const realExpense = {
+            id: data.id,
+            propertyId: data.propertyId,
+            // Prefer backend propertyName, otherwise resolve from cache to avoid "Unknown Property"
+            propertyName: data.propertyName || getPropertyName(data.propertyId),
+            category: data.category,
+            amountCents: data.amountCents,
+            currency: data.currency,
+            description: data.description,
+            receiptUrl: data.receiptUrl,
+            receiptFileId: data.receiptFileId,
+            expenseDate: data.expenseDate,
+            status: data.status || 'pending',
+            createdByUserId: data.createdByUserId,
+            createdByName: data.createdByName || 'Current User',
+            approvedByUserId: data.approvedByUserId,
+            approvedByName: data.approvedByName,
+            approvedAt: data.approvedAt,
+            createdAt: data.createdAt,
+            paymentMode: data.paymentMode,
+            bankReference: data.bankReference,
+          };
+          return {
+            ...old,
+            expenses: [realExpense, ...filteredExpenses],
+            totalAmount: (old.totalAmount || 0) + data.amountCents,
+          };
+        }
+      );
       
       // Clear form and show success
       setIsExpenseDialogOpen(false);
@@ -428,8 +910,10 @@ export default function FinancePage() {
 
   const addRevenueMutation = useMutation({
     mutationFn: async (data: any) => {
-      console.log('=== ADD REVENUE MUTATION ===');
-      console.log('Input data:', data);
+      if (__DEV__) {
+        console.log('=== ADD REVENUE MUTATION ===');
+        console.log('Input data:', data);
+      }
       
       const backend = getAuthenticatedBackend();
       const result = await backend.finance.addRevenue({
@@ -442,7 +926,7 @@ export default function FinancePage() {
         bankReference: data.bankReference || undefined,
       });
       
-      console.log('Add revenue result:', result);
+      if (__DEV__) console.log('Add revenue result:', result);
       return result;
     },
     onMutate: async (newRevenue) => {
@@ -452,46 +936,84 @@ export default function FinancePage() {
       // Snapshot the previous value
       const previousRevenues = queryClient.getQueryData(['revenues']);
       
-      // Optimistically update the cache
-      queryClient.setQueryData(['revenues'], (old: any) => {
-        if (!old?.revenues) return old;
-        
-        const optimisticRevenue = {
-          id: Date.now(), // Temporary ID
-          ...newRevenue,
-          amountCents: parseInt(newRevenue.amountCents),
-          propertyId: parseInt(newRevenue.propertyId),
-          status: 'approved',
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-        };
-        
-        return {
-          ...old,
-          revenues: [optimisticRevenue, ...old.revenues]
-        };
-      });
+      // Optimistically update the cache across matching queries
+      applyToMatchingQueries(
+        'revenues',
+        parseInt(newRevenue.propertyId),
+        formatDateForAPI(newRevenue.occurredAt),
+        (old: any) => {
+          if (!old?.revenues) return old;
+          const statusForRole = user?.role === 'ADMIN' ? 'approved' : 'pending';
+          const approvedFields = user?.role === 'ADMIN'
+            ? { approvedByUserId: parseInt(user.userID), approvedAt: new Date().toISOString() }
+            : {};
+          const optimisticRevenue = {
+            id: Date.now(),
+            ...newRevenue,
+            amountCents: parseInt(newRevenue.amountCents),
+            propertyId: parseInt(newRevenue.propertyId),
+            propertyName: getPropertyName(parseInt(newRevenue.propertyId)),
+            status: statusForRole,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+            isOptimistic: true,
+            ...approvedFields,
+          };
+          return {
+            ...old,
+            revenues: [optimisticRevenue, ...old.revenues],
+          };
+        }
+      );
       
       return { previousRevenues };
     },
-    onSuccess: () => {
-      console.log('Revenue added successfully');
-      
-      // Aggressive cache invalidation for real-time updates
-      queryClient.invalidateQueries({ queryKey: ['revenues'] });
-      queryClient.invalidateQueries({ queryKey: ['expenses'] });
-      queryClient.invalidateQueries({ queryKey: ['profit-loss'] });
-      queryClient.invalidateQueries({ queryKey: ['pending-approvals'] });
-      queryClient.invalidateQueries({ queryKey: ['daily-approval-check'] });
-      queryClient.invalidateQueries({ queryKey: ['analytics'] });
-      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
-      
-      // Force immediate refetch for all users
-      queryClient.refetchQueries({ queryKey: ['revenues'] });
-      queryClient.refetchQueries({ queryKey: ['profit-loss'] });
-      queryClient.refetchQueries({ queryKey: ['pending-approvals'] });
-      queryClient.refetchQueries({ queryKey: ['daily-approval-check'] });
-      
+    onSuccess: (data) => {
+      if (__DEV__) console.log('Revenue added successfully');
+      // Reconcile optimistic entry with server data across matching queries
+      applyToMatchingQueries(
+        'revenues',
+        data.propertyId,
+        data.occurredAt ? new Date(data.occurredAt as any).toISOString() : undefined,
+        (old: any) => {
+          if (!old?.revenues) return old;
+          const updated = [...old.revenues];
+          // If realtime already inserted the real row, avoid duplicate and remove optimistic leftovers
+          if (updated.some((r: any) => r.id === data.id)) {
+            const cleaned = updated.filter((r: any) => !(r.isOptimistic && typeof r.id === 'number' && r.id > 9e11));
+            return { ...old, revenues: cleaned };
+          }
+          const idx = updated.findIndex((r: any) => r.isOptimistic && typeof r.id === 'number' && r.id > 9e11);
+          const real = data && data.id ? {
+            id: data.id,
+            propertyId: data.propertyId,
+            // Prefer backend propertyName, otherwise resolve from cache to avoid "Unknown Property"
+            propertyName: data.propertyName || getPropertyName(data.propertyId),
+            source: data.source,
+            amountCents: data.amountCents,
+            currency: data.currency,
+            description: data.description,
+            receiptUrl: data.receiptUrl,
+            receiptFileId: data.receiptFileId,
+            occurredAt: data.occurredAt,
+            status: data.status || 'pending',
+            createdByUserId: data.createdByUserId,
+            createdByName: data.createdByName || 'Current User',
+            approvedByUserId: data.approvedByUserId,
+            approvedByName: data.approvedByName,
+            approvedAt: data.approvedAt,
+            createdAt: data.createdAt,
+            paymentMode: data.paymentMode,
+            bankReference: data.bankReference,
+          } : null;
+          if (real && idx >= 0) {
+            updated[idx] = real;
+          } else if (real) {
+            updated.unshift(real);
+          }
+          return { ...old, revenues: updated };
+        }
+      );
       // Clear form and show success
       setIsRevenueDialogOpen(false);
       setRevenueForm({
@@ -527,22 +1049,18 @@ export default function FinancePage() {
 
   const approveExpenseMutation = useMutation({
     mutationFn: async ({ id, approved }: { id: number; approved: boolean }) => {
-      // Direct API call since the generated client might have issues
-      const response = await fetch(`${API_CONFIG.BASE_URL}/finance/expenses/${id}/approve`, {
-        method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('accessToken')}`,
-        },
-        body: JSON.stringify({ id, approved }),
-      });
-      
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.message || `Failed to approve expense: ${response.statusText}`);
+      const backend = getAuthenticatedBackend();
+      if (!backend) {
+        throw new Error('Not authenticated');
       }
       
-      return response.json();
+      try {
+        const response = await backend.finance.approveExpenseById(id, { approved });
+        return response;
+      } catch (error: any) {
+        console.error('Approve expense error:', error);
+        throw new Error(error.message || 'Failed to approve expense');
+      }
     },
     onMutate: async ({ id, approved }) => {
       // Cancel any outgoing refetches
@@ -551,10 +1069,9 @@ export default function FinancePage() {
       // Snapshot the previous value
       const previousExpenses = queryClient.getQueryData(['expenses']);
       
-      // Optimistically update the cache
-      queryClient.setQueryData(['expenses'], (old: any) => {
+      // Optimistically update the cache across matching queries
+      applyToMatchingQueries('expenses', undefined, undefined, (old: any) => {
         if (!old?.expenses) return old;
-        
         return {
           ...old,
           expenses: old.expenses.map((expense: any) => 
@@ -567,25 +1084,27 @@ export default function FinancePage() {
       
       return { previousExpenses };
     },
-    onSuccess: () => {
-      console.log('Expense approval successful');
+    onSuccess: (data, variables) => {
+      if (__DEV__) console.log('Expense approval successful:', data);
       
-      // Aggressive cache invalidation for real-time updates
-      queryClient.invalidateQueries({ queryKey: ['expenses'] });
-      queryClient.invalidateQueries({ queryKey: ['revenues'] });
-      queryClient.invalidateQueries({ queryKey: ['profit-loss'] });
-      queryClient.invalidateQueries({ queryKey: ['pending-approvals'] });
-      queryClient.invalidateQueries({ queryKey: ['daily-approval-check'] });
-      queryClient.invalidateQueries({ queryKey: ['analytics'] });
-      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
-      queryClient.invalidateQueries({ queryKey: ['daily-report'] }); // Reports page
-      queryClient.invalidateQueries({ queryKey: ['monthly-report'] }); // Monthly reports
-      
-      // Force immediate refetch for all users
-      queryClient.refetchQueries({ queryKey: ['expenses'] });
-      queryClient.refetchQueries({ queryKey: ['profit-loss'] });
-      queryClient.refetchQueries({ queryKey: ['pending-approvals'] });
-      queryClient.refetchQueries({ queryKey: ['daily-approval-check'] });
+      // Update cache with server response across matching queries
+      applyToMatchingQueries('expenses', data.propertyId, data.expenseDate ? new Date(data.expenseDate as any).toISOString() : undefined, (old: any) => {
+        if (!old?.expenses) return old;
+        return {
+          ...old,
+          expenses: old.expenses.map((expense: any) => 
+            expense.id === variables.id 
+              ? { 
+                  ...expense, 
+                  status: variables.approved ? 'approved' : 'rejected',
+                  approvedByUserId: data.approvedByUserId,
+                  approvedByName: data.approvedByName,
+                  approvedAt: data.approvedAt
+                }
+              : expense
+          )
+        };
+      });
       
       toast({
         title: "Expense updated",
@@ -609,22 +1128,18 @@ export default function FinancePage() {
 
   const approveRevenueMutation = useMutation({
     mutationFn: async ({ id, approved }: { id: number; approved: boolean }) => {
-      // Direct API call for revenue approval
-      const response = await fetch(`${API_CONFIG.BASE_URL}/finance/revenues/${id}/approve`, {
-        method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('accessToken')}`,
-        },
-        body: JSON.stringify({ id, approved }),
-      });
-      
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.message || `Failed to approve revenue: ${response.statusText}`);
+      const backend = getAuthenticatedBackend();
+      if (!backend) {
+        throw new Error('Not authenticated');
       }
       
-      return response.json();
+      try {
+        const response = await backend.finance.approveRevenueById(id, { approved });
+        return response;
+      } catch (error: any) {
+        console.error('Approve revenue error:', error);
+        throw new Error(error.message || 'Failed to approve revenue');
+      }
     },
     onMutate: async ({ id, approved }) => {
       // Cancel any outgoing refetches
@@ -633,10 +1148,9 @@ export default function FinancePage() {
       // Snapshot the previous value
       const previousRevenues = queryClient.getQueryData(['revenues']);
       
-      // Optimistically update the cache
-      queryClient.setQueryData(['revenues'], (old: any) => {
+      // Optimistically update the cache across matching queries
+      applyToMatchingQueries('revenues', undefined, undefined, (old: any) => {
         if (!old?.revenues) return old;
-        
         return {
           ...old,
           revenues: old.revenues.map((revenue: any) => 
@@ -650,22 +1164,7 @@ export default function FinancePage() {
       return { previousRevenues };
     },
     onSuccess: () => {
-      console.log('Revenue approval successful');
-      
-      // Aggressive cache invalidation for real-time updates
-      queryClient.invalidateQueries({ queryKey: ['revenues'] });
-      queryClient.invalidateQueries({ queryKey: ['expenses'] });
-      queryClient.invalidateQueries({ queryKey: ['profit-loss'] });
-      queryClient.invalidateQueries({ queryKey: ['pending-approvals'] });
-      queryClient.invalidateQueries({ queryKey: ['daily-approval-check'] });
-      queryClient.invalidateQueries({ queryKey: ['analytics'] });
-      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
-      
-      // Force immediate refetch for all users
-      queryClient.refetchQueries({ queryKey: ['revenues'] });
-      queryClient.refetchQueries({ queryKey: ['profit-loss'] });
-      queryClient.refetchQueries({ queryKey: ['pending-approvals'] });
-      queryClient.refetchQueries({ queryKey: ['daily-approval-check'] });
+      if (__DEV__) console.log('Revenue approval successful');
       
       toast({
         title: "Revenue updated",
@@ -702,22 +1201,59 @@ export default function FinancePage() {
         amountCents: parseInt(data.amountCents),
         description: data.description,
         receiptUrl: data.receiptUrl,
-        receiptFileId: data.receiptFile?.fileId || undefined,
+        receiptFileId: data.receiptFileId, // Fixed: was data.receiptFile?.fileId
         expenseDate: new Date(data.expenseDate), // Convert string to Date object
         paymentMode: data.paymentMode || 'cash',
         bankReference: data.bankReference || undefined,
       });
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['expenses'] });
-      queryClient.invalidateQueries({ queryKey: ['profit-loss'] });
-      queryClient.invalidateQueries({ queryKey: ['daily-approval-check'] });
-      queryClient.invalidateQueries({ queryKey: ['daily-report'] }); // Daily report page
-      queryClient.invalidateQueries({ queryKey: ['monthly-report'] }); // Monthly reports
-      queryClient.invalidateQueries({ queryKey: ['monthly-report'] }); // Invalidate monthly reports for real-time updates
-      queryClient.invalidateQueries({ queryKey: ['monthly-yearly-report'] }); // Invalidate monthly/yearly reports
-      queryClient.invalidateQueries({ queryKey: ['today-pending-transactions'] }); // Invalidate pending transactions
-      queryClient.invalidateQueries({ queryKey: ['daily-report'] }); // Daily report page
+    onMutate: async (data) => {
+      // Cancel any outgoing refetches
+      await queryClient.cancelQueries({ queryKey: ['expenses'] });
+      
+      // Snapshot the previous value
+      const previousExpenses = queryClient.getQueryData(['expenses']);
+      
+      // Optimistically update the expense in the cache across matching queries
+      applyToMatchingQueries('expenses', parseInt(data.propertyId), data.expenseDate, (old: any) => {
+        if (!old?.expenses) return old;
+        const expenseId = parseInt(data.id);
+        const oldExpense = old.expenses.find((expense: any) => expense.id === expenseId);
+        if (!oldExpense) return old;
+        const updatedExpenses = old.expenses.map((expense: any) => 
+          expense.id === expenseId 
+            ? {
+                ...expense,
+                propertyId: parseInt(data.propertyId),
+                category: data.category,
+                amountCents: parseInt(data.amountCents),
+                description: data.description,
+                receiptUrl: data.receiptUrl,
+                receiptFileId: data.receiptFile?.fileId || expense.receiptFileId,
+                expenseDate: new Date(data.expenseDate),
+                paymentMode: data.paymentMode || 'cash',
+                bankReference: data.bankReference || expense.bankReference,
+                status: user?.role === 'MANAGER' ? 'pending' : expense.status,
+                updatedAt: new Date().toISOString(),
+              }
+            : expense
+        );
+        const newTotalAmount = updatedExpenses.reduce((sum: number, expense: any) => sum + expense.amountCents, 0);
+        return { ...old, expenses: updatedExpenses, totalAmount: newTotalAmount };
+      });
+      
+      return { previousExpenses };
+    },
+    onSuccess: (data) => {
+      // Update with real server data across matching queries
+      applyToMatchingQueries('expenses', data.propertyId, data.expenseDate ? new Date(data.expenseDate as any).toISOString() : undefined, (old: any) => {
+        if (!old?.expenses) return old;
+        const updatedExpenses = old.expenses.map((expense: any) => 
+          expense.id === data.id ? { ...expense, ...data } : expense
+        );
+        const newTotalAmount = updatedExpenses.reduce((sum: number, expense: any) => sum + expense.amountCents, 0);
+        return { ...old, expenses: updatedExpenses, totalAmount: newTotalAmount };
+      });
       
       setIsEditExpenseDialogOpen(false);
       setEditingExpense(null);
@@ -728,7 +1264,12 @@ export default function FinancePage() {
           : "The expense has been updated successfully.",
       });
     },
-    onError: (error: any) => {
+    onError: (error: any, data, context) => {
+      // Rollback on error
+      if (context?.previousExpenses) {
+        queryClient.setQueryData(['expenses'], context.previousExpenses);
+      }
+      
       console.error('Update expense error:', error);
       toast({
         variant: "destructive",
@@ -753,20 +1294,19 @@ export default function FinancePage() {
         amountCents: parseInt(data.amountCents),
         description: data.description,
         receiptUrl: data.receiptUrl,
-        receiptFileId: data.receiptFile?.fileId || undefined,
+        receiptFileId: data.receiptFileId, // Fixed: was data.receiptFile?.fileId
         occurredAt: data.occurredAt, // This is already a Date object from handleUpdateRevenueSubmit
         paymentMode: data.paymentMode || 'cash',
         bankReference: data.bankReference || undefined,
       });
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['revenues'] });
-      queryClient.invalidateQueries({ queryKey: ['profit-loss'] });
-      queryClient.invalidateQueries({ queryKey: ['daily-approval-check'] });
-      queryClient.invalidateQueries({ queryKey: ['monthly-report'] }); // Invalidate monthly reports for real-time updates
-      queryClient.invalidateQueries({ queryKey: ['monthly-yearly-report'] }); // Invalidate monthly/yearly reports
-      queryClient.invalidateQueries({ queryKey: ['today-pending-transactions'] }); // Invalidate pending transactions
-      
+    onSuccess: (data) => {
+      // Row-level update for revenue list across matching queries
+      applyToMatchingQueries('revenues', data.propertyId, data.occurredAt ? new Date(data.occurredAt as any).toISOString() : undefined, (old: any) => {
+        if (!old?.revenues) return old;
+        const updated = old.revenues.map((r: any) => r.id === data.id ? { ...r, ...data } : r);
+        return { ...old, revenues: updated };
+      });
       setIsEditRevenueDialogOpen(false);
       setEditingRevenue(null);
       toast({
@@ -801,13 +1341,42 @@ export default function FinancePage() {
         throw new Error(error.message || 'Failed to delete expense');
       }
     },
-    onSuccess: (data) => {
-      queryClient.invalidateQueries({ queryKey: ['expenses'] });
-      queryClient.invalidateQueries({ queryKey: ['profit-loss'] });
-      queryClient.invalidateQueries({ queryKey: ['daily-approval-check'] });
-      queryClient.invalidateQueries({ queryKey: ['daily-report'] }); // Daily report page
-      queryClient.invalidateQueries({ queryKey: ['monthly-report'] }); // Monthly reports
+    onMutate: async (deletedId) => {
+      // Cancel any outgoing refetches
+      await queryClient.cancelQueries({ queryKey: ['expenses'] });
       
+      // Snapshot the previous value
+      const previousExpenses = queryClient.getQueryData(['expenses']);
+      
+      // Optimistically update to remove the expense immediately
+      queryClient.setQueryData(['expenses'], (old: any) => {
+        if (!old?.expenses) return old;
+        
+        const expenseToDelete = old.expenses.find((expense: any) => expense.id === deletedId);
+        const updatedExpenses = old.expenses.filter((expense: any) => expense.id !== deletedId);
+        
+        return {
+          ...old,
+          expenses: updatedExpenses,
+          totalCount: old.totalCount - 1,
+          totalAmount: expenseToDelete ? (old.totalAmount || 0) - expenseToDelete.amountCents : old.totalAmount
+        };
+      });
+      
+      // Return a context object with the snapshotted value
+      return { previousExpenses };
+    },
+    onSuccess: (data) => {
+      // Fallback: ensure lists revalidate quickly even if realtime is delayed
+      try { queryClient.invalidateQueries({ queryKey: ['expenses'] }); } catch {}
+      // Keep optimistic removal; nothing else to do for list
+      try {
+        const payload = { type: 'expense_deleted', id: (data as any)?.id ?? null, ts: new Date().toISOString() };
+        if ('sendBeacon' in navigator) {
+          const blob = new Blob([JSON.stringify({ sampleRate: 1.0, events: [payload] })], { type: 'text/plain' });
+          (navigator as any).sendBeacon('/telemetry/client', blob);
+        }
+      } catch {}
       toast({
         title: data.deleted ? "Expense deleted" : "Deletion requested",
         description: data.deleted 
@@ -815,7 +1384,12 @@ export default function FinancePage() {
           : "Expense deletion has been requested and is pending approval.",
       });
     },
-    onError: (error: any) => {
+    onError: (error: any, deletedId, context) => {
+      // If the mutation fails, use the context returned from onMutate to roll back
+      if (context?.previousExpenses) {
+        queryClient.setQueryData(['expenses'], context.previousExpenses);
+      }
+      
       console.error('Delete expense error:', error);
       toast({
         variant: "destructive",
@@ -840,11 +1414,36 @@ export default function FinancePage() {
         throw new Error(error.message || 'Failed to delete revenue');
       }
     },
-    onSuccess: (data) => {
-      queryClient.invalidateQueries({ queryKey: ['revenues'] });
-      queryClient.invalidateQueries({ queryKey: ['profit-loss'] });
-      queryClient.invalidateQueries({ queryKey: ['daily-approval-check'] });
+    onMutate: async (deletedId) => {
+      // Cancel any outgoing refetches
+      await queryClient.cancelQueries({ queryKey: ['revenues'] });
       
+      // Snapshot the previous value
+      const previousRevenues = queryClient.getQueryData(['revenues']);
+      
+      // Optimistically update to remove the revenue immediately
+      queryClient.setQueryData(['revenues'], (old: any) => {
+        if (!old?.revenues) return old;
+        return {
+          ...old,
+          revenues: old.revenues.filter((revenue: any) => revenue.id !== deletedId)
+        };
+      });
+      
+      // Return a context object with the snapshotted value
+      return { previousRevenues };
+    },
+    onSuccess: (data) => {
+      // Fallback: ensure lists revalidate quickly even if realtime is delayed
+      try { queryClient.invalidateQueries({ queryKey: ['revenues'] }); } catch {}
+      // Keep optimistic removal; avoid broad invalidations
+      try {
+        const payload = { type: 'revenue_deleted', id: (data as any)?.id ?? null, ts: new Date().toISOString() };
+        if ('sendBeacon' in navigator) {
+          const blob = new Blob([JSON.stringify({ sampleRate: 1.0, events: [payload] })], { type: 'text/plain' });
+          (navigator as any).sendBeacon('/telemetry/client', blob);
+        }
+      } catch {}
       toast({
         title: data.deleted ? "Revenue deleted" : "Deletion requested",
         description: data.deleted 
@@ -852,7 +1451,12 @@ export default function FinancePage() {
           : "Revenue deletion has been requested and is pending approval.",
       });
     },
-    onError: (error: any) => {
+    onError: (error: any, deletedId, context) => {
+      // If the mutation fails, use the context returned from onMutate to roll back
+      if (context?.previousRevenues) {
+        queryClient.setQueryData(['revenues'], context.previousRevenues);
+      }
+      
       console.error('Delete revenue error:', error);
       toast({
         variant: "destructive",
@@ -894,10 +1498,24 @@ export default function FinancePage() {
     setIsUploading(true);
     
     try {
-      // Convert file to base64 for API
-      const arrayBuffer = await file.arrayBuffer();
+      if (__DEV__) console.log(`Starting revenue file upload: ${file.name} (${(file.size / 1024 / 1024).toFixed(2)}MB)`);
+      
+      // Compress image if needed (only for images > 10MB)
+      const compressionResult = await compressImageIfNeeded(file, {
+        maxSize: 10 * 1024 * 1024, // 10MB
+        quality: 0.8
+      });
+      
+      if (__DEV__ && compressionResult.wasCompressed) {
+        console.log(`Image compressed: ${(compressionResult.originalSize / 1024 / 1024).toFixed(2)}MB → ${(compressionResult.compressedSize / 1024 / 1024).toFixed(2)}MB`);
+      }
+      
+      // Convert compressed/original file to base64 using chunked approach
+      const arrayBuffer = await compressionResult.file.arrayBuffer();
       const buffer = new Uint8Array(arrayBuffer);
-      const base64String = btoa(String.fromCharCode(...buffer));
+      const base64String = bufferToBase64(buffer);
+      
+      if (__DEV__) console.log(`Base64 encoding complete, sending to API...`);
       
       // Direct API call since uploads service isn't in generated client yet
       const response = await fetch(`${API_CONFIG.BASE_URL}/uploads/file`, {
@@ -908,8 +1526,8 @@ export default function FinancePage() {
         },
         body: JSON.stringify({
           fileData: base64String,
-          filename: file.name,
-          mimeType: file.type,
+          filename: compressionResult.file.name,
+          mimeType: compressionResult.file.type,
         }),
       });
       
@@ -931,6 +1549,7 @@ export default function FinancePage() {
         receiptFile: { fileId: result.fileId, filename: result.filename }
       }));
       
+      if (__DEV__) console.log(`Revenue file upload successful: ${result.filename}`);
       return result;
     } catch (error) {
       console.error('Revenue file upload error:', error);
@@ -949,10 +1568,24 @@ export default function FinancePage() {
     setIsUploading(true);
     
     try {
-      // Convert file to base64 for API
-      const arrayBuffer = await file.arrayBuffer();
+      if (__DEV__) console.log(`Starting expense file upload: ${file.name} (${(file.size / 1024 / 1024).toFixed(2)}MB)`);
+      
+      // Compress image if needed (only for images > 10MB)
+      const compressionResult = await compressImageIfNeeded(file, {
+        maxSize: 10 * 1024 * 1024, // 10MB
+        quality: 0.8
+      });
+      
+      if (__DEV__ && compressionResult.wasCompressed) {
+        console.log(`Image compressed: ${(compressionResult.originalSize / 1024 / 1024).toFixed(2)}MB → ${(compressionResult.compressedSize / 1024 / 1024).toFixed(2)}MB`);
+      }
+      
+      // Convert compressed/original file to base64 using chunked approach
+      const arrayBuffer = await compressionResult.file.arrayBuffer();
       const buffer = new Uint8Array(arrayBuffer);
-      const base64String = btoa(String.fromCharCode(...buffer));
+      const base64String = bufferToBase64(buffer);
+      
+      if (__DEV__) console.log(`Base64 encoding complete, sending to API...`);
       
       // Direct API call since uploads service isn't in generated client yet
       const response = await fetch(`${API_CONFIG.BASE_URL}/uploads/file`, {
@@ -963,8 +1596,8 @@ export default function FinancePage() {
         },
         body: JSON.stringify({
           fileData: base64String,
-          filename: file.name,
-          mimeType: file.type,
+          filename: compressionResult.file.name,
+          mimeType: compressionResult.file.type,
         }),
       });
       
@@ -986,6 +1619,7 @@ export default function FinancePage() {
         receiptFile: { fileId: result.fileId, filename: result.filename }
       }));
       
+      if (__DEV__) console.log(`Expense file upload successful: ${result.filename}`);
       return result;
     } catch (error) {
       console.error('Expense file upload error:', error);
@@ -1437,7 +2071,7 @@ export default function FinancePage() {
 
   return (
     <div className="w-full min-h-screen bg-gray-50">
-      <div className="space-y-6">
+      <div className="space-y-6 pb-20 sm:pb-0">
         {/* Daily Approval Status Banner for Managers */}
         {user?.role === 'MANAGER' && approvalStatus && (
           <Card className={`border-l-4 ${
@@ -1493,27 +2127,13 @@ export default function FinancePage() {
                   </div>
                 </div>
                 
-                {/* Manual Refresh Button */}
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => {
-                    console.log('Manual refresh of daily approval status...');
-                    queryClient.invalidateQueries({ queryKey: ['daily-approval-check'] });
-                    queryClient.refetchQueries({ queryKey: ['daily-approval-check'] });
-                    queryClient.invalidateQueries({ queryKey: ['notifications'] });
-                    queryClient.refetchQueries({ queryKey: ['notifications'] });
-                    toast({
-                      title: "Refreshing...",
-                      description: "Checking for approval status updates",
-                    });
-                  }}
-                  className="transition-all duration-200 hover:scale-105 hover:shadow-md flex-shrink-0"
-                >
-                  <RefreshCw className="h-4 w-4 mr-2" />
-                  <span className="hidden sm:inline">Refresh Status</span>
-                  <span className="sm:hidden">Refresh</span>
-                </Button>
+                {/* Live stream health badge (from global RealtimeProvider) */}
+                <div className="flex items-center gap-2">
+                  <div className={`w-2 h-2 rounded-full ${realtimeHealth?.isLive ? 'bg-green-500 animate-pulse' : 'bg-gray-400'}`}></div>
+                  <span className="text-xs text-gray-600">
+                    {realtimeHealth?.isLive ? 'Live' : 'Reconnecting'} • {formatAgo(realtimeHealth?.lastEventAt || realtimeHealth?.lastSuccessAt)}
+                  </span>
+                </div>
               </div>
             </CardContent>
           </Card>
@@ -1599,7 +2219,7 @@ export default function FinancePage() {
         {/* Enhanced Action Buttons Section */}
         <Card className="border-l-4 border-l-green-500 shadow-sm">
           <CardContent className="pt-6">
-            <div className="flex flex-wrap items-center gap-3">
+            <div className="hidden sm:flex flex-wrap items-center gap-3">
               <Dialog open={isRevenueDialogOpen} onOpenChange={setIsRevenueDialogOpen}>
                 <DialogTrigger asChild>
                   <Button 
@@ -1611,7 +2231,7 @@ export default function FinancePage() {
                     <span className="sm:hidden">Revenue</span>
                   </Button>
                 </DialogTrigger>
-            <DialogContent className="max-w-2xl max-h-[95vh] overflow-hidden flex flex-col">
+            <DialogContent className="max-w-2xl max-h-[95vh] overflow-hidden flex flex-col w-full mx-4">
               <DialogHeader className="pb-4">
                 <DialogTitle className="text-xl font-bold text-gray-900 flex items-center gap-2">
                   <div className="p-2 bg-green-100 rounded-lg shadow-sm">
@@ -1623,8 +2243,8 @@ export default function FinancePage() {
                   Record new revenue for your property
                 </DialogDescription>
               </DialogHeader>
-              <div className="flex-1 overflow-y-auto px-1">
-                <div className="space-y-6">
+              <div className="flex-1 overflow-y-auto overflow-x-hidden px-0">
+                <div className="space-y-6 px-6">
                   <div className="space-y-2">
                     <Label htmlFor="revenue-property" className="text-sm font-medium text-gray-700">Property *</Label>
                     <Select value={revenueForm.propertyId} onValueChange={(value) => setRevenueForm(prev => ({ ...prev, propertyId: value }))}>
@@ -1641,19 +2261,46 @@ export default function FinancePage() {
                     </Select>
                   </div>
                   
-                  <div className="space-y-2">
-                    <Label htmlFor="revenue-source" className="text-sm font-medium text-gray-700">Source</Label>
-                    <Select value={revenueForm.source} onValueChange={(value: any) => setRevenueForm(prev => ({ ...prev, source: value }))}>
-                      <SelectTrigger className="h-11 border-gray-300 focus:border-blue-500 focus:ring-blue-500">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="room">Room Revenue</SelectItem>
-                        <SelectItem value="addon">Add-on Services</SelectItem>
-                        <SelectItem value="other">Other Revenue</SelectItem>
-                      </SelectContent>
-                    </Select>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="revenue-source" className="text-sm font-medium text-gray-700">Source</Label>
+                      <Select value={revenueForm.source} onValueChange={(value: any) => setRevenueForm(prev => ({ ...prev, source: value }))}>
+                        <SelectTrigger className="h-11 border-gray-300 focus:border-blue-500 focus:ring-blue-500">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="room">Room Revenue</SelectItem>
+                          <SelectItem value="addon">Add-on Services</SelectItem>
+                          <SelectItem value="other">Other Revenue</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    
+                    <div className="space-y-2">
+                      <Label htmlFor="revenue-payment-mode" className="text-sm font-medium text-gray-700">Payment Mode *</Label>
+                      <Select value={revenueForm.paymentMode} onValueChange={(value: any) => setRevenueForm(prev => ({ ...prev, paymentMode: value }))}>
+                        <SelectTrigger className="h-11 border-gray-300 focus:border-blue-500 focus:ring-blue-500">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="cash">Cash</SelectItem>
+                          <SelectItem value="bank">Bank (UPI/Net Banking/Online)</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
                   </div>
+                  
+                  {revenueForm.paymentMode === 'bank' && (
+                    <div className="space-y-2 w-full">
+                      <FileUpload
+                        label="Receipt Upload"
+                        description="Upload receipt images (JPG, PNG, GIF, WebP) or PDF files. Max size: 100MB"
+                        onFileUpload={handleRevenueFileUpload}
+                        value={revenueForm.receiptFile}
+                        onClear={() => setRevenueForm(prev => ({ ...prev, receiptFile: null }))}
+                      />
+                    </div>
+                  )}
                   
                   <div className="space-y-2">
                     <Label htmlFor="revenue-amount" className="text-sm font-medium text-gray-700">Amount *</Label>
@@ -1668,40 +2315,6 @@ export default function FinancePage() {
                     />
                   </div>
                   
-                  <div className="space-y-2">
-                    <Label htmlFor="revenue-description" className="text-sm font-medium text-gray-700">Description</Label>
-                    <Textarea
-                      id="revenue-description"
-                      value={revenueForm.description}
-                      onChange={(e) => setRevenueForm(prev => ({ ...prev, description: e.target.value }))}
-                      placeholder="Revenue description"
-                      className="border-gray-300 focus:border-blue-500 focus:ring-blue-500"
-                    />
-                  </div>
-                  
-                  <div className="space-y-2">
-                    <FileUpload
-                      label="Receipt Upload"
-                      description="Upload receipt images (JPG, PNG, GIF, WebP) or PDF files. Max size: 50MB"
-                      onFileUpload={handleRevenueFileUpload}
-                      value={revenueForm.receiptFile}
-                      onClear={() => setRevenueForm(prev => ({ ...prev, receiptFile: null }))}
-                    />
-                  </div>
-                  
-                  <div className="space-y-2">
-                    <Label htmlFor="revenue-payment-mode" className="text-sm font-medium text-gray-700">Payment Mode *</Label>
-                    <Select value={revenueForm.paymentMode} onValueChange={(value: any) => setRevenueForm(prev => ({ ...prev, paymentMode: value }))}>
-                      <SelectTrigger className="h-11 border-gray-300 focus:border-blue-500 focus:ring-blue-500">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="cash">Cash</SelectItem>
-                        <SelectItem value="bank">Bank (UPI/Net Banking/Online)</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  
                   {revenueForm.paymentMode === 'bank' && (
                     <div className="space-y-2">
                       <Label htmlFor="revenue-bank-reference" className="text-sm font-medium text-gray-700">Bank Reference</Label>
@@ -1714,6 +2327,17 @@ export default function FinancePage() {
                       />
                     </div>
                   )}
+                  
+                  <div className="space-y-2">
+                    <Label htmlFor="revenue-description" className="text-sm font-medium text-gray-700">Description</Label>
+                    <Textarea
+                      id="revenue-description"
+                      value={revenueForm.description}
+                      onChange={(e) => setRevenueForm(prev => ({ ...prev, description: e.target.value }))}
+                      placeholder="Revenue description"
+                      className="border-gray-300 focus:border-blue-500 focus:ring-blue-500"
+                    />
+                  </div>
                   
                   <div className="space-y-2">
                     <Label htmlFor="revenue-date" className="text-sm font-medium text-gray-700">Date</Label>
@@ -1769,7 +2393,7 @@ export default function FinancePage() {
                     <span className="sm:hidden">Expense</span>
                   </Button>
                 </DialogTrigger>
-            <DialogContent className="max-w-2xl max-h-[95vh] overflow-hidden flex flex-col">
+            <DialogContent className="max-w-2xl max-h-[95vh] overflow-hidden flex flex-col w-full mx-4">
               <DialogHeader className="pb-4">
                 <DialogTitle className="text-xl font-bold text-gray-900 flex items-center gap-2">
                   <div className="p-2 bg-red-100 rounded-lg shadow-sm">
@@ -1781,8 +2405,8 @@ export default function FinancePage() {
                   Record a new expense for your property
                 </DialogDescription>
               </DialogHeader>
-              <div className="flex-1 overflow-y-auto px-1">
-                <div className="space-y-6">
+              <div className="flex-1 overflow-y-auto overflow-x-hidden px-0">
+                <div className="space-y-6 px-6">
                   <div className="space-y-2">
                     <Label htmlFor="expense-property" className="text-sm font-medium text-gray-700">Property *</Label>
                     <Select value={expenseForm.propertyId} onValueChange={(value) => setExpenseForm(prev => ({ ...prev, propertyId: value }))}>
@@ -1799,22 +2423,47 @@ export default function FinancePage() {
                     </Select>
                   </div>
                   
-                  <div className="space-y-2">
-                    <Label htmlFor="expense-category" className="text-sm font-medium text-gray-700">Category *</Label>
-                    <Select value={expenseForm.category} onValueChange={(value) => setExpenseForm(prev => ({ ...prev, category: value }))}>
-                      <SelectTrigger className="h-11 border-gray-300 focus:border-blue-500 focus:ring-blue-500">
-                        <SelectValue placeholder="Select category" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="supplies">Supplies</SelectItem>
-                        <SelectItem value="maintenance">Maintenance</SelectItem>
-                        <SelectItem value="utilities">Utilities</SelectItem>
-                        <SelectItem value="marketing">Marketing</SelectItem>
-                        <SelectItem value="staff">Staff</SelectItem>
-                        <SelectItem value="insurance">Insurance</SelectItem>
-                        <SelectItem value="other">Other</SelectItem>
-                      </SelectContent>
-                    </Select>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="expense-category" className="text-sm font-medium text-gray-700">Category *</Label>
+                      <Select value={expenseForm.category} onValueChange={(value) => setExpenseForm(prev => ({ ...prev, category: value }))}>
+                        <SelectTrigger className="h-11 border-gray-300 focus:border-blue-500 focus:ring-blue-500">
+                          <SelectValue placeholder="Select category" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="supplies">Supplies</SelectItem>
+                          <SelectItem value="maintenance">Maintenance</SelectItem>
+                          <SelectItem value="utilities">Utilities</SelectItem>
+                          <SelectItem value="marketing">Marketing</SelectItem>
+                          <SelectItem value="staff">Staff</SelectItem>
+                          <SelectItem value="insurance">Insurance</SelectItem>
+                          <SelectItem value="other">Other</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    
+                    <div className="space-y-2">
+                      <Label htmlFor="expense-payment-mode" className="text-sm font-medium text-gray-700">Payment Mode *</Label>
+                      <Select value={expenseForm.paymentMode} onValueChange={(value: any) => setExpenseForm(prev => ({ ...prev, paymentMode: value }))}>
+                        <SelectTrigger className="h-11 border-gray-300 focus:border-blue-500 focus:ring-blue-500">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="cash">Cash</SelectItem>
+                          <SelectItem value="bank">Bank (UPI/Net Banking/Online)</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                  
+                  <div className="space-y-2 w-full">
+                    <FileUpload
+                      label="Receipt Upload"
+                      description="Upload receipt images (JPG, PNG, GIF, WebP) or PDF files. Max size: 100MB"
+                      onFileUpload={handleExpenseFileUpload}
+                      value={expenseForm.receiptFile}
+                      onClear={() => setExpenseForm(prev => ({ ...prev, receiptFile: null }))}
+                    />
                   </div>
                   
                   <div className="space-y-2">
@@ -1830,40 +2479,6 @@ export default function FinancePage() {
                     />
                   </div>
                   
-                  <div className="space-y-2">
-                    <Label htmlFor="expense-description" className="text-sm font-medium text-gray-700">Description</Label>
-                    <Textarea
-                      id="expense-description"
-                      value={expenseForm.description}
-                      onChange={(e) => setExpenseForm(prev => ({ ...prev, description: e.target.value }))}
-                      placeholder="Expense description"
-                      className="border-gray-300 focus:border-blue-500 focus:ring-blue-500"
-                    />
-                  </div>
-                  
-                  <div className="space-y-2">
-                    <FileUpload
-                      label="Receipt Upload"
-                      description="Upload receipt images (JPG, PNG, GIF, WebP) or PDF files. Max size: 50MB"
-                      onFileUpload={handleExpenseFileUpload}
-                      value={expenseForm.receiptFile}
-                      onClear={() => setExpenseForm(prev => ({ ...prev, receiptFile: null }))}
-                    />
-                  </div>
-                  
-                  <div className="space-y-2">
-                    <Label htmlFor="expense-payment-mode" className="text-sm font-medium text-gray-700">Payment Mode *</Label>
-                    <Select value={expenseForm.paymentMode} onValueChange={(value: any) => setExpenseForm(prev => ({ ...prev, paymentMode: value }))}>
-                      <SelectTrigger className="h-11 border-gray-300 focus:border-blue-500 focus:ring-blue-500">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="cash">Cash</SelectItem>
-                        <SelectItem value="bank">Bank (UPI/Net Banking/Online)</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  
                   {expenseForm.paymentMode === 'bank' && (
                     <div className="space-y-2">
                       <Label htmlFor="expense-bank-reference" className="text-sm font-medium text-gray-700">Bank Reference</Label>
@@ -1876,6 +2491,17 @@ export default function FinancePage() {
                       />
                     </div>
                   )}
+                  
+                  <div className="space-y-2">
+                    <Label htmlFor="expense-description" className="text-sm font-medium text-gray-700">Description</Label>
+                    <Textarea
+                      id="expense-description"
+                      value={expenseForm.description}
+                      onChange={(e) => setExpenseForm(prev => ({ ...prev, description: e.target.value }))}
+                      placeholder="Expense description"
+                      className="border-gray-300 focus:border-blue-500 focus:ring-blue-500"
+                    />
+                  </div>
                   
                   <div className="space-y-2">
                     <Label htmlFor="expense-date" className="text-sm font-medium text-gray-700">Date</Label>
@@ -1997,7 +2623,7 @@ export default function FinancePage() {
                   <div className="space-y-2">
                     <FileUpload
                       label="Receipt Upload"
-                      description="Upload receipt images (JPG, PNG, GIF, WebP) or PDF files. Max size: 50MB"
+                      description="Upload receipt images (JPG, PNG, GIF, WebP) or PDF files. Max size: 100MB"
                       onFileUpload={handleExpenseFileUpload}
                       value={expenseForm.receiptFile}
                       onClear={() => setExpenseForm(prev => ({ ...prev, receiptFile: null }))}
@@ -2146,7 +2772,7 @@ export default function FinancePage() {
                   <div className="space-y-2">
                     <FileUpload
                       label="Receipt Upload"
-                      description="Upload receipt images (JPG, PNG, GIF, WebP) or PDF files. Max size: 50MB"
+                      description="Upload receipt images (JPG, PNG, GIF, WebP) or PDF files. Max size: 100MB"
                       onFileUpload={handleRevenueFileUpload}
                       value={revenueForm.receiptFile}
                       onClear={() => setRevenueForm(prev => ({ ...prev, receiptFile: null }))}
@@ -2249,11 +2875,7 @@ export default function FinancePage() {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold text-green-600">
-                {formatCurrency(
-                  revenues?.revenues
-                    ?.filter((r: any) => r.paymentMode === 'cash' && r.status === 'approved')
-                    ?.reduce((sum: number, r: any) => sum + r.amountCents, 0) || 0
-                )}
+                {formatCurrency(totals.cashRevenue || 0)}
               </div>
               <p className="text-xs text-gray-600 mt-1">
                 {selectedPropertyId !== 'all' || dateRange.startDate || dateRange.endDate 
@@ -2274,11 +2896,7 @@ export default function FinancePage() {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold text-blue-600">
-                {formatCurrency(
-                  revenues?.revenues
-                    ?.filter((r: any) => r.paymentMode === 'bank' && r.status === 'approved')
-                    ?.reduce((sum: number, r: any) => sum + r.amountCents, 0) || 0
-                )}
+                {formatCurrency(totals.bankRevenue || 0)}
               </div>
               <p className="text-xs text-gray-600 mt-1">
                 {selectedPropertyId !== 'all' || dateRange.startDate || dateRange.endDate 
@@ -2299,11 +2917,7 @@ export default function FinancePage() {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold text-red-600">
-                {formatCurrency(
-                  expenses?.expenses
-                    ?.filter((e: any) => e.paymentMode === 'cash' && e.status === 'approved')
-                    ?.reduce((sum: number, e: any) => sum + e.amountCents, 0) || 0
-                )}
+                {formatCurrency(totals.cashExpense || 0)}
               </div>
               <p className="text-xs text-gray-600 mt-1">
                 {selectedPropertyId !== 'all' || dateRange.startDate || dateRange.endDate 
@@ -2324,11 +2938,7 @@ export default function FinancePage() {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold text-orange-600">
-                {formatCurrency(
-                  expenses?.expenses
-                    ?.filter((e: any) => e.paymentMode === 'bank' && e.status === 'approved')
-                    ?.reduce((sum: number, e: any) => sum + e.amountCents, 0) || 0
-                )}
+                {formatCurrency(totals.bankExpense || 0)}
               </div>
               <p className="text-xs text-gray-600 mt-1">
                 {selectedPropertyId !== 'all' || dateRange.startDate || dateRange.endDate 
@@ -2704,6 +3314,28 @@ export default function FinancePage() {
             transaction={selectedReceipt}
           />
         )}
+
+        {/* Mobile sticky action bar (phones only) */}
+        <div className="sm:hidden fixed bottom-0 inset-x-0 z-40 bg-white/90 backdrop-blur border-t border-gray-200 px-3 py-3 pb-safe">
+          <div className="flex gap-3">
+            <Button
+              onClick={() => setIsRevenueDialogOpen(true)}
+              className="flex-1 h-12 bg-green-600 hover:bg-green-700 text-white"
+              aria-label="Add Revenue"
+            >
+              <TrendingUp className="h-4 w-4 mr-2" />
+              Revenue
+            </Button>
+            <Button
+              onClick={() => setIsExpenseDialogOpen(true)}
+              className="flex-1 h-12 bg-red-600 hover:bg-red-700 text-white"
+              aria-label="Add Expense"
+            >
+              <Plus className="h-4 w-4 mr-2" />
+              Expense
+            </Button>
+          </div>
+        </div>
       </div>
     </div>
   );

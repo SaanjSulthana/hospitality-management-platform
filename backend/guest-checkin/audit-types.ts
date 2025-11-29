@@ -15,6 +15,8 @@ export type AuditActionType =
   | "download_document"
   | "delete_document"
   | "verify_document"
+  | "generate_c_form"
+  | "download_c_form"
   | "query_audit_logs"
   | "export_audit_logs"
   | "unauthorized_access_attempt";

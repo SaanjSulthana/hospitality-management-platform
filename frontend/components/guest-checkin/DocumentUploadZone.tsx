@@ -12,6 +12,27 @@ import { ConfidenceBadge } from './ConfidenceBadge';
 import { smartCompressImage, needsCompression, getCompressionRecommendations } from '../../src/utils/image-compression';
 import { toast } from '../ui/use-toast';
 
+// Helper function to format document type for display
+const formatDocumentType = (docType: string): string => {
+  const typeMap: Record<string, string> = {
+    'aadhaar': 'Aadhaar Card',
+    'aadhaar_front': 'Aadhaar Card (Front)',
+    'aadhaar_back': 'Aadhaar Card (Back)',
+    'pan_card': 'PAN Card',
+    'driving_license': 'Driving License',
+    'driving_license_front': 'Driving License (Front)',
+    'driving_license_back': 'Driving License (Back)',
+    'election_card': 'Election Card',
+    'election_card_front': 'Election Card (Front)',
+    'election_card_back': 'Election Card (Back)',
+    'passport': 'Passport',
+    'visa_front': 'Visa (Front)',
+    'visa_back': 'Visa (Back)',
+    'other': 'ID Document'
+  };
+  return typeMap[docType] || docType.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+};
+
 export interface ExtractedField {
   value: string;
   confidence: number;
@@ -19,10 +40,11 @@ export interface ExtractedField {
 }
 
 export interface DocumentUploadResult {
-  documentId: number;
+  // NO documentId - document not uploaded yet (client-side storage)
   documentType: string;
   filename: string;
-  thumbnailUrl: string;
+  fileData: string; // Base64 - stored client-side until check-in submission
+  mimeType: string;
   extractedData: Record<string, ExtractedField>;
   overallConfidence: number;
   detectedDocumentType?: string;
@@ -36,6 +58,7 @@ interface DocumentUploadZoneProps {
   label: string;
   onUploadComplete: (result: DocumentUploadResult) => void;
   onExtractionComplete?: (extractedData: Record<string, ExtractedField>) => void;
+  onUploadStatusChange?: (uploaded: boolean, doc?: DocumentUploadResult | null) => void;
   className?: string;
   maxSize?: number; // in MB (before base64 encoding)
 }
@@ -45,6 +68,7 @@ export function DocumentUploadZone({
   label,
   onUploadComplete,
   onExtractionComplete,
+  onUploadStatusChange,
   className = '',
   maxSize = 100, // 100MB limit to account for ~33% base64 encoding overhead
 }: DocumentUploadZoneProps) {
@@ -148,8 +172,8 @@ export function DocumentUploadZone({
       setUploadProgress(40);
       setExtractionStatus('extracting');
 
-      // Upload to backend
-      const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:4000'}/guest-checkin/documents/upload`, {
+      // Extract data WITHOUT uploading (client-side storage approach)
+      const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:4000'}/v1/guest-checkin/documents/extract-only`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -160,7 +184,6 @@ export function DocumentUploadZone({
           fileData: base64String,
           filename: fileToUpload.name,
           mimeType: fileToUpload.type,
-          performExtraction: true,
         }),
       });
 
@@ -189,23 +212,27 @@ export function DocumentUploadZone({
       setExtractionStatus('complete');
 
       const docResult: DocumentUploadResult = {
-        documentId: result.document.id,
-        documentType: result.document.documentType,
-        filename: result.document.filename + compressionInfo,
-        thumbnailUrl: result.document.thumbnailUrl,
-        extractedData: result.extraction.data,
-        overallConfidence: result.extraction.overallConfidence,
-        detectedDocumentType: result.document.detectedDocumentType,
-        documentTypeConfidence: result.document.documentTypeConfidence,
+        // NO documentId - document stored client-side
+        documentType: result.detectedDocumentType || documentType,
+        filename: fileToUpload.name + compressionInfo,
+        fileData: base64String, // Store base64 client-side
+        mimeType: fileToUpload.type,
+        extractedData: result.extractedData,
+        overallConfidence: result.overallConfidence,
+        detectedDocumentType: result.detectedDocumentType,
+        documentTypeConfidence: result.documentTypeConfidence,
         success: true,
       };
 
       setUploadedDoc(docResult);
       onUploadComplete(docResult);
+      
+      // Notify parent that document was uploaded
+      onUploadStatusChange?.(true, docResult);
 
       // Trigger auto-fill if extraction succeeded
-      if (result.extraction.status === 'completed' && onExtractionComplete) {
-        onExtractionComplete(result.extraction.data);
+      if (result.extractionStatus === 'completed' && onExtractionComplete) {
+        onExtractionComplete(result.extractedData);
       }
     } catch (error) {
       console.error('Upload error:', error);
@@ -238,13 +265,22 @@ export function DocumentUploadZone({
   };
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = Array.from(e.target.files || []);
+    const input = e.currentTarget;
+    const files = Array.from(input.files || []);
     if (files.length > 0) {
       handleFileSelect(files[0]);
     }
+    // Reset input value to allow re-selecting the same file
+    // This is essential for the use case: upload → clear → re-upload same file
+    input.value = '';
   };
 
   const handleButtonClick = () => {
+    if (fileInputRef.current) {
+      // Reset input value before opening picker to ensure onChange fires
+      // even if user selects the same file as before
+      fileInputRef.current.value = '';
+    }
     fileInputRef.current?.click();
   };
 
@@ -261,9 +297,19 @@ export function DocumentUploadZone({
   };
 
   const handleClear = () => {
+    // Notify parent that document was cleared
+    onUploadStatusChange?.(false, uploadedDoc);
+    
     setUploadedDoc(null);
     setExtractionStatus('idle');
     setError(null);
+    
+    // Reset the native file input to allow re-selecting the same file
+    // This ensures that if user clears and wants to re-upload the same document,
+    // the onChange event will fire properly
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
   };
 
   return (
@@ -352,10 +398,31 @@ export function DocumentUploadZone({
               <div className="flex-1">
                 <div className="flex items-center gap-2 mb-2">
                   <Check className="h-5 w-5 text-green-600" />
-                  <h4 className="font-medium text-gray-900">{label} Uploaded</h4>
+                  <h4 className="font-medium text-gray-900">
+                    {uploadedDoc.detectedDocumentType 
+                      ? `${formatDocumentType(uploadedDoc.detectedDocumentType)} Uploaded`
+                      : `${label} Uploaded`}
+                  </h4>
                 </div>
                 
                 <p className="text-sm text-gray-600 mb-2">{uploadedDoc.filename}</p>
+                
+                {uploadedDoc.detectedDocumentType && uploadedDoc.documentTypeConfidence && (
+                  <div className="space-y-2 mb-2">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-gray-500">Detected Type:</span>
+                      <ConfidenceBadge score={uploadedDoc.documentTypeConfidence} />
+                    </div>
+                    {uploadedDoc.documentTypeConfidence < 85 && (
+                      <div className="p-2 bg-orange-50 border border-orange-200 rounded-md">
+                        <p className="text-xs text-orange-800 flex items-center gap-1">
+                          <AlertCircle className="h-3 w-3" />
+                          <strong>Low detection confidence.</strong> Please verify the document type is correct.
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                )}
                 
                 <div className="flex items-center gap-2">
                   <span className="text-xs text-gray-500">Extraction Confidence:</span>

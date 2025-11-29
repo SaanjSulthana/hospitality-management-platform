@@ -2,6 +2,7 @@ import { api, APIError } from "encore.dev/api";
 import { getAuthData } from "~encore/auth";
 import { requireRole } from "../auth/middleware";
 import { usersDB } from "./db";
+import { v1Path } from "../shared/http";
 import log from "encore.dev/log";
 
 export interface GetUserPropertiesRequest {
@@ -20,9 +21,7 @@ export interface GetUserPropertiesResponse {
 }
 
 // Gets user's assigned properties with details (Admin can get any user's, Manager can get their own)
-export const getProperties = api<GetUserPropertiesRequest, GetUserPropertiesResponse>(
-  { auth: true, expose: true, method: "GET", path: "/users/properties" },
-  async (req) => {
+async function getPropertiesHandler(req: GetUserPropertiesRequest): Promise<GetUserPropertiesResponse> {
     const authData = getAuthData();
     if (!authData) {
       throw APIError.unauthenticated("Authentication required");
@@ -103,5 +102,14 @@ export const getProperties = api<GetUserPropertiesRequest, GetUserPropertiesResp
       
       throw APIError.internal("Failed to fetch user properties");
     }
-  }
+}
+
+export const getProperties = api<GetUserPropertiesRequest, GetUserPropertiesResponse>(
+  { auth: true, expose: true, method: "GET", path: "/users/properties" },
+  getPropertiesHandler
+);
+
+export const getPropertiesV1 = api<GetUserPropertiesRequest, GetUserPropertiesResponse>(
+  { auth: true, expose: true, method: "GET", path: "/v1/users/properties" },
+  getPropertiesHandler
 );

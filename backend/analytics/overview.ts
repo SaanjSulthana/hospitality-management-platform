@@ -33,9 +33,7 @@ export interface OverviewResponse {
 }
 
 // Gets analytics overview with role-based filtering
-export const overview = api<OverviewRequest, OverviewResponse>(
-  { auth: true, expose: true, method: "GET", path: "/analytics/overview" },
-  async (req) => {
+async function overviewHandler(req: OverviewRequest): Promise<OverviewResponse> {
     const authData = getAuthData();
     if (!authData) {
       throw APIError.unauthenticated("Authentication required");
@@ -191,6 +189,16 @@ export const overview = api<OverviewRequest, OverviewResponse>(
       console.error('Analytics overview error:', error);
       throw new Error('Failed to fetch analytics data');
     }
-  }
+}
+
+// LEGACY: Gets analytics overview (keep for backward compatibility)
+export const overview = api<OverviewRequest, OverviewResponse>(
+  { auth: true, expose: true, method: "GET", path: "/analytics/overview" },
+  overviewHandler
+);
+
+export const overviewV1 = api<OverviewRequest, OverviewResponse>(
+  { auth: true, expose: true, method: "GET", path: "/v1/analytics/overview" },
+  overviewHandler
 );
 

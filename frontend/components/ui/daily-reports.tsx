@@ -309,12 +309,44 @@ function MonthlyReportSpreadsheet({ year, month, propertyId, orgId }: MonthlyRep
       console.log('MonthlyReportSpreadsheet: Monthly data:', response);
       return response;
     },
-    staleTime: 0, // Always consider data stale for real-time updates
-    gcTime: 600000, // Keep in cache for 10 minutes
-    refetchInterval: 30000, // Refresh every 30 seconds for real-time updates
-    refetchOnWindowFocus: true, // Refresh when user returns to tab
+    staleTime: 25000, // Match Finance pattern
+    gcTime: 300000, // 5 minutes
+    refetchInterval: false, // Rely on realtime events from RealtimeProvider
     refetchOnMount: true, // Refresh when component mounts
     refetchOnReconnect: true, // Refresh when network reconnects
+    onSuccess: () => {
+      try {
+        const last = (window as any).__reportsLastInvalidateAt;
+        if (!last) return;
+        const key = `monthly|${propertyId}|${year}-${month}`;
+        const started = last[key];
+        if (started) {
+          const ms = Date.now() - started;
+          if (process.env.NODE_ENV !== 'production') {
+            console.log('[ReportsTelemetry] monthly refetch duration ms:', ms, { propertyId, year, month });
+          }
+          if (Math.random() < 0.02) {
+            fetch(`${API_CONFIG.BASE_URL}/telemetry/client`, {
+              method: 'POST',
+              headers: {
+                'Authorization': `Bearer ${localStorage.getItem('accessToken') || ''}`,
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                sampleRate: 0.02,
+                events: [{
+                  type: 'reports_refetch_ms',
+                  ts: new Date().toISOString(),
+                  scope: 'monthly',
+                  ms,
+                  propertyId, year, month,
+                }],
+              }),
+            }).catch(() => {});
+          }
+        }
+      } catch {}
+    }
   });
 
 
@@ -340,43 +372,104 @@ function MonthlyReportSpreadsheet({ year, month, propertyId, orgId }: MonthlyRep
   const handleExportToExcel = async () => {
     setIsExportingExcel(true);
     try {
-      const backend = getAuthenticatedBackend();
-      console.log('Export Excel - Backend client:', backend);
-      console.log('Export Excel - Backend type:', typeof backend);
-      console.log('Export Excel - Backend reports:', backend?.reports);
-      console.log('Export Excel - Reports type:', typeof backend?.reports);
-      console.log('Export Excel - Export method:', backend?.reports?.exportMonthlyReportExcel);
+      const token = localStorage.getItem('accessToken');
       
-      if (!backend) {
-        throw new Error('Backend client not initialized');
-      }
-      
-      if (!backend.reports) {
-        throw new Error('Reports service not available in backend client');
-      }
-      
-      if (!backend.reports.exportMonthlyReportExcel) {
-        throw new Error('Export Excel method not available in reports service');
-      }
-      
-      const result = await backend.reports.exportMonthlyReportExcel({
-        propertyId,
-        year,
-        month,
+      // Step 1: Create export using new v2 endpoint
+      const response = await fetch(`${API_CONFIG.BASE_URL}/reports/v2/export-monthly-excel`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          propertyId,
+          year,
+          month,
+        }),
       });
-      
-      // Create download link
-      const link = document.createElement('a');
-      link.href = `data:application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;base64,${result.excelData}`;
-      link.download = result.filename;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
 
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const result = await response.json();
+      const { exportId, statusUrl } = result;
+
+      // Step 2: Poll for status
       toast({
-        title: "Excel Exported",
-        description: "Monthly report Excel file has been downloaded successfully.",
+        title: "Generating Excel",
+        description: "Your export is being processed...",
       });
+
+      const pollStatus = async (): Promise<any> => {
+        const statusResponse = await fetch(`${API_CONFIG.BASE_URL}${statusUrl}`, {
+          headers: { 'Authorization': `Bearer ${token}` },
+        });
+        
+        if (!statusResponse.ok) {
+          throw new Error('Failed to check export status');
+        }
+        
+        return statusResponse.json();
+      };
+
+      // Poll until ready
+      let attempts = 0;
+      const maxAttempts = 60; // 60 seconds max
+      
+      while (attempts < maxAttempts) {
+        const status = await pollStatus();
+        
+        if (status.status === 'ready') {
+          // Step 3: Download with authentication
+          const downloadResponse = await fetch(`${API_CONFIG.BASE_URL}/documents/exports/${exportId}/download`, {
+            headers: {
+              'Authorization': `Bearer ${token}`,
+            },
+          });
+
+          if (!downloadResponse.ok) {
+            throw new Error('Failed to download file');
+          }
+
+          // Get the JSON response with base64 data
+          const downloadData = await downloadResponse.json();
+          
+          // Decode base64 and create blob
+          const binaryString = atob(downloadData.data);
+          const bytes = new Uint8Array(binaryString.length);
+          for (let i = 0; i < binaryString.length; i++) {
+            bytes[i] = binaryString.charCodeAt(i);
+          }
+          const blob = new Blob([bytes], { type: downloadData.mimeType });
+
+          // Create download link
+          const url = window.URL.createObjectURL(blob);
+          const link = document.createElement('a');
+          link.href = url;
+          link.download = downloadData.filename;
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+          window.URL.revokeObjectURL(url);
+
+          toast({
+            title: "Excel Ready",
+            description: "Monthly report Excel has been downloaded.",
+          });
+          break;
+        } else if (status.status === 'failed') {
+          throw new Error(status.errorMessage || 'Export failed');
+        }
+        
+        // Wait before polling again
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        attempts++;
+      }
+
+      if (attempts >= maxAttempts) {
+        throw new Error('Export timeout - please try again');
+      }
     } catch (error: any) {
       console.error('Excel export error:', error);
       toast({
@@ -393,43 +486,104 @@ function MonthlyReportSpreadsheet({ year, month, propertyId, orgId }: MonthlyRep
   const handleExportToPDF = async () => {
     setIsExportingPDF(true);
     try {
-      const backend = getAuthenticatedBackend();
-      console.log('Export PDF - Backend client:', backend);
-      console.log('Export PDF - Backend type:', typeof backend);
-      console.log('Export PDF - Backend reports:', backend?.reports);
-      console.log('Export PDF - Reports type:', typeof backend?.reports);
-      console.log('Export PDF - Export method:', backend?.reports?.exportMonthlyReportPDF);
+      const token = localStorage.getItem('accessToken');
       
-      if (!backend) {
-        throw new Error('Backend client not initialized');
-      }
-      
-      if (!backend.reports) {
-        throw new Error('Reports service not available in backend client');
-      }
-      
-      if (!backend.reports.exportMonthlyReportPDF) {
-        throw new Error('Export PDF method not available in reports service');
-      }
-      
-      const result = await backend.reports.exportMonthlyReportPDF({
-        propertyId,
-        year,
-        month,
+      // Step 1: Create export using new v2 endpoint
+      const response = await fetch(`${API_CONFIG.BASE_URL}/reports/v2/export-monthly-pdf`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          propertyId,
+          year,
+          month,
+        }),
       });
-      
-      // Create download link
-      const link = document.createElement('a');
-      link.href = `data:application/pdf;base64,${result.pdfData}`;
-      link.download = result.filename;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
 
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const result = await response.json();
+      const { exportId, statusUrl } = result;
+
+      // Step 2: Poll for status
       toast({
-        title: "PDF Exported",
-        description: "Monthly report PDF has been downloaded successfully.",
+        title: "Generating PDF",
+        description: "Your export is being processed...",
       });
+
+      const pollStatus = async (): Promise<any> => {
+        const statusResponse = await fetch(`${API_CONFIG.BASE_URL}${statusUrl}`, {
+          headers: { 'Authorization': `Bearer ${token}` },
+        });
+        
+        if (!statusResponse.ok) {
+          throw new Error('Failed to check export status');
+        }
+        
+        return statusResponse.json();
+      };
+
+      // Poll until ready
+      let attempts = 0;
+      const maxAttempts = 60; // 60 seconds max
+      
+      while (attempts < maxAttempts) {
+        const status = await pollStatus();
+        
+        if (status.status === 'ready') {
+          // Step 3: Download with authentication
+          const downloadResponse = await fetch(`${API_CONFIG.BASE_URL}/documents/exports/${exportId}/download`, {
+            headers: {
+              'Authorization': `Bearer ${token}`,
+            },
+          });
+
+          if (!downloadResponse.ok) {
+            throw new Error('Failed to download file');
+          }
+
+          // Get the JSON response with base64 data
+          const downloadData = await downloadResponse.json();
+          
+          // Decode base64 and create blob
+          const binaryString = atob(downloadData.data);
+          const bytes = new Uint8Array(binaryString.length);
+          for (let i = 0; i < binaryString.length; i++) {
+            bytes[i] = binaryString.charCodeAt(i);
+          }
+          const blob = new Blob([bytes], { type: downloadData.mimeType });
+
+          // Create download link
+          const url = window.URL.createObjectURL(blob);
+          const link = document.createElement('a');
+          link.href = url;
+          link.download = downloadData.filename;
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+          window.URL.revokeObjectURL(url);
+
+          toast({
+            title: "PDF Ready",
+            description: "Monthly report PDF has been downloaded.",
+          });
+          break;
+        } else if (status.status === 'failed') {
+          throw new Error(status.errorMessage || 'Export failed');
+        }
+        
+        // Wait before polling again
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        attempts++;
+      }
+
+      if (attempts >= maxAttempts) {
+        throw new Error('Export timeout - please try again');
+      }
     } catch (error: any) {
       console.error('PDF export error:', error);
       toast({

@@ -2,6 +2,55 @@ import { api, APIError } from "encore.dev/api";
 import { getAuthData } from "~encore/auth";
 import { financeDB } from "./db";
 import { requireRole } from "../auth/middleware";
+import { financeEvents } from "./events";
+import { v4 as uuidv4 } from 'uuid';
+import { toISTDateString } from "../shared/date_utils";
+
+// Helper function to remove transaction from daily cash balance when rejected/deleted
+async function removeDailyCashBalanceForTransaction(tx: any, params: {
+  orgId: number;
+  propertyId: number;
+  date: string;
+  transactionType: 'revenue' | 'expense';
+  amountCents: number;
+  paymentMode: string;
+}) {
+  const { orgId, propertyId, date, transactionType, amountCents, paymentMode } = params;
+  
+  try {
+    // Determine decrements (negative of increments)
+    const cashRevenueDecrement = transactionType === 'revenue' && paymentMode === 'cash' ? amountCents : 0;
+    const bankRevenueDecrement = transactionType === 'revenue' && paymentMode === 'bank' ? amountCents : 0;
+    const cashExpenseDecrement = transactionType === 'expense' && paymentMode === 'cash' ? amountCents : 0;
+    const bankExpenseDecrement = transactionType === 'expense' && paymentMode === 'bank' ? amountCents : 0;
+
+    // Subtract from daily_cash_balances
+    await tx.exec`
+      UPDATE daily_cash_balances
+      SET
+        cash_received_cents = GREATEST(0, cash_received_cents - ${cashRevenueDecrement}),
+        bank_received_cents = GREATEST(0, bank_received_cents - ${bankRevenueDecrement}),
+        cash_expenses_cents = GREATEST(0, cash_expenses_cents - ${cashExpenseDecrement}),
+        bank_expenses_cents = GREATEST(0, bank_expenses_cents - ${bankExpenseDecrement}),
+        closing_balance_cents = opening_balance_cents + 
+                                GREATEST(0, cash_received_cents - ${cashRevenueDecrement}) - 
+                                GREATEST(0, cash_expenses_cents - ${cashExpenseDecrement}),
+        calculated_closing_balance_cents = opening_balance_cents + 
+                                           GREATEST(0, cash_received_cents - ${cashRevenueDecrement}) - 
+                                           GREATEST(0, cash_expenses_cents - ${cashExpenseDecrement}),
+        balance_discrepancy_cents = 0,
+        updated_at = NOW()
+      WHERE org_id = ${orgId}
+        AND property_id = ${propertyId}
+        AND balance_date = ${date}
+    `;
+
+    console.log(`[Finance] Removed transaction from daily_cash_balances for property ${propertyId} on ${date}`);
+  } catch (error) {
+    console.error('[Finance] Error removing transaction from daily_cash_balances:', error);
+    throw error;
+  }
+}
 
 // Helper function to update daily cash balance when a transaction is approved
 async function updateDailyCashBalanceForTransaction(tx: any, params: {
@@ -15,108 +64,64 @@ async function updateDailyCashBalanceForTransaction(tx: any, params: {
   const { orgId, propertyId, date, transactionType, amountCents, paymentMode } = params;
   
   try {
-    // Get current daily cash balance record
-    const existingBalance = await tx.queryRow`
-      SELECT * FROM daily_cash_balances
+    // Calculate opening balance from previous day
+    const previousDate = new Date(date);
+    previousDate.setDate(previousDate.getDate() - 1);
+    const previousDateStr = previousDate.toISOString().split('T')[0];
+
+    const previousBalance = await tx.queryRow`
+      SELECT closing_balance_cents FROM daily_cash_balances
       WHERE org_id = ${orgId} 
         AND property_id = ${propertyId} 
-        AND balance_date = ${date}
+        AND balance_date = ${previousDateStr}
     `;
 
-    if (existingBalance) {
-      // Update existing record
-      if (transactionType === 'revenue') {
-        if (paymentMode === 'cash') {
-          await tx.exec`
-            UPDATE daily_cash_balances
-            SET cash_received_cents = cash_received_cents + ${amountCents},
-                updated_at = NOW()
-            WHERE org_id = ${orgId} 
-              AND property_id = ${propertyId} 
-              AND balance_date = ${date}
-          `;
-        } else {
-          await tx.exec`
-            UPDATE daily_cash_balances
-            SET bank_received_cents = bank_received_cents + ${amountCents},
-                updated_at = NOW()
-            WHERE org_id = ${orgId} 
-              AND property_id = ${propertyId} 
-              AND balance_date = ${date}
-          `;
-        }
-      } else {
-        if (paymentMode === 'cash') {
-          await tx.exec`
-            UPDATE daily_cash_balances
-            SET cash_expenses_cents = cash_expenses_cents + ${amountCents},
-                updated_at = NOW()
-            WHERE org_id = ${orgId} 
-              AND property_id = ${propertyId} 
-              AND balance_date = ${date}
-          `;
-        } else {
-          await tx.exec`
-            UPDATE daily_cash_balances
-            SET bank_expenses_cents = bank_expenses_cents + ${amountCents},
-                updated_at = NOW()
-            WHERE org_id = ${orgId} 
-              AND property_id = ${propertyId} 
-              AND balance_date = ${date}
-          `;
-        }
-      }
-    } else {
-      // Create new record - calculate opening balance from previous day
-      let openingBalanceCents = 0;
-      
-      // Get previous day's closing balance
-      const previousDate = new Date(date);
-      previousDate.setDate(previousDate.getDate() - 1);
-      const previousDateStr = previousDate.toISOString().split('T')[0];
-      
-      const previousBalance = await tx.queryRow`
-        SELECT closing_balance_cents 
-        FROM daily_cash_balances 
-        WHERE org_id = ${orgId} 
-          AND property_id = ${propertyId} 
-          AND balance_date = ${previousDateStr}
-      `;
-      
-      if (previousBalance) {
-        openingBalanceCents = previousBalance.closing_balance_cents;
-      }
+    const openingBalanceCents = previousBalance ? parseInt(previousBalance.closing_balance_cents) || 0 : 0;
+    
+    // Determine increments based on transaction type and payment mode
+    const cashRevenueIncrement = transactionType === 'revenue' && paymentMode === 'cash' ? amountCents : 0;
+    const bankRevenueIncrement = transactionType === 'revenue' && paymentMode === 'bank' ? amountCents : 0;
+    const cashExpenseIncrement = transactionType === 'expense' && paymentMode === 'cash' ? amountCents : 0;
+    const bankExpenseIncrement = transactionType === 'expense' && paymentMode === 'bank' ? amountCents : 0;
 
-      // Initialize new record with the transaction
-      const cashReceivedCents = transactionType === 'revenue' && paymentMode === 'cash' ? amountCents : 0;
-      const bankReceivedCents = transactionType === 'revenue' && paymentMode === 'bank' ? amountCents : 0;
-      const cashExpensesCents = transactionType === 'expense' && paymentMode === 'cash' ? amountCents : 0;
-      const bankExpensesCents = transactionType === 'expense' && paymentMode === 'bank' ? amountCents : 0;
-      
-      const closingBalanceCents = openingBalanceCents + cashReceivedCents - cashExpensesCents;
+    // Use INSERT ... ON CONFLICT ... DO UPDATE for atomic upsert
+    await tx.exec`
+      INSERT INTO daily_cash_balances (
+        org_id, property_id, balance_date, opening_balance_cents,
+        cash_received_cents, bank_received_cents, cash_expenses_cents,
+        bank_expenses_cents, closing_balance_cents,
+        is_opening_balance_auto_calculated, calculated_closing_balance_cents,
+        balance_discrepancy_cents, created_by_user_id, created_at, updated_at
+      )
+      VALUES (
+        ${orgId}, ${propertyId}, ${date}, ${openingBalanceCents},
+        ${cashRevenueIncrement}, ${bankRevenueIncrement}, ${cashExpenseIncrement},
+        ${bankExpenseIncrement}, 
+        ${openingBalanceCents + cashRevenueIncrement - cashExpenseIncrement},
+        ${!!previousBalance}, 
+        ${openingBalanceCents + cashRevenueIncrement - cashExpenseIncrement}, 
+        0, 1, NOW(), NOW()
+      )
+      ON CONFLICT (org_id, property_id, balance_date)
+      DO UPDATE SET
+        cash_received_cents = daily_cash_balances.cash_received_cents + ${cashRevenueIncrement},
+        bank_received_cents = daily_cash_balances.bank_received_cents + ${bankRevenueIncrement},
+        cash_expenses_cents = daily_cash_balances.cash_expenses_cents + ${cashExpenseIncrement},
+        bank_expenses_cents = daily_cash_balances.bank_expenses_cents + ${bankExpenseIncrement},
+        closing_balance_cents = daily_cash_balances.opening_balance_cents + 
+                                (daily_cash_balances.cash_received_cents + ${cashRevenueIncrement}) - 
+                                (daily_cash_balances.cash_expenses_cents + ${cashExpenseIncrement}),
+        calculated_closing_balance_cents = daily_cash_balances.opening_balance_cents + 
+                                           (daily_cash_balances.cash_received_cents + ${cashRevenueIncrement}) - 
+                                           (daily_cash_balances.cash_expenses_cents + ${cashExpenseIncrement}),
+        balance_discrepancy_cents = 0,
+        updated_at = NOW()
+    `;
 
-      await tx.exec`
-        INSERT INTO daily_cash_balances (
-          org_id, property_id, balance_date, opening_balance_cents,
-          cash_received_cents, bank_received_cents, cash_expenses_cents,
-          bank_expenses_cents, closing_balance_cents,
-          is_opening_balance_auto_calculated, calculated_closing_balance_cents,
-          balance_discrepancy_cents, created_by_user_id
-        )
-        VALUES (
-          ${orgId}, ${propertyId}, ${date}, ${openingBalanceCents},
-          ${cashReceivedCents}, ${bankReceivedCents}, ${cashExpensesCents},
-          ${bankExpensesCents}, ${closingBalanceCents}, 
-          ${!!previousBalance}, ${closingBalanceCents}, 
-          0, ${1} -- Default created_by_user_id
-        )
-      `;
-    }
-
-    console.log(`Updated daily cash balance for property ${propertyId} on ${date} with ${transactionType} of ${amountCents} cents (${paymentMode})`);
+    console.log(`[Finance] Updated daily_cash_balances for property ${propertyId} on ${date}: ${transactionType} ${paymentMode} ${amountCents} cents`);
   } catch (error) {
-    console.error('Error updating daily cash balance:', error);
-    // Don't throw error to avoid breaking the approval process
+    console.error('[Finance] Error updating daily_cash_balances:', error);
+    throw error; // Don't suppress - this is critical for data integrity
   }
 }
 
@@ -132,17 +137,15 @@ export interface ApproveRevenueResponse {
   status: string;
 }
 
-// Approves or rejects a revenue
-export const approveRevenue = api<ApproveRevenueRequest, ApproveRevenueResponse>(
-  { auth: true, expose: true, method: "POST", path: "/finance/revenues/approve" },
-  async (req) => {
-    const authData = getAuthData();
-    if (!authData) {
-      throw APIError.unauthenticated("Authentication required");
-    }
-    requireRole("ADMIN")(authData); // Only admins can approve revenues
+// Shared handler for approving/rejecting revenue (used by both legacy and v1 endpoints)
+async function approveRevenueHandler(req: ApproveRevenueRequest): Promise<ApproveRevenueResponse> {
+  const authData = getAuthData();
+  if (!authData) {
+    throw APIError.unauthenticated("Authentication required");
+  }
+  requireRole("ADMIN")(authData); // Only admins can approve revenues
 
-    const { id, approved, notes } = req;
+  const { id, approved, notes } = req;
 
     const tx = await financeDB.begin();
     try {
@@ -234,10 +237,11 @@ export const approveRevenue = api<ApproveRevenueRequest, ApproveRevenueResponse>
           AND u.role = 'MANAGER'
       `;
 
-      // Auto-grant daily approval for the manager if this is an approval
+      // Handle approval or rejection
       if (newStatus === 'approved') {
         const revenue = await tx.queryRow`
-          SELECT created_by_user_id, created_at, property_id, amount_cents, payment_mode
+          SELECT created_by_user_id, created_at, property_id, amount_cents, payment_mode, 
+                 currency, source, occurred_at
           FROM revenues
           WHERE id = ${id}
         `;
@@ -280,9 +284,80 @@ export const approveRevenue = api<ApproveRevenueRequest, ApproveRevenueResponse>
             paymentMode: revenue.payment_mode
           });
         }
+      } else if (newStatus === 'rejected') {
+        // NEW: Handle rejection - check if it was previously approved
+        const wasApproved = await tx.queryRow`
+          SELECT status FROM revenues WHERE id = ${id}
+        `;
+        
+        if (wasApproved && wasApproved.status === 'approved') {
+          // Get revenue data for removal
+          const revenue = await tx.queryRow`
+            SELECT property_id, amount_cents, payment_mode, created_at
+            FROM revenues
+            WHERE id = ${id}
+          `;
+          
+          if (revenue) {
+            const revenueDate = new Date(revenue.created_at).toISOString().split('T')[0];
+            
+            // Remove from daily_cash_balances
+            await removeDailyCashBalanceForTransaction(tx, {
+              orgId: authData.orgId,
+              propertyId: revenue.property_id,
+              date: revenueDate,
+              transactionType: 'revenue',
+              amountCents: revenue.amount_cents,
+              paymentMode: revenue.payment_mode
+            });
+          }
+        }
       }
 
       await tx.commit();
+
+      // Publish event for real-time updates (following Encore pattern)
+      try {
+        // Re-fetch revenue data after commit for event publishing
+        const revenueForEvent = await financeDB.queryRow`
+          SELECT property_id, amount_cents, currency, payment_mode, source, occurred_at
+          FROM revenues
+          WHERE id = ${id}
+        `;
+        
+        if (revenueForEvent) {
+          const revenueDate = toISTDateString(
+            revenueForEvent.occurred_at || new Date()
+          );
+          
+          await financeEvents.publish({
+            eventId: uuidv4(),
+            eventVersion: 'v1',
+            eventType: approved ? 'revenue_approved' : 'revenue_rejected',
+            orgId: authData.orgId,
+            propertyId: revenueForEvent.property_id,
+            userId: parseInt(authData.userID),
+            timestamp: new Date(),
+            entityId: id,
+            entityType: 'revenue',
+            metadata: {
+              previousStatus: 'pending',
+              newStatus: approved ? 'approved' : 'rejected',
+              amountCents: revenueForEvent.amount_cents,
+              currency: revenueForEvent.currency,
+              paymentMode: revenueForEvent.payment_mode,
+              source: revenueForEvent.source,
+              transactionDate: revenueDate,
+              affectedReportDates: [revenueDate],
+              ...(notes ? { notes } : {})
+            }
+          });
+          console.log(`[Finance] Published ${approved ? 'revenue_approved' : 'revenue_rejected'} event for revenue ID: ${id}`);
+        }
+      } catch (eventError) {
+        console.error('[Finance] Failed to publish revenue approval event:', eventError);
+        // Don't fail the transaction if event publishing fails
+      }
 
       return {
         success: true,
@@ -298,5 +373,16 @@ export const approveRevenue = api<ApproveRevenueRequest, ApproveRevenueResponse>
       throw APIError.internal(`Failed to approve revenue: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }
+
+// LEGACY: Approves or rejects a revenue (keep for backward compatibility)
+export const approveRevenue = api<ApproveRevenueRequest, ApproveRevenueResponse>(
+  { auth: true, expose: true, method: "POST", path: "/finance/revenues/approve" },
+  approveRevenueHandler
+);
+
+// V1: Approves or rejects a revenue
+export const approveRevenueV1 = api<ApproveRevenueRequest, ApproveRevenueResponse>(
+  { auth: true, expose: true, method: "POST", path: "/v1/finance/revenues/approve" },
+  approveRevenueHandler
 );
 

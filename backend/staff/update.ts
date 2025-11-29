@@ -2,6 +2,8 @@ import { api, APIError } from "encore.dev/api";
 import { getAuthData } from "~encore/auth";
 import { requireRole } from "../auth/middleware";
 import { staffDB } from "./db";
+import { staffEvents } from "./events";
+import { v4 as uuidv4 } from "uuid";
 
 export interface UpdateStaffRequest {
   id: number;
@@ -26,10 +28,8 @@ export interface UpdateStaffResponse {
   message: string;
 }
 
-// Updates an existing staff record with enhanced fields
-export const update = api<UpdateStaffRequest, UpdateStaffResponse>(
-  { auth: true, expose: true, method: "PUT", path: "/staff/update" },
-  async (req) => {
+// Shared handler for updating staff record
+async function updateHandler(req: UpdateStaffRequest): Promise<UpdateStaffResponse> {
     const authData = getAuthData();
     if (!authData) {
       throw APIError.unauthenticated("Authentication required");
@@ -169,6 +169,33 @@ export const update = api<UpdateStaffRequest, UpdateStaffResponse>(
 
       console.log(`Successfully updated staff record ${id}`);
 
+      // Fetch current property_id for event payload
+      const updatedRow = await staffDB.queryRow`
+        SELECT id, property_id FROM staff WHERE id = ${id} AND org_id = ${authData.orgId}
+      `;
+
+      // Publish staff_updated event
+      try {
+        await staffEvents.publish({
+          eventId: uuidv4(),
+          eventVersion: 'v1',
+          eventType: 'staff_updated',
+          orgId: authData.orgId,
+          propertyId: updatedRow?.property_id ?? null,
+          userId: parseInt(authData.userID),
+          timestamp: new Date(),
+          entityId: id,
+          entityType: 'staff',
+          metadata: {
+            department,
+            status,
+            salaryType,
+          },
+        });
+      } catch (e) {
+        console.warn("[Staff Events] Failed to publish staff_updated", e);
+      }
+
       return {
         id: id,
         success: true,
@@ -189,5 +216,16 @@ export const update = api<UpdateStaffRequest, UpdateStaffResponse>(
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       throw APIError.internal(`Failed to update staff: ${errorMessage}`);
     }
-  }
+}
+
+// LEGACY: Updates staff record (keep for backward compatibility)
+export const update = api<UpdateStaffRequest, UpdateStaffResponse>(
+  { auth: true, expose: true, method: "PUT", path: "/staff/update" },
+  updateHandler
+);
+
+// V1: Updates staff record
+export const updateV1 = api<UpdateStaffRequest, UpdateStaffResponse>(
+  { auth: true, expose: true, method: "PUT", path: "/v1/staff/update" },
+  updateHandler
 );

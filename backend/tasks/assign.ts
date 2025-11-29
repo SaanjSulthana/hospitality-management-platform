@@ -2,6 +2,9 @@ import { api, APIError } from "encore.dev/api";
 import { getAuthData } from "~encore/auth";
 import { requireRole } from "../auth/middleware";
 import { tasksDB } from "./db";
+import { v1Path } from "../shared/http";
+import { taskEvents } from "./events";
+import { v4 as uuidv4 } from "uuid";
 
 export interface AssignTaskRequest {
   id: number;
@@ -14,10 +17,8 @@ export interface AssignTaskResponse {
   assigneeStaffId?: number;
 }
 
-// Assigns or unassigns a task to/from a staff member
-export const assign = api<AssignTaskRequest, AssignTaskResponse>(
-  { auth: true, expose: true, method: "PATCH", path: "/tasks/:id/assign" },
-  async (req) => {
+// Handler function for assigning a task
+async function assignTaskHandler(req: AssignTaskRequest): Promise<AssignTaskResponse> {
     const authData = getAuthData();
     if (!authData) {
       throw APIError.unauthenticated("Authentication required");
@@ -99,6 +100,26 @@ export const assign = api<AssignTaskRequest, AssignTaskResponse>(
 
       await tx.commit();
 
+      // Publish task_assigned (or unassigned if no staffId)
+      try {
+        await taskEvents.publish({
+          eventId: uuidv4(),
+          eventVersion: 'v1',
+          eventType: 'task_assigned',
+          orgId: authData.orgId,
+          propertyId: taskRow.property_id,
+          userId: parseInt(authData.userID),
+          timestamp: new Date(),
+          entityId: id,
+          entityType: 'task',
+          metadata: {
+            assigneeStaffId: staffId || null,
+          },
+        });
+      } catch (e) {
+        // best-effort
+      }
+
       return {
         success: true,
         taskId: id,
@@ -112,6 +133,17 @@ export const assign = api<AssignTaskRequest, AssignTaskResponse>(
       }
       throw APIError.internal("Failed to assign task");
     }
-  }
+}
+
+// Legacy path
+export const assign = api<AssignTaskRequest, AssignTaskResponse>(
+  { auth: true, expose: true, method: "PATCH", path: "/tasks/:id/assign" },
+  assignTaskHandler
+);
+
+// Versioned path
+export const assignV1 = api<AssignTaskRequest, AssignTaskResponse>(
+  { auth: true, expose: true, method: "PATCH", path: "/v1/tasks/:id/assign" },
+  assignTaskHandler
 );
 

@@ -3,6 +3,10 @@ import { getAuthData } from "~encore/auth";
 import { requireRole } from "../auth/middleware";
 import { financeDB } from "./db";
 import { checkDailyApproval } from "./check_daily_approval";
+import { financeEvents } from "./events";
+import { v1Path } from "../shared/http";
+import { v4 as uuidv4 } from 'uuid';
+import { toISTDateString } from "../shared/date_utils";
 
 export interface UpdateRevenueRequest {
   id: number;
@@ -36,9 +40,7 @@ export interface UpdateRevenueResponse {
 }
 
 // Updates an existing revenue record
-export const updateRevenue = api<UpdateRevenueRequest, UpdateRevenueResponse>(
-  { auth: true, expose: true, method: "PATCH", path: "/finance/revenues/:id" },
-  async (req) => {
+async function updateRevenueHandler(req: UpdateRevenueRequest): Promise<UpdateRevenueResponse> {
     const authData = getAuthData();
     if (!authData) {
       throw APIError.unauthenticated("Authentication required");
@@ -285,6 +287,35 @@ export const updateRevenue = api<UpdateRevenueRequest, UpdateRevenueResponse>(
 
       await tx.commit();
 
+      // Publish event for real-time updates (after commit, before return)
+      try {
+        const revenueDate = toISTDateString(updatedRevenue.occurred_at || new Date());
+        await financeEvents.publish({
+          eventId: uuidv4(),
+          eventVersion: 'v1',
+          eventType: 'revenue_updated',
+          orgId: authData.orgId,
+          propertyId: updatedRevenue.property_id,
+          userId: parseInt(authData.userID),
+          timestamp: new Date(),
+          entityId: updatedRevenue.id,
+          entityType: 'revenue',
+          metadata: {
+            amountCents: updatedRevenue.amount_cents,
+            currency: updatedRevenue.currency,
+            transactionDate: revenueDate,
+            paymentMode: updatedRevenue.payment_mode,
+            source: updatedRevenue.source,
+            affectedReportDates: [revenueDate],
+            newStatus: updatedRevenue.status || 'pending',
+          }
+        });
+        console.log('[Finance] Published revenue_updated event for revenue ID:', updatedRevenue.id);
+      } catch (eventError) {
+        console.error('[Finance] Failed to publish revenue_updated event:', eventError);
+        // Don't fail the request if event publishing fails
+      }
+
       return {
         id: updatedRevenue.id,
         propertyId: updatedRevenue.property_id,
@@ -305,5 +336,14 @@ export const updateRevenue = api<UpdateRevenueRequest, UpdateRevenueResponse>(
       await tx.rollback();
       throw error;
     }
-  }
+}
+
+export const updateRevenue = api<UpdateRevenueRequest, UpdateRevenueResponse>(
+  { auth: true, expose: true, method: "PATCH", path: "/finance/revenues/:id" },
+  updateRevenueHandler
+);
+
+export const updateRevenueV1 = api<UpdateRevenueRequest, UpdateRevenueResponse>(
+  { auth: true, expose: true, method: "PATCH", path: "/v1/finance/revenues/:id" },
+  updateRevenueHandler
 );

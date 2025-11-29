@@ -1,0 +1,408 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Form C - Foreign Nationals Registration</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: Arial, sans-serif;
+      font-size: 11px;
+      line-height: 1.4;
+      color: #000;
+      padding: 20px;
+    }
+
+    .form-container {
+      max-width: 800px;
+      margin: 0 auto;
+      border: 2px solid #000;
+      padding: 15px;
+    }
+
+    .form-header {
+      text-align: center;
+      margin-bottom: 15px;
+      border-bottom: 2px solid #000;
+      padding-bottom: 10px;
+    }
+
+    .form-header h1 {
+      font-size: 18px;
+      font-weight: bold;
+      margin-bottom: 5px;
+    }
+
+    .form-header p {
+      font-size: 10px;
+      margin: 3px 0;
+    }
+
+    .section {
+      margin-bottom: 15px;
+    }
+
+    .section-title {
+      background-color: #e0e0e0;
+      padding: 5px 10px;
+      font-weight: bold;
+      font-size: 12px;
+      border: 1px solid #000;
+      margin-bottom: 8px;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-bottom: 10px;
+    }
+
+    table, th, td {
+      border: 1px solid #000;
+    }
+
+    td {
+      padding: 5px 8px;
+      vertical-align: top;
+    }
+
+    .label {
+      font-weight: bold;
+      width: 40%;
+      background-color: #f5f5f5;
+    }
+
+    .value {
+      width: 60%;
+    }
+
+    .row-2col td.label {
+      width: 25%;
+    }
+
+    .row-2col td.value {
+      width: 25%;
+    }
+
+    .full-width {
+      width: 100%;
+    }
+
+    .text-uppercase {
+      text-transform: uppercase;
+    }
+
+    .text-center {
+      text-align: center;
+    }
+
+    .small-text {
+      font-size: 9px;
+      color: #666;
+    }
+
+    .checkbox-group {
+      display: inline-flex;
+      align-items: center;
+      margin-right: 15px;
+    }
+
+    .checkbox {
+      width: 12px;
+      height: 12px;
+      border: 1px solid #000;
+      display: inline-block;
+      margin-right: 5px;
+      position: relative;
+    }
+
+    .checkbox.checked::after {
+      content: '✓';
+      position: absolute;
+      top: -3px;
+      left: 1px;
+      font-size: 12px;
+      font-weight: bold;
+    }
+
+    @media print {
+      body {
+        padding: 0;
+      }
+      .form-container {
+        border: 2px solid #000;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="form-container">
+    <!-- Header -->
+    <div class="form-header">
+      <h1>FORM 'C'</h1>
+      <p>[See rule 8(1)]</p>
+      <p><strong>FORM FOR REGISTRATION OF FOREIGN NATIONALS</strong></p>
+      <p>(To be submitted to the Registration Officer within 24 hours of arrival)</p>
+    </div>
+
+    <!-- Section 1: Accommodation Details -->
+    <div class="section">
+      <div class="section-title">1. DETAILS OF ACCOMMODATION (Hotel/Guest House/Lodge/Hostel)</div>
+      <table>
+        <tr>
+          <td class="label">Name of Accommodation</td>
+          <td class="value text-uppercase">{{accommodation.name}}</td>
+        </tr>
+        <tr>
+          <td class="label">Address</td>
+          <td class="value text-uppercase">{{accommodation.address}}</td>
+        </tr>
+        <tr class="row-2col">
+          <td class="label">City/District</td>
+          <td class="value text-uppercase">{{accommodation.cityDistrict}}</td>
+          <td class="label">State</td>
+          <td class="value text-uppercase">{{accommodation.state}}</td>
+        </tr>
+        <tr class="row-2col">
+          <td class="label">Star Rating</td>
+          <td class="value text-uppercase">{{accommodation.starRating}}</td>
+          <td class="label">Phone No.</td>
+          <td class="value">{{accommodation.phoneNo}}</td>
+        </tr>
+        <tr>
+          <td class="label">Mobile No.</td>
+          <td class="value">{{accommodation.mobileNo}}</td>
+        </tr>
+      </table>
+    </div>
+
+    <!-- Section 2: Personal Details -->
+    <div class="section">
+      <div class="section-title">2. PERSONAL DETAILS OF FOREIGN NATIONAL</div>
+      <table>
+        <tr class="row-2col">
+          <td class="label">Surname</td>
+          <td class="value text-uppercase">{{personal.surname}}</td>
+          <td class="label">Given Name</td>
+          <td class="value text-uppercase">{{personal.givenName}}</td>
+        </tr>
+        <tr class="row-2col">
+          <td class="label">Sex</td>
+          <td class="value">
+            <span class="checkbox-group">
+              <span class="checkbox {{#if (eq personal.sex 'Male')}}checked{{/if}}"></span> Male
+            </span>
+            <span class="checkbox-group">
+              <span class="checkbox {{#if (eq personal.sex 'Female')}}checked{{/if}}"></span> Female
+            </span>
+            <span class="checkbox-group">
+              <span class="checkbox {{#if (eq personal.sex 'Other')}}checked{{/if}}"></span> Other
+            </span>
+          </td>
+          <td class="label">Date of Birth</td>
+          <td class="value">{{personal.dateOfBirth}}</td>
+        </tr>
+        <tr class="row-2col">
+          <td class="label">Nationality</td>
+          <td class="value text-uppercase">{{personal.nationality}}</td>
+          <td class="label">Special Category</td>
+          <td class="value text-uppercase">{{personal.specialCategory}}</td>
+        </tr>
+      </table>
+    </div>
+
+    <!-- Section 3: Permanent Address -->
+    <div class="section">
+      <div class="section-title">3. PERMANENT ADDRESS IN HOME COUNTRY</div>
+      <table>
+        <tr>
+          <td class="label">Address</td>
+          <td class="value text-uppercase">{{personal.permanentAddress.address}}</td>
+        </tr>
+        <tr class="row-2col">
+          <td class="label">City</td>
+          <td class="value text-uppercase">{{personal.permanentAddress.city}}</td>
+          <td class="label">Country</td>
+          <td class="value text-uppercase">{{personal.permanentAddress.country}}</td>
+        </tr>
+      </table>
+    </div>
+
+    <!-- Section 4: Address in India -->
+    <div class="section">
+      <div class="section-title">4. ADDRESS/REFERENCE IN INDIA</div>
+      <table>
+        <tr>
+          <td class="label">Address</td>
+          <td class="value text-uppercase">{{indianAddress.address}}</td>
+        </tr>
+        <tr class="row-2col">
+          <td class="label">City/District</td>
+          <td class="value text-uppercase">{{indianAddress.cityDistrict}}</td>
+          <td class="label">State</td>
+          <td class="value text-uppercase">{{indianAddress.state}}</td>
+        </tr>
+        <tr>
+          <td class="label">Pincode</td>
+          <td class="value">{{indianAddress.pincode}}</td>
+        </tr>
+      </table>
+    </div>
+
+    <!-- Section 5: Passport Details -->
+    <div class="section">
+      <div class="section-title">5. PASSPORT DETAILS</div>
+      <table>
+        <tr class="row-2col">
+          <td class="label">Passport Number</td>
+          <td class="value text-uppercase">{{passport.number}}</td>
+          <td class="label">Place of Issue</td>
+          <td class="value text-uppercase">{{passport.placeOfIssue}}</td>
+        </tr>
+        <tr class="row-2col">
+          <td class="label">Date of Issue</td>
+          <td class="value">{{passport.dateOfIssue}}</td>
+          <td class="label">Date of Expiry</td>
+          <td class="value">{{passport.expiryDate}}</td>
+        </tr>
+      </table>
+    </div>
+
+    <!-- Section 6: Visa Details -->
+    <div class="section">
+      <div class="section-title">6. VISA DETAILS</div>
+      <table>
+        <tr class="row-2col">
+          <td class="label">Visa Number</td>
+          <td class="value text-uppercase">{{visa.number}}</td>
+          <td class="label">Visa Type</td>
+          <td class="value text-uppercase">{{visa.visaType}}</td>
+        </tr>
+        <tr class="row-2col">
+          <td class="label">Date of Issue</td>
+          <td class="value">{{visa.dateOfIssue}}</td>
+          <td class="label">Valid Till</td>
+          <td class="value">{{visa.validTill}}</td>
+        </tr>
+        <tr>
+          <td class="label">Place of Issue</td>
+          <td class="value text-uppercase">{{visa.placeOfIssue}}</td>
+        </tr>
+        {{#if visa.visaSubtype}}
+        <tr>
+          <td class="label">Visa Subtype</td>
+          <td class="value text-uppercase">{{visa.visaSubtype}}</td>
+        </tr>
+        {{/if}}
+      </table>
+    </div>
+
+    <!-- Section 7: Arrival Details -->
+    <div class="section">
+      <div class="section-title">7. ARRIVAL DETAILS IN INDIA</div>
+      <table>
+        <tr>
+          <td class="label">Arrived From (Last Port)</td>
+          <td class="value text-uppercase">{{arrival.arrivedFrom}}</td>
+        </tr>
+        <tr class="row-2col">
+          <td class="label">Date of Arrival in India</td>
+          <td class="value">{{arrival.dateOfArrivalInIndia}}</td>
+          <td class="label">Time of Arrival</td>
+          <td class="value">{{arrival.timeOfArrival}}</td>
+        </tr>
+        <tr class="row-2col">
+          <td class="label">Date of Arrival at Accommodation</td>
+          <td class="value">{{arrival.dateOfArrivalAtAccommodation}}</td>
+          <td class="label">Intended Duration (Days)</td>
+          <td class="value">{{arrival.intendedDuration}}</td>
+        </tr>
+        <tr>
+          <td class="label">Employed in India</td>
+          <td class="value">
+            <span class="checkbox-group">
+              <span class="checkbox {{#if (eq arrival.employedInIndia 'Y')}}checked{{/if}}"></span> YES
+            </span>
+            <span class="checkbox-group">
+              <span class="checkbox {{#if (eq arrival.employedInIndia 'N')}}checked{{/if}}"></span> NO
+            </span>
+          </td>
+        </tr>
+      </table>
+    </div>
+
+    <!-- Section 8: Other Details -->
+    <div class="section">
+      <div class="section-title">8. OTHER DETAILS</div>
+      <table>
+        <tr>
+          <td class="label">Purpose of Visit</td>
+          <td class="value text-uppercase">{{other.purposeOfVisit}}</td>
+        </tr>
+        <tr class="row-2col">
+          <td class="label">Next Place of Visit</td>
+          <td class="value text-uppercase">{{other.nextPlace}}</td>
+          <td class="label">City/District</td>
+          <td class="value text-uppercase">{{other.destinationCityDistrict}}</td>
+        </tr>
+        <tr>
+          <td class="label">State</td>
+          <td class="value text-uppercase">{{other.destinationState}}</td>
+        </tr>
+        <tr class="row-2col">
+          <td class="label">Contact No. in India</td>
+          <td class="value">{{other.contactNoIndia}}</td>
+          <td class="label">Mobile No. in India</td>
+          <td class="value">{{other.mobileNoIndia}}</td>
+        </tr>
+        <tr class="row-2col">
+          <td class="label">Contact No. (Permanent)</td>
+          <td class="value">{{other.contactNoPermanent}}</td>
+          <td class="label">Mobile No. (Permanent)</td>
+          <td class="value">{{other.mobileNoPermanent}}</td>
+        </tr>
+        {{#if other.remarks}}
+        <tr>
+          <td class="label">Remarks</td>
+          <td class="value text-uppercase">{{other.remarks}}</td>
+        </tr>
+        {{/if}}
+      </table>
+    </div>
+
+    <!-- Footer -->
+    <div class="section" style="margin-top: 30px;">
+      <table>
+        <tr>
+          <td style="width: 50%; text-align: center; padding: 20px;">
+            <div style="border-top: 1px solid #000; width: 200px; margin: 0 auto; padding-top: 5px;">
+              <strong>Signature of Guest</strong>
+            </div>
+          </td>
+          <td style="width: 50%; text-align: center; padding: 20px;">
+            <div style="border-top: 1px solid #000; width: 200px; margin: 0 auto; padding-top: 5px;">
+              <strong>Signature of Hotel/Accommodation Manager</strong><br>
+              <span class="small-text">With Stamp</span>
+            </div>
+          </td>
+        </tr>
+      </table>
+    </div>
+
+    <!-- Legal Note -->
+    <div style="margin-top: 15px; padding: 10px; border: 1px solid #000; background-color: #f9f9f9;">
+      <p class="small-text" style="text-align: justify;">
+        <strong>Note:</strong> This form must be submitted to the Registration Officer within 24 hours of the arrival of the foreign national at the accommodation. Failure to comply may result in penalties as per the Foreigners Act and Rules.
+      </p>
+    </div>
+  </div>
+
+</body>
+</html>
+

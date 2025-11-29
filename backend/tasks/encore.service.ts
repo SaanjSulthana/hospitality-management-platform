@@ -2,6 +2,9 @@ import { Service } from "encore.dev/service";
 
 export default new Service("tasks");
 
+// Ensure subscriber is registered
+import "./tasks_realtime_subscriber";
+
 // Export all task endpoints
 export { create } from "./create";
 export { list } from "./list";
@@ -21,3 +24,6 @@ export { setPrimaryImage } from "./images";
 // Export database setup endpoint
 export { setupTaskAttachmentsTable } from "./setup_task_attachments_table";
 export { quickSetupAttachments } from "./quick_setup_attachments";
+
+// Export realtime subscribe endpoint
+export { subscribeTasksRealtime } from "./subscribe_realtime";

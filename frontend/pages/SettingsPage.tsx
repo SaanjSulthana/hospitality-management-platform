@@ -11,9 +11,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { FinanceTabs, FinanceTabsList, FinanceTabsTrigger } from '@/components/ui/finance-tabs';
 import { useToast } from '@/components/ui/use-toast';
-import { Settings, Palette, Building2, Save, Upload, X, Image } from 'lucide-react';
+import { FinanceRealtimeHealthCard } from '@/components/ui/FinanceRealtimeHealthCard';
+import { Settings, Palette, Building2, Save, Upload, X, Image, Activity } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { API_CONFIG } from '../src/config/api';
+import { getFlagBool } from '../lib/feature-flags';
 
 export default function SettingsPage() {
   const { user } = useAuth();
@@ -35,6 +37,45 @@ export default function SettingsPage() {
       markEssentialStepCompleted('setup-organization');
     }
   }, [user?.role, markEssentialStepCompleted]);
+  
+  // Realtime: listen to branding events (UI feedback and optional telemetry)
+  useEffect(() => {
+    const enabled = getFlagBool('BRANDING_REALTIME_V1', true);
+    if (!enabled) return;
+    const onEvents = (e: any) => {
+      const events = e?.detail?.events || [];
+      if (!Array.isArray(events) || events.length === 0) return;
+      // 2% telemetry
+      if (Math.random() < 0.02) {
+        try {
+          fetch(`/telemetry/client`, {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${localStorage.getItem('accessToken') || ''}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              sampleRate: 0.02,
+              events: [{
+                type: 'branding_realtime_invalidation',
+                counts: { events: events.length },
+                ts: new Date().toISOString(),
+              }]
+            })
+          }).catch(() => {});
+        } catch {}
+      }
+      // Surface a subtle toast to indicate live update applied
+      toast({
+        title: "Branding updated",
+        description: "Live settings changes have been applied.",
+      });
+    };
+    const onHealth = (_e: any) => {};
+    window.addEventListener('branding-stream-events', onEvents as EventListener);
+    window.addEventListener('branding-stream-health', onHealth as EventListener);
+    return () => {
+      window.removeEventListener('branding-stream-events', onEvents as EventListener);
+      window.removeEventListener('branding-stream-health', onHealth as EventListener);
+    };
+  }, [toast]);
   
   const [themeForm, setThemeForm] = useState({
     brandName: theme.brandName,
@@ -337,7 +378,7 @@ export default function SettingsPage() {
         </Card>
 
         <FinanceTabs defaultValue="branding" theme={theme}>
-          <FinanceTabsList className="grid-cols-3" theme={theme}>
+          <FinanceTabsList className="grid-cols-4" theme={theme}>
             <FinanceTabsTrigger value="branding" theme={theme}>
               <Palette className="h-4 w-4 mr-2" />
               Branding
@@ -350,6 +391,12 @@ export default function SettingsPage() {
               <Settings className="h-4 w-4 mr-2" />
               Integrations
             </FinanceTabsTrigger>
+            {user?.role === 'ADMIN' && (
+              <FinanceTabsTrigger value="system-health" theme={theme}>
+                <Activity className="h-4 w-4 mr-2" />
+                System Health
+              </FinanceTabsTrigger>
+            )}
           </FinanceTabsList>
 
         <TabsContent value="branding" className="space-y-6 mt-0">
@@ -780,6 +827,57 @@ export default function SettingsPage() {
             </CardContent>
           </Card>
         </TabsContent>
+
+        {/* System Health Tab (Admin Only) */}
+        {user?.role === 'ADMIN' && (
+          <TabsContent value="system-health" className="space-y-6 mt-0">
+            <Card className="border-l-4 border-l-blue-500 shadow-sm hover:shadow-md transition-shadow duration-200">
+              <CardHeader className="pb-4">
+                <CardTitle className="text-lg font-bold text-gray-900 flex items-center gap-2">
+                  <div className="p-2 bg-blue-100 rounded-lg shadow-sm">
+                    <Activity className="h-5 w-5 text-blue-600" />
+                  </div>
+                  System Health Monitoring
+                </CardTitle>
+                <CardDescription className="text-sm text-gray-600">
+                  Monitor realtime event streams, buffer status, and system performance
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                  {/* Finance Realtime Health */}
+                  <FinanceRealtimeHealthCard />
+
+                  {/* Placeholder for future health cards */}
+                  <Card className="border-l-4 border-l-gray-300">
+                    <CardHeader className="pb-3">
+                      <CardTitle className="text-sm">Additional Metrics</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <p className="text-xs text-gray-500">
+                        More system health metrics will be available here soon.
+                      </p>
+                    </CardContent>
+                  </Card>
+                </div>
+
+                <div className="p-4 bg-blue-50 rounded border border-blue-200">
+                  <div className="flex items-start gap-2">
+                    <Activity className="h-5 w-5 text-blue-600 flex-shrink-0 mt-0.5" />
+                    <div className="flex-1">
+                      <div className="font-medium text-blue-900 text-sm">About System Health</div>
+                      <div className="text-xs text-blue-700 mt-1">
+                        This dashboard provides real-time monitoring of the Finance Pub/Sub system. 
+                        Metrics auto-refresh every 30 seconds. Use this to diagnose realtime update issues,
+                        monitor buffer occupancy, and validate event delivery across all organizations.
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
+        )}
         </FinanceTabs>
       </div>
     </div>

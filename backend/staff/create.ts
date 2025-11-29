@@ -2,6 +2,8 @@ import { api, APIError } from "encore.dev/api";
 import { getAuthData } from "~encore/auth";
 import { requireRole } from "../auth/middleware";
 import { staffDB } from "./db";
+import { staffEvents } from "./events";
+import { v4 as uuidv4 } from "uuid";
 
 export interface CreateStaffRequest {
   userId: number;
@@ -26,10 +28,8 @@ export interface CreateStaffResponse {
   status: string;
 }
 
-// Creates a new staff record
-export const create = api<CreateStaffRequest, CreateStaffResponse>(
-  { auth: true, expose: true, method: "POST", path: "/staff" },
-  async (req) => {
+// Shared handler for creating a new staff record
+async function createHandler(req: CreateStaffRequest): Promise<CreateStaffResponse> {
     const authData = getAuthData();
     if (!authData) {
       throw APIError.unauthenticated("Authentication required");
@@ -108,6 +108,30 @@ export const create = api<CreateStaffRequest, CreateStaffResponse>(
 
       await tx.commit();
 
+      // Publish staff_created event
+      try {
+        await staffEvents.publish({
+          eventId: uuidv4(),
+          eventVersion: 'v1',
+          eventType: 'staff_created',
+          orgId: authData.orgId,
+          propertyId: staffRow.property_id ?? null,
+          userId: parseInt(authData.userID),
+          timestamp: new Date(),
+          entityId: staffRow.id,
+          entityType: 'staff',
+          metadata: {
+            userId: userId,
+            userName: userRow.display_name,
+            department,
+            hourlyRateCents,
+            propertyName,
+          },
+        });
+      } catch (e) {
+        console.warn("[Staff Events] Failed to publish staff_created", e);
+      }
+
       return {
         id: staffRow.id,
         userId: staffRow.user_id,
@@ -129,6 +153,17 @@ export const create = api<CreateStaffRequest, CreateStaffResponse>(
       }
       throw APIError.internal("Failed to create staff record");
     }
-  }
+}
+
+// LEGACY: Creates a new staff record (keep for backward compatibility)
+export const create = api<CreateStaffRequest, CreateStaffResponse>(
+  { auth: true, expose: true, method: "POST", path: "/staff" },
+  createHandler
+);
+
+// V1: Creates a new staff record
+export const createV1 = api<CreateStaffRequest, CreateStaffResponse>(
+  { auth: true, expose: true, method: "POST", path: "/v1/staff" },
+  createHandler
 );
 

@@ -2,6 +2,7 @@ import { api, APIError } from "encore.dev/api";
 import { getAuthData } from "~encore/auth";
 import { tasksDB } from "./db";
 import { requireRole } from "../auth/middleware";
+import { v1Path } from "../shared/http";
 import { TaskType, TaskPriority, TaskStatus, TaskImage } from "./types";
 
 interface ListTasksRequest {
@@ -40,10 +41,8 @@ export interface ListTasksResponse {
   tasks: TaskInfo[];
 }
 
-// Lists tasks with role-based filtering
-export const list = api<ListTasksRequest, ListTasksResponse>(
-  { auth: true, expose: true, method: "GET", path: "/tasks" },
-  async (req) => {
+// Handler function for listing tasks
+async function listTasksHandler(req: ListTasksRequest): Promise<ListTasksResponse> {
     const authData = getAuthData();
     if (!authData) {
       throw APIError.unauthenticated("Authentication required");
@@ -186,6 +185,17 @@ export const list = api<ListTasksRequest, ListTasksResponse>(
       console.error('List tasks error:', error);
       throw new Error('Failed to fetch tasks');
     }
-  }
+}
+
+// Legacy path
+export const list = api<ListTasksRequest, ListTasksResponse>(
+  { auth: true, expose: true, method: "GET", path: "/tasks" },
+  listTasksHandler
+);
+
+// Versioned path
+export const listV1 = api<ListTasksRequest, ListTasksResponse>(
+  { auth: true, expose: true, method: "GET", path: "/v1/tasks" },
+  listTasksHandler
 );
 

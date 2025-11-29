@@ -28,15 +28,13 @@ export interface ValidateScheduleResponse {
   };
 }
 
-// Validates schedule creation and provides guidance
-export const validateSchedule = api<ValidateScheduleRequest, ValidateScheduleResponse>(
-  { auth: true, expose: true, method: "POST", path: "/staff/schedules/validate" },
-  async (req) => {
-    const authData = getAuthData();
-    if (!authData) {
-      throw APIError.unauthenticated("Authentication required");
-    }
-    requireRole("ADMIN", "MANAGER")(authData);
+// Shared handler for validating schedule creation and providing guidance
+async function validateScheduleHandler(req: ValidateScheduleRequest): Promise<ValidateScheduleResponse> {
+  const authData = getAuthData();
+  if (!authData) {
+    throw APIError.unauthenticated("Authentication required");
+  }
+  requireRole("ADMIN", "MANAGER")(authData);
 
     const { staffId, scheduleDate, startTime, endTime } = req;
     const warnings: string[] = [];
@@ -207,5 +205,16 @@ export const validateSchedule = api<ValidateScheduleRequest, ValidateScheduleRes
       console.error('Validate schedule error:', error);
       throw APIError.internal("Failed to validate schedule");
     }
-  }
+}
+
+// LEGACY: Validates schedule creation and provides guidance (keep for backward compatibility)
+export const validateSchedule = api<ValidateScheduleRequest, ValidateScheduleResponse>(
+  { auth: true, expose: true, method: "POST", path: "/staff/schedules/validate" },
+  validateScheduleHandler
+);
+
+// V1: Validates schedule creation and provides guidance
+export const validateScheduleV1 = api<ValidateScheduleRequest, ValidateScheduleResponse>(
+  { auth: true, expose: true, method: "POST", path: "/v1/staff/schedules/validate" },
+  validateScheduleHandler
 );

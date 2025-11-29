@@ -131,7 +131,6 @@ export default function AttendanceHistory({
     refetchInterval: 5000,
     staleTime: 0,
     gcTime: 0,
-    refetchOnWindowFocus: true,
     refetchOnMount: true,
   });
 
@@ -145,7 +144,6 @@ export default function AttendanceHistory({
     refetchInterval: 10000,
     staleTime: 0,
     gcTime: 0,
-    refetchOnWindowFocus: true,
     refetchOnMount: true,
   });
 

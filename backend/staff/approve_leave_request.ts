@@ -32,10 +32,8 @@ export interface ApproveLeaveRequestResponse {
   message: string;
 }
 
-// Approves or rejects a leave request
-export const approveLeaveRequest = api<ApproveLeaveRequest, ApproveLeaveRequestResponse>(
-  { auth: true, expose: true, method: "PUT", path: "/staff/leave-requests/:leaveRequestId/approve" },
-  async (req) => {
+// Shared handler for approving leave request
+async function approveLeaveRequestHandler(req: ApproveLeaveRequest): Promise<ApproveLeaveRequestResponse> {
     const authData = getAuthData();
     if (!authData) {
       throw APIError.unauthenticated("Authentication required");
@@ -164,5 +162,16 @@ export const approveLeaveRequest = api<ApproveLeaveRequest, ApproveLeaveRequestR
       }
       throw APIError.internal("Failed to approve leave request");
     }
-  }
+}
+
+// LEGACY: Approves leave request (keep for backward compatibility)
+export const approveLeaveRequest = api<ApproveLeaveRequest, ApproveLeaveRequestResponse>(
+  { auth: true, expose: true, method: "PUT", path: "/staff/leave-requests/:leaveRequestId/approve" },
+  approveLeaveRequestHandler
+);
+
+// V1: Approves leave request
+export const approveLeaveRequestV1 = api<ApproveLeaveRequest, ApproveLeaveRequestResponse>(
+  { auth: true, expose: true, method: "PUT", path: "/v1/staff/leave-requests/:leaveRequestId/approve" },
+  approveLeaveRequestHandler
 );

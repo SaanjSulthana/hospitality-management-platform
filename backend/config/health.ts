@@ -2,6 +2,7 @@ import { api, APIError } from "encore.dev/api";
 import { getEnvironmentConfig, validateEnvironmentConfig, getEnvironmentName } from "./environment";
 import { SQLDatabase } from "encore.dev/storage/sqldb";
 import log from "encore.dev/log";
+import { v1Path } from "../shared/http";
 
 // Database connection for health checks
 const healthDB = new SQLDatabase("health_check_db", {
@@ -56,11 +57,10 @@ export interface ConfigValidationResponse {
 }
 
 /**
- * Health check endpoint
+ * Detailed configuration health check endpoint
+ * Note: Changed from /health to /config/health to avoid conflict with load balancer health check
  */
-export const healthCheck = api(
-  { expose: true, method: "GET", path: "/health" },
-  async (): Promise<HealthCheckResponse> => {
+async function healthCheckHandler(): Promise<HealthCheckResponse> {
     const startTime = Date.now();
     const timestamp = new Date().toISOString();
     const environment = getEnvironmentName();
@@ -120,14 +120,21 @@ export const healthCheck = api(
     
     return response;
   }
+
+export const healthCheck = api(
+  { expose: true, method: "GET", path: "/config/health" },
+  healthCheckHandler
+);
+
+export const healthCheckV1 = api(
+  { expose: true, method: "GET", path: "/v1/system/config/health" },
+  healthCheckHandler
 );
 
 /**
  * Configuration validation endpoint
  */
-export const validateConfig = api(
-  { method: "GET", path: "/config/validate" },
-  async (): Promise<ConfigValidationResponse> => {
+async function validateConfigHandler(): Promise<ConfigValidationResponse> {
     const environment = getEnvironmentName();
     const config = getEnvironmentConfig();
     const validation = validateEnvironmentConfig();
@@ -187,14 +194,21 @@ export const validateConfig = api(
     
     return response;
   }
+
+export const validateConfig = api(
+  { method: "GET", path: "/config/validate" },
+  validateConfigHandler
+);
+
+export const validateConfigV1 = api(
+  { method: "GET", path: "/v1/system/config/validate" },
+  validateConfigHandler
 );
 
 /**
  * Environment information endpoint
  */
-export const getEnvironmentInfo = api(
-  { method: "GET", path: "/config/environment" },
-  async () => {
+async function getEnvironmentInfoHandler() {
     const config = getEnvironmentConfig();
     
     return {
@@ -219,6 +233,15 @@ export const getEnvironmentInfo = api(
       },
     };
   }
+
+export const getEnvironmentInfo = api(
+  { method: "GET", path: "/config/environment" },
+  getEnvironmentInfoHandler
+);
+
+export const getEnvironmentInfoV1 = api(
+  { method: "GET", path: "/v1/system/config/environment" },
+  getEnvironmentInfoHandler
 );
 
 /**
@@ -282,9 +305,7 @@ function determineOverallStatus(services: HealthCheckResponse['services']): 'hea
 /**
  * Database connection test endpoint
  */
-export const testDatabaseConnection = api(
-  { method: "GET", path: "/config/test-database" },
-  async () => {
+async function testDatabaseConnectionHandler() {
     try {
       const startTime = Date.now();
       
@@ -323,4 +344,13 @@ export const testDatabaseConnection = api(
       throw APIError.internal('Database connection test failed');
     }
   }
+
+export const testDatabaseConnection = api(
+  { method: "GET", path: "/config/test-database" },
+  testDatabaseConnectionHandler
+);
+
+export const testDatabaseConnectionV1 = api(
+  { method: "GET", path: "/v1/system/config/test-database" },
+  testDatabaseConnectionHandler
 );

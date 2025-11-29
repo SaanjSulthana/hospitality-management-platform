@@ -22,10 +22,8 @@ export interface GetThemeResponse {
   theme: Theme;
 }
 
-// Gets the theme configuration for the organization
-export const getTheme = api<GetThemeRequest, GetThemeResponse>(
-  { auth: true, expose: true, method: "GET", path: "/branding/theme" },
-  async (req) => {
+// Shared handler for getting theme configuration
+async function getThemeHandler(req: GetThemeRequest): Promise<GetThemeResponse> {
     const authData = getAuthData();
     if (!authData) {
       throw APIError.unauthenticated("Authentication required");
@@ -142,5 +140,16 @@ export const getTheme = api<GetThemeRequest, GetThemeResponse>(
       
       return { theme: safeDefaultTheme };
     }
-  }
+}
+
+// LEGACY: Gets theme configuration (keep for backward compatibility)
+export const getTheme = api<GetThemeRequest, GetThemeResponse>(
+  { auth: true, expose: true, method: "GET", path: "/branding/theme" },
+  getThemeHandler
+);
+
+// V1: Gets theme configuration
+export const getThemeV1 = api<GetThemeRequest, GetThemeResponse>(
+  { auth: true, expose: true, method: "GET", path: "/v1/branding/theme" },
+  getThemeHandler
 );

@@ -7,10 +7,8 @@ export interface LogoutRequest {
   refreshToken: string;
 }
 
-// Logs out user by invalidating refresh token
-export const logout = api<LogoutRequest, void>(
-  { expose: true, method: "POST", path: "/auth/logout" },
-  async (req) => {
+// Shared handler for logout logic
+async function logoutHandler(req: LogoutRequest): Promise<void> {
     const { refreshToken } = req;
 
     const tx = await authDB.begin();
@@ -44,5 +42,16 @@ export const logout = api<LogoutRequest, void>(
       // Silently ignore invalid tokens on logout
       log.warn("Logout error (ignored)", { error: error instanceof Error ? error.message : String(error) });
     }
-  }
+}
+
+// LEGACY: Logs out user by invalidating refresh token (keep for backward compatibility)
+export const logout = api<LogoutRequest, void>(
+  { expose: true, method: "POST", path: "/auth/logout" },
+  logoutHandler
+);
+
+// V1: Logs out user by invalidating refresh token
+export const logoutV1 = api<LogoutRequest, void>(
+  { expose: true, method: "POST", path: "/v1/auth/logout" },
+  logoutHandler
 );

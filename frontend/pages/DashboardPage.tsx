@@ -11,7 +11,7 @@ import { useNavigate } from 'react-router-dom';
 import { LoadingCard, LoadingPage } from '@/components/ui/loading-spinner';
 import { NoDataCard } from '@/components/ui/no-data';
 import { useApiError } from '@/hooks/use-api-error';
-import { useDashboardRealtime } from '@/hooks/use-realtime';
+import { getFlagBool } from '../lib/feature-flags';
 import { API_CONFIG } from '../src/config/api';
 import { 
   useStandardQuery, 
@@ -21,6 +21,10 @@ import {
   API_ENDPOINTS,
   handleStandardError
 } from '../src/utils/api-standardizer';
+import { QUERY_CATEGORIES } from '../src/config/query-config';
+import { useRouteActive } from '@/hooks/use-route-aware-query';
+
+const __DEV__ = process.env.NODE_ENV === 'development';
 import { 
   Building2, 
   Users, 
@@ -49,8 +53,8 @@ export default function DashboardPage() {
   const { toast } = useToast();
   const navigate = useNavigate();
   const { handleError } = useApiError();
-  const { refreshNow, isPolling } = useDashboardRealtime();
   const queryClient = useQueryClient();
+  const routeActive = useRouteActive(['/dashboard']);
 
   // Set page title and description
   useEffect(() => {
@@ -61,29 +65,35 @@ export default function DashboardPage() {
     QUERY_KEYS.ANALYTICS,
     '/analytics/overview',
     {
-      enabled: user?.role === 'ADMIN',
-      ...STANDARD_QUERY_CONFIGS.REAL_TIME,
+      enabled: routeActive && user?.role === 'ADMIN',
+      ...QUERY_CATEGORIES.analytics,
     }
   );
 
   const { data: properties, isLoading: propertiesLoading, error: propertiesError } = useStandardQuery(
     QUERY_KEYS.PROPERTIES,
     '/properties',
-    STANDARD_QUERY_CONFIGS.REAL_TIME
+    {
+      enabled: routeActive,
+      ...QUERY_CATEGORIES.properties,
+    }
   );
 
   const { data: tasks, isLoading: tasksLoading, error: tasksError } = useStandardQuery(
     QUERY_KEYS.TASKS,
     '/tasks',
-    STANDARD_QUERY_CONFIGS.REAL_TIME
+    {
+      enabled: routeActive,
+      ...QUERY_CATEGORIES.tasks,
+    }
   );
 
   const { data: users, isLoading: usersLoading, error: usersError } = useStandardQuery(
     QUERY_KEYS.USERS,
     '/users',
     {
-      enabled: user?.role === 'ADMIN',
-      ...STANDARD_QUERY_CONFIGS.REAL_TIME,
+      enabled: routeActive && user?.role === 'ADMIN',
+      ...QUERY_CATEGORIES.users,
     }
   );
 
@@ -92,7 +102,8 @@ export default function DashboardPage() {
     QUERY_KEYS.EXPENSES,
     API_ENDPOINTS.EXPENSES,
     {
-      ...STANDARD_QUERY_CONFIGS.REAL_TIME,
+      enabled: routeActive,
+      ...QUERY_CATEGORIES.expenses,
     }
   );
 
@@ -100,7 +111,8 @@ export default function DashboardPage() {
     QUERY_KEYS.REVENUES,
     API_ENDPOINTS.REVENUES,
     {
-      ...STANDARD_QUERY_CONFIGS.REAL_TIME,
+      enabled: routeActive,
+      ...QUERY_CATEGORIES.revenues,
     }
   );
 
@@ -108,7 +120,8 @@ export default function DashboardPage() {
     QUERY_KEYS.LEAVE_REQUESTS,
     API_ENDPOINTS.LEAVE_REQUESTS,
     {
-      ...STANDARD_QUERY_CONFIGS.REAL_TIME,
+      enabled: routeActive,
+      ...QUERY_CATEGORIES['leave-requests'],
     }
   );
 
@@ -117,10 +130,80 @@ export default function DashboardPage() {
     QUERY_KEYS.PENDING_APPROVALS,
     API_ENDPOINTS.PENDING_APPROVALS,
     {
-      enabled: user?.role === 'ADMIN',
-      ...STANDARD_QUERY_CONFIGS.REAL_TIME,
+      enabled: routeActive && user?.role === 'ADMIN',
+      ...QUERY_CATEGORIES['pending-approvals'],
     }
   );
+
+  // Realtime: Dashboard events listener (debounced invalidation + telemetry)
+  useEffect(() => {
+    try { (window as any).__dashboardSelectedPropertyId = 'all'; } catch {}
+
+    const enabled = getFlagBool('DASHBOARD_REALTIME_V1', true);
+    if (!enabled) return;
+
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const scheduleInvalidate = (events: any[]) => {
+      const impacted = new Set<string>();
+      for (const ev of events) {
+        const t = (ev?.eventType || '').toString();
+        const entity = (ev?.entityType || '').toString();
+        if (t.startsWith('revenue_') || entity === 'revenue') {
+          impacted.add(QUERY_KEYS.REVENUES);
+          impacted.add(QUERY_KEYS.ANALYTICS);
+        }
+        if (t.startsWith('expense_') || entity === 'expense') {
+          impacted.add(QUERY_KEYS.EXPENSES);
+          impacted.add(QUERY_KEYS.ANALYTICS);
+        }
+        if (t.startsWith('property_') || entity === 'property') impacted.add(QUERY_KEYS.PROPERTIES);
+        if (t.startsWith('task_') || entity === 'task') impacted.add(QUERY_KEYS.TASKS);
+        if (t.startsWith('user_') || entity === 'user') impacted.add(QUERY_KEYS.USERS);
+        if (t.includes('leave')) impacted.add(QUERY_KEYS.LEAVE_REQUESTS);
+        if (t.includes('approval')) impacted.add(QUERY_KEYS.PENDING_APPROVALS);
+        if (t.includes('dashboard') || t.includes('analytics')) impacted.add(QUERY_KEYS.ANALYTICS);
+      }
+      if (impacted.size === 0) {
+        impacted.add(QUERY_KEYS.ANALYTICS);
+      }
+      impacted.forEach(k => queryClient.invalidateQueries({ queryKey: [k] }));
+      // 2% telemetry with low-preflight path
+      if (Math.random() < 0.02) {
+        try {
+          const payload = {
+            type: 'dashboard_realtime_invalidation',
+            keys: Array.from(impacted.values()).length,
+            ts: new Date().toISOString(),
+          };
+          if ('sendBeacon' in navigator) {
+            const blob = new Blob([JSON.stringify({ sampleRate: 0.02, events: [payload] })], { type: 'text/plain' });
+            (navigator as any).sendBeacon(`/telemetry/client`, blob);
+          } else {
+            const q = encodeURIComponent(JSON.stringify({ sampleRate: 0.02, events: [payload] }));
+            fetch(`/telemetry/client?d=${q}`, { method: 'GET' }).catch(() => {});
+          }
+        } catch {}
+      }
+    };
+
+    const onEvents = (e: any) => {
+      const events = e?.detail?.events || [];
+      if (!Array.isArray(events) || events.length === 0) return;
+      if (timer) clearTimeout(timer);
+      const snapshot = events.slice(0, 200);
+      timer = setTimeout(() => scheduleInvalidate(snapshot), 350);
+    };
+    const onHealth = (_e: any) => {};
+
+    window.addEventListener('dashboard-stream-events', onEvents);
+    window.addEventListener('dashboard-stream-health', onHealth);
+    return () => {
+      window.removeEventListener('dashboard-stream-events', onEvents);
+      window.removeEventListener('dashboard-stream-health', onHealth);
+      if (timer) clearTimeout(timer);
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [queryClient]);
 
   const getRoleDisplayName = (role: string) => {
     return role.replace('_', ' ').toLowerCase().replace(/\b\w/g, l => l.toUpperCase());
@@ -165,11 +248,13 @@ export default function DashboardPage() {
 
   // Calculate totals for works to be done
   const totalPendingApprovals = (() => {
-    console.log('=== PENDING APPROVALS DEBUG ===');
-    console.log('Pending approvals data:', pendingApprovals);
-    console.log('Pending expenses count:', pendingExpenses.length);
-    console.log('Pending revenues count:', pendingRevenues.length);
-    console.log('Pending leave requests count:', pendingLeaveRequests.length);
+    if (__DEV__) {
+      console.log('=== PENDING APPROVALS DEBUG ===');
+      console.log('Pending approvals data:', pendingApprovals);
+      console.log('Pending expenses count:', pendingExpenses.length);
+      console.log('Pending revenues count:', pendingRevenues.length);
+      console.log('Pending leave requests count:', pendingLeaveRequests.length);
+    }
     
     // Use the dedicated pending approvals endpoint data if available
     if (pendingApprovals?.pendingManagers && pendingApprovals.pendingManagers.length > 0) {
@@ -490,16 +575,20 @@ export default function DashboardPage() {
                   <span className="text-green-600">
                     {(() => {
                       // Debug logging
+                    if (__DEV__) {
                       console.log('=== REVENUE DEBUG ===');
                       console.log('Analytics data:', analytics);
                       console.log('Revenues data:', revenues);
                       console.log('Analytics loading:', analyticsLoading);
                       console.log('Revenues loading:', revenuesLoading);
+                    }
                       
                       // Prioritize real revenue data over analytics (which might be mock data)
                       if (revenues?.revenues && revenues.revenues.length > 0) {
-                        console.log('Found revenues:', revenues.revenues.length, 'items');
-                        console.log('Backend totalAmount (includes pending):', revenues.totalAmount);
+                        if (__DEV__) {
+                          console.log('Found revenues:', revenues.revenues.length, 'items');
+                          console.log('Backend totalAmount (includes pending):', revenues.totalAmount);
+                        }
                         
                         // Calculate only approved revenues for dashboard display
                         const approvedRevenues = revenues.revenues.filter((revenue: any) => {
@@ -510,7 +599,9 @@ export default function DashboardPage() {
                           return isApproved;
                         });
                         
-                        console.log('Approved revenues count:', approvedRevenues.length);
+                        if (__DEV__) {
+                          console.log('Approved revenues count:', approvedRevenues.length);
+                        }
                         
                         // Calculate total from approved revenues only, converting all to INR
                         const currency = 'INR'; // Force INR for now
@@ -526,28 +617,34 @@ export default function DashboardPage() {
                           return acc;
                         }, {});
                         
-                        console.log('Revenue by currency:', revenueByCurrency);
+                        if (__DEV__) {
+                          console.log('Revenue by currency:', revenueByCurrency);
+                        }
                         
                         // Convert all currencies to INR for display
                         // USD to INR conversion rate: 1 USD = 83 INR
                         const usdToInrRate = 83;
                         const totalApprovedRevenue = (revenueByCurrency.USD || 0) * usdToInrRate + (revenueByCurrency.INR || 0);
                         
-                        console.log('Total approved revenue in INR:', totalApprovedRevenue);
+                        if (__DEV__) {
+                          console.log('Total approved revenue in INR:', totalApprovedRevenue);
+                        }
                         
                         return `${symbol}${totalApprovedRevenue.toLocaleString()}`;
                       }
                       
                       // Fallback to analytics data if no real revenue data available
                       if (analytics?.metrics?.totalRevenue) {
-                        console.log('Using analytics revenue (fallback):', analytics.metrics.totalRevenue);
+                        if (__DEV__) {
+                          console.log('Using analytics revenue (fallback):', analytics.metrics.totalRevenue);
+                        }
                         // Convert analytics revenue to INR (assuming it's in USD)
                         const usdToInrRate = 83;
                         const totalInInr = analytics.metrics.totalRevenue * usdToInrRate;
                         return `₹${totalInInr.toLocaleString()}`;
                       }
                       
-                      console.log('No revenue data available');
+                      if (__DEV__) console.log('No revenue data available');
                       return `₹0`;
                     })()}
                   </span>

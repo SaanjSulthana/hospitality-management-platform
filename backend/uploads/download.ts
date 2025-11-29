@@ -2,6 +2,7 @@ import { api, APIError } from "encore.dev/api";
 import { getAuthData } from "~encore/auth";
 import { requireRole } from "../auth/middleware";
 import { uploadsDB } from "./db";
+import { receiptsBucket } from "../storage/buckets";
 import * as fs from "fs";
 
 export interface DownloadRequest {
@@ -14,10 +15,8 @@ export interface DownloadResponse {
   mimeType: string;
 }
 
-// Download/serve a file
-export const downloadFile = api<DownloadRequest, DownloadResponse>(
-  { auth: true, expose: true, method: "GET", path: "/uploads/:fileId/download" },
-  async (req) => {
+// Shared handler for downloading/serving a file
+async function downloadFileHandler(req: DownloadRequest): Promise<DownloadResponse> {
     const authData = getAuthData();
     if (!authData) {
       throw APIError.unauthenticated("Authentication required");
@@ -26,7 +25,7 @@ export const downloadFile = api<DownloadRequest, DownloadResponse>(
 
     // Get file info from database
     const fileRecord = await uploadsDB.queryRow`
-      SELECT f.filename, f.original_name, f.mime_type, f.file_path
+      SELECT f.filename, f.original_name, f.mime_type, f.file_path, f.storage_location, f.bucket_key
       FROM files f
       WHERE f.id = ${req.fileId} AND f.org_id = ${authData.orgId}
     `;
@@ -35,20 +34,42 @@ export const downloadFile = api<DownloadRequest, DownloadResponse>(
       throw APIError.notFound("File not found or access denied");
     }
 
-    // Check if file exists on disk
-    if (!fs.existsSync(fileRecord.file_path)) {
-      throw APIError.notFound("File not found on disk");
+    let fileBuffer: Buffer;
+
+    // Fetch from cloud or local storage
+    if (fileRecord.storage_location === 'cloud' && fileRecord.bucket_key) {
+      // Fetch from Encore bucket
+      try {
+        fileBuffer = await receiptsBucket.download(fileRecord.bucket_key);
+      } catch (error) {
+        console.error('Failed to download from bucket:', error);
+        throw APIError.notFound("File not found in cloud storage");
+      }
+    } else {
+      // Legacy: fetch from local disk
+      if (!fs.existsSync(fileRecord.file_path)) {
+        throw APIError.notFound("File not found on disk");
+      }
+      fileBuffer = fs.readFileSync(fileRecord.file_path);
     }
 
-    // Read file from disk
-    const fileBuffer = fs.readFileSync(fileRecord.file_path);
+  return {
+    fileData: fileBuffer.toString('base64'),
+    filename: fileRecord.original_name,
+    mimeType: fileRecord.mime_type,
+  };
+}
 
-    return {
-      fileData: fileBuffer.toString('base64'),
-      filename: fileRecord.original_name,
-      mimeType: fileRecord.mime_type,
-    };
-  }
+// LEGACY: Download/serve a file (keep for backward compatibility)
+export const downloadFile = api<DownloadRequest, DownloadResponse>(
+  { auth: true, expose: true, method: "GET", path: "/uploads/:fileId/download" },
+  downloadFileHandler
+);
+
+// V1: Download/serve a file
+export const downloadFileV1 = api<DownloadRequest, DownloadResponse>(
+  { auth: true, expose: true, method: "GET", path: "/v1/uploads/:fileId/download" },
+  downloadFileHandler
 );
 
 export interface GetFileInfoRequest {
@@ -65,10 +86,8 @@ export interface FileInfo {
   uploadedBy: string;
 }
 
-// Get file information without downloading
-export const getFileInfo = api<GetFileInfoRequest, FileInfo>(
-  { auth: true, expose: true, method: "GET", path: "/uploads/:fileId/info" },
-  async (req) => {
+// Shared handler for getting file information without downloading
+async function getFileInfoHandler(req: GetFileInfoRequest): Promise<FileInfo> {
     const authData = getAuthData();
     if (!authData) {
       throw APIError.unauthenticated("Authentication required");
@@ -87,15 +106,26 @@ export const getFileInfo = api<GetFileInfoRequest, FileInfo>(
       throw APIError.notFound("File not found or access denied");
     }
 
-    return {
-      id: fileRecord.id,
-      filename: fileRecord.filename,
-      originalName: fileRecord.original_name,
-      mimeType: fileRecord.mime_type,
-      fileSize: fileRecord.file_size,
-      uploadedAt: fileRecord.created_at,
-      uploadedBy: fileRecord.uploaded_by_name,
-    };
-  }
+  return {
+    id: fileRecord.id,
+    filename: fileRecord.filename,
+    originalName: fileRecord.original_name,
+    mimeType: fileRecord.mime_type,
+    fileSize: fileRecord.file_size,
+    uploadedAt: fileRecord.created_at,
+    uploadedBy: fileRecord.uploaded_by_name,
+  };
+}
+
+// LEGACY: Get file information (keep for backward compatibility)
+export const getFileInfo = api<GetFileInfoRequest, FileInfo>(
+  { auth: true, expose: true, method: "GET", path: "/uploads/:fileId/info" },
+  getFileInfoHandler
+);
+
+// V1: Get file information
+export const getFileInfoV1 = api<GetFileInfoRequest, FileInfo>(
+  { auth: true, expose: true, method: "GET", path: "/v1/uploads/:fileId/info" },
+  getFileInfoHandler
 );
 

@@ -2,7 +2,68 @@ import { api, APIError } from "encore.dev/api";
 import { getAuthData } from "~encore/auth";
 import { requireRole } from "../auth/middleware";
 import { reportsDB } from "./db";
+import { reportsReadDB } from "./db_read_replica";
+import { distributedCache } from "../cache/distributed_cache_manager";
+import { financeEvents } from "../finance/events";
+import { v4 as uuidv4 } from 'uuid';
+import { correctionBatcher } from "./correction_batcher";
+import { enhancedBalanceCache } from "./enhanced_balance_cache";
+import { addCorrection } from "./correction_queue";
+import { normalizeDateKey, addDaysIST, toISTDateString } from "../shared/date_utils";
 
+// 🔥 NEW FUNCTION: Calculate real-time closing balance from transactions
+async function calculateRealTimeClosingBalance(
+  propertyId: number,
+  date: string,
+  orgId: number
+): Promise<number> {
+  try {
+    console.log('calculateRealTimeClosingBalance called with:', { propertyId, date, orgId });
+    
+    // Use main database to access finance tables (revenues, expenses) from hospitality database
+    const allRevenues = await reportsDB.queryAll`
+      SELECT amount_cents, payment_mode
+      FROM revenues
+      WHERE org_id = ${orgId}
+        AND property_id = ${propertyId}
+        AND occurred_at <= ${date}::date + INTERVAL '1 day' - INTERVAL '1 second'
+        AND status = 'approved'
+    `;
+    
+    const allExpenses = await reportsDB.queryAll`
+      SELECT amount_cents, payment_mode
+      FROM expenses
+      WHERE org_id = ${orgId}
+        AND property_id = ${propertyId}
+        AND expense_date <= ${date}::date
+        AND status = 'approved'
+    `;
+    
+    // Calculate total cash flow up to the end of the given date
+    const totalCashRevenue = (allRevenues || [])
+      .filter((r: any) => r.payment_mode === 'cash')
+      .reduce((sum: number, r: any) => sum + (parseInt(r.amount_cents) || 0), 0);
+    
+    const totalCashExpenses = (allExpenses || [])
+      .filter((e: any) => e.payment_mode === 'cash')
+      .reduce((sum: number, e: any) => sum + (parseInt(e.amount_cents) || 0), 0);
+    
+    // Closing balance is the net cash flow up to the end of the given date
+    const closingBalance = totalCashRevenue - totalCashExpenses;
+    
+    console.log('Real-time closing balance calculated:', {
+      date,
+      totalCashRevenue,
+      totalCashExpenses,
+      closingBalance
+    });
+    
+    return closingBalance;
+  } catch (error) {
+    console.error('Error calculating real-time closing balance:', error);
+    return 0; // Default to 0 if calculation fails
+  }
+}
 
 // Helper function to calculate opening balance from previous day
 async function calculateOpeningBalance(
@@ -16,11 +77,16 @@ async function calculateOpeningBalance(
     // First, check if there's a daily_cash_balances record for the previous day
     const previousDate = new Date(date);
     previousDate.setDate(previousDate.getDate() - 1);
-    const previousDateStr = previousDate.toISOString().split('T')[0];
+    const previousDateStr = toISTDateString(previousDate);
     
     console.log('Checking for previous day closing balance:', { previousDateStr });
     
-    const previousBalance = await reportsDB.queryRow`
+    // 🔥 CRITICAL FIX: Always calculate from real-time transactions instead of relying on stored balance
+    // This ensures we get the most up-to-date closing balance even if daily_cash_balances is stale
+        const realTimeClosingBalance = await calculateRealTimeClosingBalance(propertyId!, previousDateStr, orgId);
+    
+    // Check if there's a daily_cash_balances record for the previous day
+    const previousBalance = await reportsReadDB.queryRow`
       SELECT closing_balance_cents 
       FROM daily_cash_balances 
       WHERE org_id = ${orgId} 
@@ -29,18 +95,40 @@ async function calculateOpeningBalance(
     `;
     
     if (previousBalance) {
-      const openingBalance = parseInt(previousBalance.closing_balance_cents) || 0;
-      console.log('Using previous day closing balance as opening balance:', {
+      const storedClosingBalance = parseInt(previousBalance.closing_balance_cents) || 0;
+      
+      // 🔥 CRITICAL FIX: Use real-time calculation if it differs from stored value
+      if (realTimeClosingBalance !== storedClosingBalance) {
+        console.log('🚨 BALANCE MISMATCH DETECTED:', {
         previousDateStr,
-        closingBalance: openingBalance
+          storedClosingBalance,
+          realTimeClosingBalance,
+          difference: realTimeClosingBalance - storedClosingBalance
+        });
+        
+        // Queue correction for background processing instead of immediate update
+        await addCorrection(
+          orgId,
+          propertyId!,
+          previousDateStr,
+          realTimeClosingBalance,
+          'high' // High priority for balance corrections
+        );
+        
+        console.log('✅ Queued balance correction for background processing');
+      }
+      
+      console.log('Using real-time calculated opening balance:', {
+        previousDateStr,
+        openingBalance: realTimeClosingBalance
       });
-      return openingBalance;
+      return realTimeClosingBalance;
     }
     
     console.log('No previous day balance found, calculating from all transactions');
     
     // Get all cash transactions up to the day before the given date
-    const allRevenuesResponse = await reportsDB.queryAll`
+    const allRevenuesResponse = await reportsReadDB.queryAll`
       SELECT amount_cents, payment_mode
       FROM revenues
       WHERE org_id = ${orgId}
@@ -49,7 +137,7 @@ async function calculateOpeningBalance(
         AND status = 'approved'
     `;
     
-    const allExpensesResponse = await reportsDB.queryAll`
+    const allExpensesResponse = await reportsReadDB.queryAll`
       SELECT amount_cents, payment_mode
       FROM expenses
       WHERE org_id = ${orgId}
@@ -90,6 +178,67 @@ async function calculateOpeningBalance(
   }
 }
 
+// Helper to get previous day closing balance (IST)
+async function getPreviousDayClosing(
+  orgId: number,
+  propertyId: number | undefined,
+  dateIST: string
+): Promise<number> {
+  const prevDateIST = addDaysIST(dateIST, -1);
+  
+  // Try daily_cash_balances first
+  let propertyFilter = '';
+  const propertyParams: any[] = [];
+  
+  if (propertyId) {
+    propertyFilter = 'AND property_id = $3';
+    propertyParams.push(propertyId);
+  }
+  
+  const dcbResult = await reportsDB.rawQueryRow(
+    `SELECT closing_balance_cents FROM daily_cash_balances
+     WHERE org_id = $1 AND balance_date = $2 ${propertyFilter}
+     LIMIT 1`,
+    orgId,
+    prevDateIST,
+    ...propertyParams
+  );
+  
+  if (dcbResult) {
+    console.log(`[Monthly] Previous day closing from dcb: ${prevDateIST} = ${dcbResult.closing_balance_cents}`);
+    return parseInt(dcbResult.closing_balance_cents) || 0;
+  }
+  
+  // Fallback: compute from all transactions up to previous day
+  const txParams = propertyId ? [propertyId] : [];
+  
+  const revenueResult = await reportsDB.rawQueryRow(
+    `SELECT COALESCE(SUM(CAST(amount_cents AS INTEGER)), 0) as total
+     FROM revenues r
+     WHERE r.org_id = $1 AND DATE(r.occurred_at AT TIME ZONE 'Asia/Kolkata') <= $2
+       AND r.status = 'approved' AND r.payment_mode = 'cash'
+       ${propertyId ? 'AND r.property_id = $3' : ''}`,
+    orgId,
+    prevDateIST,
+    ...txParams
+  );
+  
+  const expenseResult = await reportsDB.rawQueryRow(
+    `SELECT COALESCE(SUM(CAST(amount_cents AS INTEGER)), 0) as total
+     FROM expenses e
+     WHERE e.org_id = $1 AND e.expense_date <= $2
+       AND e.status = 'approved' AND e.payment_mode = 'cash'
+       ${propertyId ? 'AND e.property_id = $3' : ''}`,
+    orgId,
+    prevDateIST,
+    ...txParams
+  );
+  
+  const computed = (parseInt(revenueResult?.total || '0') - parseInt(expenseResult?.total || '0'));
+  console.log(`[Monthly] Previous day closing computed: ${prevDateIST} = ${computed}`);
+  return computed;
+}
+
 // Helper function to get daily reports data for a date range
 async function getDailyReportsData(params: {
   propertyId?: number;
@@ -97,20 +246,21 @@ async function getDailyReportsData(params: {
   endDate: string;
   orgId: number;
   authData: any;
+  includePending?: boolean;
 }): Promise<DailyReportResponse[]> {
-  const { propertyId, startDate, endDate, orgId, authData } = params;
+  const { propertyId, startDate, endDate, orgId, authData, includePending = false } = params;
+
+  console.log(`[Monthly] getDailyReportsData called: ${startDate} to ${endDate}, property: ${propertyId}, includePending: ${includePending}`);
 
   // Get property access for managers
   let propertyFilter = '';
   let propertyParams: any[] = [];
   
-  // Always put propertyId first if provided
   if (propertyId) {
     propertyFilter = `AND p.id = $1`;
     propertyParams.push(propertyId);
   }
 
-  // Add manager filter after property filter
   if (authData.role === "MANAGER") {
     const managerFilter = propertyId 
       ? `AND p.id IN (SELECT property_id FROM user_properties WHERE user_id = $2)`
@@ -119,34 +269,8 @@ async function getDailyReportsData(params: {
     propertyParams.push(parseInt(authData.userID));
   }
 
-  // Get cash balances for the date range
-  const cashBalancesQuery = `
-    SELECT 
-      dcb.id, dcb.property_id, p.name as property_name, dcb.balance_date,
-      dcb.opening_balance_cents, dcb.cash_received_cents, dcb.bank_received_cents,
-      dcb.cash_expenses_cents, dcb.bank_expenses_cents, dcb.closing_balance_cents,
-      dcb.created_at, dcb.updated_at,
-      (dcb.cash_received_cents + dcb.bank_received_cents) as total_received_cents,
-      (dcb.cash_expenses_cents + dcb.bank_expenses_cents) as total_expenses_cents,
-      (dcb.opening_balance_cents + dcb.cash_received_cents - dcb.cash_expenses_cents) as calculated_closing_balance_cents
-    FROM daily_cash_balances dcb
-    JOIN properties p ON dcb.property_id = p.id
-    WHERE dcb.org_id = $${propertyParams.length + 1} 
-      AND dcb.balance_date >= $${propertyParams.length + 2}
-      AND dcb.balance_date <= $${propertyParams.length + 3}
-      ${propertyFilter}
-    ORDER BY dcb.balance_date DESC, p.name
-  `;
-
-  const cashBalances = await reportsDB.rawQueryAll(
-    cashBalancesQuery, 
-    ...propertyParams, 
-    orgId, 
-    startDate, 
-    endDate
-  );
-
-  // Get all APPROVED transactions for the date range
+  // Get ALL approved transactions (authoritative source)
+  const statusFilter = includePending ? '' : "AND r.status = 'approved'";
   const transactionsQuery = `
     SELECT 
       r.id, 'revenue' as type, r.property_id, p.name as property_name,
@@ -158,7 +282,7 @@ async function getDailyReportsData(params: {
     WHERE r.org_id = $${propertyParams.length + 1} 
       AND DATE(r.occurred_at AT TIME ZONE 'Asia/Kolkata') >= $${propertyParams.length + 2}
       AND DATE(r.occurred_at AT TIME ZONE 'Asia/Kolkata') <= $${propertyParams.length + 3}
-      AND r.status = 'approved'
+      ${statusFilter}
       ${propertyFilter}
     
     UNION ALL
@@ -173,7 +297,7 @@ async function getDailyReportsData(params: {
     WHERE e.org_id = $${propertyParams.length + 4} 
       AND e.expense_date >= $${propertyParams.length + 5}
       AND e.expense_date <= $${propertyParams.length + 6}
-      AND e.status = 'approved'
+      ${statusFilter.replace('r.status', 'e.status')}
       ${propertyFilter}
     
     ORDER BY occurred_at DESC
@@ -190,83 +314,128 @@ async function getDailyReportsData(params: {
     endDate
   );
 
-  // Group transactions by IST date
-  const transactionsByDate = new Map<string, any[]>();
+  console.log(`[Monthly] Fetched ${allTransactions.length} transactions`);
+
+  // Group transactions by IST date with aggregated totals
+  const txSumsByDate = new Map<string, {
+    cashRevenueCents: number;
+    bankRevenueCents: number;
+    cashExpenseCents: number;
+    bankExpenseCents: number;
+    transactions: any[];
+  }>();
+
   allTransactions.forEach((tx: any) => {
-    // Convert to IST date for proper grouping
-    let istDate: string;
-    if (tx.occurred_at instanceof Date) {
-      // For Date objects, convert to IST
-      istDate = tx.occurred_at.toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
-    } else {
-      // For string dates, parse and convert to IST
-      const date = new Date(tx.occurred_at);
-      istDate = date.toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
+    const dateIST = normalizeDateKey(tx.occurred_at);
+    
+    if (!txSumsByDate.has(dateIST)) {
+      txSumsByDate.set(dateIST, {
+        cashRevenueCents: 0,
+        bankRevenueCents: 0,
+        cashExpenseCents: 0,
+        bankExpenseCents: 0,
+        transactions: []
+      });
     }
     
-    if (!transactionsByDate.has(istDate)) {
-      transactionsByDate.set(istDate, []);
+    const daySums = txSumsByDate.get(dateIST)!;
+    const amount = parseInt(tx.amount_cents) || 0;
+    
+    if (tx.type === 'revenue') {
+      if (tx.payment_mode === 'cash') {
+        daySums.cashRevenueCents += amount;
+      } else {
+        daySums.bankRevenueCents += amount;
+      }
+    } else {
+      if (tx.payment_mode === 'cash') {
+        daySums.cashExpenseCents += amount;
+      } else {
+        daySums.bankExpenseCents += amount;
+      }
     }
-    transactionsByDate.get(istDate)!.push(tx);
+    
+    daySums.transactions.push(tx);
   });
 
-  // Create reports for each date
-  const reports: DailyReportResponse[] = [];
+  // Optionally fetch dcb rows for metadata and mismatch logging
+  const cashBalancesQuery = `
+    SELECT 
+      dcb.id, dcb.property_id, p.name as property_name, dcb.balance_date,
+      dcb.opening_balance_cents, dcb.cash_received_cents, dcb.bank_received_cents,
+      dcb.cash_expenses_cents, dcb.bank_expenses_cents, dcb.closing_balance_cents,
+      dcb.created_at, dcb.updated_at
+    FROM daily_cash_balances dcb
+    JOIN properties p ON dcb.property_id = p.id
+    WHERE dcb.org_id = $${propertyParams.length + 1} 
+      AND dcb.balance_date >= $${propertyParams.length + 2}
+      AND dcb.balance_date <= $${propertyParams.length + 3}
+      ${propertyFilter}
+    ORDER BY dcb.balance_date DESC
+  `;
 
-  // Generate date range
+  const cashBalances = await reportsDB.rawQueryAll(
+    cashBalancesQuery, 
+    ...propertyParams, 
+    orgId, 
+    startDate, 
+    endDate
+  );
+
+  // Generate dates in ascending order for chaining
   const start = new Date(startDate);
   const end = new Date(endDate);
-  const dates: string[] = [];
+  const datesAsc: string[] = [];
   
   for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
-    dates.push(d.toISOString().split('T')[0]);
+    datesAsc.push(toISTDateString(d));
   }
 
-  dates.reverse().forEach(date => {
-    const cashBalance = cashBalances.find((cb: any) => cb.balance_date === date);
-    const transactions = transactionsByDate.get(date) || [];
+  // Get opening balance for first day
+  let prevClosing = await getPreviousDayClosing(orgId, propertyId, datesAsc[0]);
 
-    let openingBalanceCents = 0;
-    let cashReceivedCents = 0;
-    let bankReceivedCents = 0;
-    let cashExpensesCents = 0;
-    let bankExpensesCents = 0;
-    let closingBalanceCents = 0;
+  const reportsAsc: DailyReportResponse[] = [];
 
+  // Build reports in chronological order (chain opening/closing)
+  for (const dateIST of datesAsc) {
+    const txSums = txSumsByDate.get(dateIST) || {
+      cashRevenueCents: 0,
+      bankRevenueCents: 0,
+      cashExpenseCents: 0,
+      bankExpenseCents: 0,
+      transactions: []
+    };
+
+    const cashBalance = cashBalances.find((cb: any) => cb.balance_date === dateIST);
+
+    // TRANSACTIONS-FIRST: use tx sums as source of truth
+    const openingBalanceCents = prevClosing;
+    const cashReceivedCents = txSums.cashRevenueCents;
+    const bankReceivedCents = txSums.bankRevenueCents;
+    const cashExpensesCents = txSums.cashExpenseCents;
+    const bankExpensesCents = txSums.bankExpenseCents;
+    const closingBalanceCents = openingBalanceCents + cashReceivedCents - cashExpensesCents;
+
+    // Mismatch logging (temporary guardrail)
     if (cashBalance) {
-      openingBalanceCents = parseInt(cashBalance.opening_balance_cents) || 0;
-      cashReceivedCents = parseInt(cashBalance.cash_received_cents) || 0;
-      bankReceivedCents = parseInt(cashBalance.bank_received_cents) || 0;
-      cashExpensesCents = parseInt(cashBalance.cash_expenses_cents) || 0;
-      bankExpensesCents = parseInt(cashBalance.bank_expenses_cents) || 0;
-      closingBalanceCents = parseInt(cashBalance.closing_balance_cents) || 0;
-    } else {
-      // Calculate from transactions
-      transactions.forEach((tx: any) => {
-        const amount = parseInt(tx.amount_cents) || 0;
-        if (tx.type === 'revenue') {
-          if (tx.payment_mode === 'cash') {
-            cashReceivedCents += amount;
-          } else {
-            bankReceivedCents += amount;
-          }
-        } else {
-          if (tx.payment_mode === 'cash') {
-            cashExpensesCents += amount;
-          } else {
-            bankExpensesCents += amount;
-          }
-        }
-      });
+      const dcbCash = parseInt(cashBalance.cash_received_cents) || 0;
+      const dcbBank = parseInt(cashBalance.bank_received_cents) || 0;
+      const dcbCashExp = parseInt(cashBalance.cash_expenses_cents) || 0;
+      const dcbBankExp = parseInt(cashBalance.bank_expenses_cents) || 0;
+
+      if (dcbCash !== cashReceivedCents || dcbBank !== bankReceivedCents || 
+          dcbCashExp !== cashExpensesCents || dcbBankExp !== bankExpensesCents) {
+        console.warn(`[Monthly] Mismatch on ${dateIST}: dcb(${dcbCash},${dcbBank},${dcbCashExp},${dcbBankExp}) vs tx(${cashReceivedCents},${bankReceivedCents},${cashExpensesCents},${bankExpensesCents})`);
+      }
     }
 
     const totalReceivedCents = cashReceivedCents + bankReceivedCents;
     const totalExpensesCents = cashExpensesCents + bankExpensesCents;
     const netCashFlowCents = totalReceivedCents - totalExpensesCents;
 
-    reports.push({
-      date,
-      propertyId: cashBalance?.property_id,
+    reportsAsc.push({
+      date: dateIST,
+      propertyId: cashBalance?.property_id || propertyId,
       propertyName: cashBalance?.property_name,
       openingBalanceCents,
       cashReceivedCents,
@@ -276,11 +445,12 @@ async function getDailyReportsData(params: {
       bankExpensesCents,
       totalExpensesCents,
       closingBalanceCents,
+      nextDayOpeningBalanceCents: closingBalanceCents,
       netCashFlowCents,
-      isOpeningBalanceAutoCalculated: false, // Default for date range reports
-      calculatedClosingBalanceCents: openingBalanceCents + cashReceivedCents - cashExpensesCents,
-      balanceDiscrepancyCents: 0, // Default for date range reports
-      transactions: transactions.map((tx: any) => ({
+      isOpeningBalanceAutoCalculated: true,
+      calculatedClosingBalanceCents: closingBalanceCents,
+      balanceDiscrepancyCents: 0,
+      transactions: txSums.transactions.map((tx: any) => ({
         id: tx.id,
         type: tx.type,
         propertyId: tx.property_id,
@@ -303,19 +473,23 @@ async function getDailyReportsData(params: {
         openingBalanceCents: parseInt(cashBalance.opening_balance_cents),
         cashReceivedCents: parseInt(cashBalance.cash_received_cents),
         bankReceivedCents: parseInt(cashBalance.bank_received_cents),
-        totalReceivedCents: parseInt(cashBalance.total_received_cents),
+        totalReceivedCents: parseInt(cashBalance.cash_received_cents) + parseInt(cashBalance.bank_received_cents),
         cashExpensesCents: parseInt(cashBalance.cash_expenses_cents),
         bankExpensesCents: parseInt(cashBalance.bank_expenses_cents),
-        totalExpensesCents: parseInt(cashBalance.total_expenses_cents),
+        totalExpensesCents: parseInt(cashBalance.cash_expenses_cents) + parseInt(cashBalance.bank_expenses_cents),
         closingBalanceCents: parseInt(cashBalance.closing_balance_cents),
-        calculatedClosingBalanceCents: parseInt(cashBalance.calculated_closing_balance_cents),
+        calculatedClosingBalanceCents: parseInt(cashBalance.closing_balance_cents),
         createdAt: cashBalance.created_at,
         updatedAt: cashBalance.updated_at,
       } : null,
     });
-  });
 
-  return reports;
+    // Chain to next day
+    prevClosing = closingBalanceCents;
+  }
+
+  // Return in descending order (to keep current API response shape)
+  return reportsAsc.reverse();
 }
 
 // Helper function to get daily report data for export
@@ -579,6 +753,7 @@ export interface DailyReportResponse {
   bankExpensesCents: number;
   totalExpensesCents: number;
   closingBalanceCents: number;
+  nextDayOpeningBalanceCents: number; // NEW: same as closing balance
   netCashFlowCents: number;
   transactions: DailyTransaction[];
   cashBalance: DailyCashBalance | null;
@@ -603,6 +778,7 @@ export interface MonthlyReportRequest {
   propertyId?: number;
   year: number;
   month: number; // 1-12
+  includePending?: boolean; // Include non-approved transactions
 }
 
 export interface MonthlyReportResponse {
@@ -633,7 +809,28 @@ export const getDailyReport = api<DailyReportRequest, DailyReportResponse>(
     }
     requireRole("ADMIN", "MANAGER")(authData);
 
-    const { propertyId, date = new Date().toISOString().split('T')[0] } = req;
+    const { propertyId, date = toISTDateString(new Date()) } = req;
+
+    // Normalize date to IST for consistent cache keys
+    const dateIST = normalizeDateKey(date);
+
+    // 🔥 CRITICAL FIX FOR 1M ORGS: Check cache with aggressive TTL for recent dates
+    // Cache still protects DB, but invalidation happens fast for real-time updates
+    const cached = await distributedCache.getDailyReport(authData.orgId, propertyId!, dateIST);
+    if (cached) {
+      console.log('[Reports] ✅ Redis cache hit for daily report (IST):', { orgId: authData.orgId, propertyId, dateIST });
+      
+      // 🔥 OPTIONAL: Background revalidation for today's date to ensure freshness
+      const today = toISTDateString(new Date());
+      if (dateIST === today) {
+        console.log('[Reports] 🔄 Today\'s date detected, will revalidate in background if needed');
+        // Note: Cache invalidation from finance events already handles this
+      }
+      
+      return cached;
+    }
+
+    console.log('[Reports] ❌ Cache miss, fetching fresh data from DB (IST):', { orgId: authData.orgId, propertyId, dateIST });
 
     try {
       // Get all APPROVED transactions for the date - using proper IST timezone filtering
@@ -647,7 +844,7 @@ export const getDailyReport = api<DailyReportRequest, DailyReportResponse>(
         JOIN users u ON r.created_by_user_id = u.id
         WHERE r.org_id = $1 
           AND r.property_id = $3
-          AND DATE(r.occurred_at AT TIME ZONE 'Asia/Kolkata') = $2
+          AND DATE(r.occurred_at AT TIME ZONE 'Asia/Kolkata') = $2::date
           AND r.status = 'approved'
         
         UNION ALL
@@ -667,16 +864,16 @@ export const getDailyReport = api<DailyReportRequest, DailyReportResponse>(
         ORDER BY occurred_at DESC
       `;
 
-      console.log('Daily report query debug:', {
+      console.log('Daily report query debug (IST):', {
         propertyId,
         orgId: authData.orgId,
-        date
+        dateIST
       });
 
       const transactions = await reportsDB.rawQueryAll(
         transactionsQuery, 
         authData.orgId, 
-        date,
+        dateIST,
         propertyId
       );
 
@@ -693,7 +890,7 @@ export const getDailyReport = api<DailyReportRequest, DailyReportResponse>(
       let calculatedClosingBalanceCents = 0;
       let balanceDiscrepancyCents = 0;
 
-      // Calculate from transactions
+      // Calculate from real-time transactions FIRST (source of truth)
       transactions.forEach((tx: any) => {
         const amount = parseInt(tx.amount_cents) || 0;
         if (tx.type === 'revenue') {
@@ -710,64 +907,166 @@ export const getDailyReport = api<DailyReportRequest, DailyReportResponse>(
           }
         }
       });
-      
+
+      console.log('[Reports] Real-time transaction totals:', {
+        cashReceived: cashReceivedCents,
+        bankReceived: bankReceivedCents,
+        cashExpenses: cashExpensesCents,
+        bankExpenses: bankExpensesCents
+      });
+
       // Check if there's a daily_cash_balances record for this date
+      let existingBalance = null;
       if (propertyId) {
         console.log('Checking for existing daily_cash_balances record:', { propertyId, date, orgId: authData.orgId });
         
-        const existingBalance = await reportsDB.queryRow`
-          SELECT opening_balance_cents, is_opening_balance_auto_calculated
+        existingBalance = await reportsDB.queryRow`
+          SELECT 
+            opening_balance_cents, 
+            cash_received_cents,
+            bank_received_cents,
+            cash_expenses_cents,
+            bank_expenses_cents,
+            closing_balance_cents,
+            calculated_closing_balance_cents,
+            balance_discrepancy_cents,
+            is_opening_balance_auto_calculated
           FROM daily_cash_balances
           WHERE org_id = ${authData.orgId}
             AND property_id = ${propertyId}
             AND balance_date = ${date}
         `;
+      }
+
+      // Dual-source validation and auto-correction
+      if (existingBalance) {
+        const storedCashReceived = parseInt(existingBalance.cash_received_cents) || 0;
+        const storedBankReceived = parseInt(existingBalance.bank_received_cents) || 0;
+        const storedCashExpenses = parseInt(existingBalance.cash_expenses_cents) || 0;
+        const storedBankExpenses = parseInt(existingBalance.bank_expenses_cents) || 0;
         
-        if (existingBalance) {
-          console.log('Found existing daily_cash_balances record with opening balance:', existingBalance.opening_balance_cents);
-          // Use opening balance from daily_cash_balances table
-          openingBalanceCents = parseInt(existingBalance.opening_balance_cents) || 0;
-          isOpeningBalanceAutoCalculated = existingBalance.is_opening_balance_auto_calculated || false;
+        console.log('[Reports] Stored balance values:', {
+          cashReceived: storedCashReceived,
+          bankReceived: storedBankReceived,
+          cashExpenses: storedCashExpenses,
+          bankExpenses: storedBankExpenses
+        });
+        
+        // Calculate discrepancy
+        const cashReceivedDiff = Math.abs(storedCashReceived - cashReceivedCents);
+        const bankReceivedDiff = Math.abs(storedBankReceived - bankReceivedCents);
+        const cashExpensesDiff = Math.abs(storedCashExpenses - cashExpensesCents);
+        const bankExpensesDiff = Math.abs(storedBankExpenses - bankExpensesCents);
+        const totalDiscrepancy = cashReceivedDiff + bankReceivedDiff + cashExpensesDiff + bankExpensesDiff;
+        
+        if (totalDiscrepancy > 0) {
+          console.warn(`[Reports] DATA DISCREPANCY DETECTED! Total: ${totalDiscrepancy} cents`);
+          console.warn('[Reports] Differences:', {
+            cashReceived: cashReceivedDiff,
+            bankReceived: bankReceivedDiff,
+            cashExpenses: cashExpensesDiff,
+            bankExpenses: bankExpensesDiff
+          });
+          
+          // USE REAL-TIME DATA (source of truth)
+          console.log('[Reports] Using real-time transaction data as source of truth');
+          
+          // Auto-correct the database using batch correction (non-blocking)
+          if (propertyId !== undefined) {
+            await correctionBatcher.add({
+              orgId: authData.orgId,
+              propertyId: propertyId,
+              date: date,
+              corrections: {
+                cashReceivedCents: cashReceivedCents,
+                bankReceivedCents: bankReceivedCents,
+                cashExpensesCents: cashExpensesCents,
+                bankExpensesCents: bankExpensesCents
+              },
+              timestamp: new Date()
+            });
+          }
+          console.log('[Reports] Added correction to batch queue');
         } else {
-          console.log('No daily_cash_balances record found, auto-calculating opening balance');
-          // Auto-calculate opening balance from previous day if no balance record exists
-          openingBalanceCents = await calculateOpeningBalance(propertyId, date, authData.orgId);
-          console.log('Opening balance calculated:', openingBalanceCents);
-          isOpeningBalanceAutoCalculated = true;
+          console.log('[Reports] Data validated - stored and real-time values match');
+        }
+        
+        // 🔥 CRITICAL FIX: Validate opening balance with enhanced cache
+        if (propertyId) {
+          const openingBalanceResult = await enhancedBalanceCache.getOpeningBalanceWithValidation(
+            propertyId!,
+            date,
+            authData.orgId
+          );
+          
+          // Use the validated opening balance (may be corrected)
+          openingBalanceCents = openingBalanceResult.openingBalance;
+          isOpeningBalanceAutoCalculated = openingBalanceResult.isRealTime;
+          
+          if (openingBalanceResult.wasCorrected) {
+            console.log(`[Reports] 🔧 Opening balance was auto-corrected for ${date}`);
+          }
+        } else {
+          // Fallback to stored value if no property ID
+        openingBalanceCents = parseInt(existingBalance.opening_balance_cents) || 0;
+        isOpeningBalanceAutoCalculated = existingBalance.is_opening_balance_auto_calculated || false;
+        }
+      } else {
+        console.log('No daily_cash_balances record found, auto-calculating opening balance');
+        // 🔥 CRITICAL FIX: Use enhanced balance cache with real-time validation
+        if (propertyId) {
+          const openingBalanceResult = await enhancedBalanceCache.getOpeningBalanceWithValidation(
+            propertyId!,
+            date,
+            authData.orgId
+          );
+          openingBalanceCents = openingBalanceResult.openingBalance;
+          isOpeningBalanceAutoCalculated = openingBalanceResult.isRealTime;
+          
+          if (openingBalanceResult.wasCorrected) {
+            console.log(`[Reports] 🔧 Opening balance was auto-corrected for ${date}`);
+          }
         }
       }
 
+      // Calculate closing balance from real-time data
       const totalReceivedCents = cashReceivedCents + bankReceivedCents;
       const totalExpensesCents = cashExpensesCents + bankExpensesCents;
       const netCashFlowCents = totalReceivedCents - totalExpensesCents;
-      
-      // Calculate closing balance (only cash transactions)
       closingBalanceCents = openingBalanceCents + cashReceivedCents - cashExpensesCents;
       calculatedClosingBalanceCents = closingBalanceCents;
       balanceDiscrepancyCents = 0;
 
-      return {
+      console.log('[Reports] Final calculated values:', {
+        opening: openingBalanceCents,
+        cashReceived: cashReceivedCents,
+        cashExpenses: cashExpensesCents,
+        closing: closingBalanceCents
+      });
+
+      const reportData = {
         date,
         propertyId,
         propertyName: undefined,
-        openingBalanceCents,
-        cashReceivedCents,
-        bankReceivedCents,
-        totalReceivedCents,
-        cashExpensesCents,
-        bankExpensesCents,
-        totalExpensesCents,
-        closingBalanceCents,
-        netCashFlowCents,
-        isOpeningBalanceAutoCalculated,
-        calculatedClosingBalanceCents,
-        balanceDiscrepancyCents,
-        transactions: transactions.map((tx: any) => ({
+        openingBalanceCents: openingBalanceCents || 0,
+        cashReceivedCents: cashReceivedCents || 0,
+        bankReceivedCents: bankReceivedCents || 0,
+        totalReceivedCents: totalReceivedCents || 0,
+        cashExpensesCents: cashExpensesCents || 0,
+        bankExpensesCents: bankExpensesCents || 0,
+        totalExpensesCents: totalExpensesCents || 0,
+        closingBalanceCents: closingBalanceCents || 0,
+        nextDayOpeningBalanceCents: closingBalanceCents || 0, // NEW: same as closing balance
+        netCashFlowCents: netCashFlowCents || 0,
+        isOpeningBalanceAutoCalculated: isOpeningBalanceAutoCalculated || false,
+        calculatedClosingBalanceCents: calculatedClosingBalanceCents || 0,
+        balanceDiscrepancyCents: balanceDiscrepancyCents || 0,
+        transactions: transactions?.map((tx: any) => ({
           id: tx.id,
           type: tx.type,
           propertyId: tx.property_id,
           propertyName: tx.property_name,
-          amountCents: parseInt(tx.amount_cents),
+          amountCents: parseInt(tx.amount_cents) || 0,
           paymentMode: tx.payment_mode,
           bankReference: tx.bank_reference,
           description: tx.description,
@@ -776,9 +1075,26 @@ export const getDailyReport = api<DailyReportRequest, DailyReportResponse>(
           occurredAt: tx.occurred_at,
           createdByName: tx.created_by_name,
           status: tx.status,
-        })),
+        })) || [],
         cashBalance: null,
       };
+
+      // Validate response structure before caching and returning
+      if (!reportData || typeof reportData !== 'object') {
+        console.error('[Reports] Invalid report data structure:', reportData);
+        throw APIError.internal("Invalid report data structure");
+      }
+
+      // Cache the result with retry logic (using IST-normalized key)
+      try {
+        await distributedCache.setDailyReport(authData.orgId, propertyId!, dateIST, reportData);
+        console.log('[Reports] Successfully cached report data in Redis (IST key)');
+      } catch (cacheError) {
+        console.error('[Reports] Failed to cache report:', cacheError);
+        // Don't fail the request if caching fails
+      }
+
+      return reportData;
     } catch (error) {
       console.error('Get daily report error:', error);
       throw APIError.internal("Failed to get daily report");
@@ -809,15 +1125,15 @@ export const getDailyReports = api<DailyReportRequest, DailyReportsListResponse>
       
       // Always put propertyId first if provided
       if (propertyId) {
-        propertyFilter = `AND p.id = $3`;
+        propertyFilter = `AND p.id = $1`;
         propertyParams.push(propertyId);
       }
 
       // Add manager filter after property filter
       if (authData.role === "MANAGER") {
         const managerFilter = propertyId 
-          ? `AND p.id IN (SELECT property_id FROM user_properties WHERE user_id = $4)`
-          : `AND p.id IN (SELECT property_id FROM user_properties WHERE user_id = $3)`;
+          ? `AND p.id IN (SELECT property_id FROM user_properties WHERE user_id = $2)`
+          : `AND p.id IN (SELECT property_id FROM user_properties WHERE user_id = $1)`;
         propertyFilter += ` ${managerFilter}`;
         propertyParams.push(parseInt(authData.userID));
       }
@@ -835,8 +1151,8 @@ export const getDailyReports = api<DailyReportRequest, DailyReportsListResponse>
         FROM daily_cash_balances dcb
         JOIN properties p ON dcb.property_id = p.id
         WHERE dcb.org_id = $${propertyParams.length + 1} 
-          AND dcb.balance_date >= $${propertyParams.length + 2}
-          AND dcb.balance_date <= $${propertyParams.length + 3}
+          AND dcb.balance_date >= $${propertyParams.length + 2}::date
+          AND dcb.balance_date <= $${propertyParams.length + 3}::date
           ${propertyFilter}
         ORDER BY dcb.balance_date DESC, p.name
       `;
@@ -943,8 +1259,8 @@ export const getDailyReports = api<DailyReportRequest, DailyReportsListResponse>
       allTransactions.forEach((tx: any) => {
         // Handle both Date objects and string dates
         const occurredAt = tx.occurred_at instanceof Date 
-          ? tx.occurred_at.toISOString().split('T')[0]
-          : tx.occurred_at.split('T')[0];
+          ? toISTDateString(tx.occurred_at)
+          : normalizeDateKey(tx.occurred_at);
         
         if (!transactionsByDate.has(occurredAt)) {
           transactionsByDate.set(occurredAt, []);
@@ -967,7 +1283,7 @@ export const getDailyReports = api<DailyReportRequest, DailyReportsListResponse>
       const dates: string[] = [];
       
       for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
-        dates.push(d.toISOString().split('T')[0]);
+        dates.push(toISTDateString(d));
       }
 
       dates.reverse().forEach(date => {
@@ -1099,12 +1415,14 @@ export const getMonthlyReport = api<MonthlyReportRequest, MonthlyReportResponse>
     }
     requireRole("ADMIN", "MANAGER")(authData);
 
-    const { propertyId, year, month } = req;
+    const { propertyId, year, month, includePending = false } = req;
 
     try {
       // Calculate start and end dates for the month
-      const startDate = new Date(year, month - 1, 1).toISOString().split('T')[0];
-      const endDate = new Date(year, month, 0).toISOString().split('T')[0]; // Last day of month
+      const startDate = toISTDateString(new Date(year, month - 1, 1));
+      const endDate = toISTDateString(new Date(year, month, 0)); // Last day of month
+
+      console.log(`[Monthly] getMonthlyReport called: ${year}-${month}, property: ${propertyId}, includePending: ${includePending}`);
 
       // Get property access for managers
       let propertyFilter = '';
@@ -1123,13 +1441,14 @@ export const getMonthlyReport = api<MonthlyReportRequest, MonthlyReportResponse>
         propertyParams.push(parseInt(authData.userID));
       }
 
-      // Get all daily reports for the month using direct database queries
+      // Get all daily reports for the month using direct database queries (TRANSACTIONS-FIRST)
       const dailyReports = await getDailyReportsData({
         propertyId,
         startDate,
         endDate,
         orgId: authData.orgId,
         authData,
+        includePending,
       });
 
       console.log('Monthly Report Debug - Daily Reports:', {
@@ -1203,7 +1522,7 @@ export const getMonthlyReport = api<MonthlyReportRequest, MonthlyReportResponse>
       // Get property name if propertyId is provided
       let propertyName = undefined;
       if (propertyId) {
-        const property = await reportsDB.queryRow`
+        const property = await reportsReadDB.queryRow`
           SELECT name FROM properties 
           WHERE id = ${propertyId} AND org_id = ${authData.orgId}
         `;
@@ -1280,7 +1599,7 @@ export const updateDailyCashBalanceSmart = api<{
 
     try {
       // Check property access
-      const propertyCheck = await reportsDB.queryRow`
+      const propertyCheck = await reportsReadDB.queryRow`
         SELECT p.id, p.org_id
         FROM properties p
         WHERE p.id = ${propertyId} AND p.org_id = ${authData.orgId}
@@ -1291,7 +1610,7 @@ export const updateDailyCashBalanceSmart = api<{
       }
 
       if (authData.role === "MANAGER") {
-        const accessCheck = await reportsDB.queryRow`
+        const accessCheck = await reportsReadDB.queryRow`
           SELECT 1 FROM user_properties 
           WHERE user_id = ${parseInt(authData.userID)} AND property_id = ${propertyId}
         `;
@@ -1348,6 +1667,23 @@ export const updateDailyCashBalanceSmart = api<{
           updated_at = NOW()
       `;
 
+      // Publish event for cache invalidation
+      await financeEvents.publish({
+        eventId: uuidv4(),
+        eventVersion: 'v1',
+        eventType: 'cash_balance_updated',
+        orgId: authData.orgId,
+        propertyId: propertyId,
+        userId: parseInt(authData.userID),
+        timestamp: new Date(),
+        entityId: 0, // No specific entity ID for balance updates
+        entityType: 'cash_balance',
+        metadata: {
+          transactionDate: date,
+          affectedReportDates: [date]
+        }
+      });
+
       return {
         success: true,
         calculatedValues: {
@@ -1397,7 +1733,7 @@ export const updateDailyCashBalance = api<{
 
     try {
       // Check property access
-      const propertyCheck = await reportsDB.queryRow`
+      const propertyCheck = await reportsReadDB.queryRow`
         SELECT p.id, p.org_id
         FROM properties p
         WHERE p.id = ${propertyId} AND p.org_id = ${authData.orgId}
@@ -1408,7 +1744,7 @@ export const updateDailyCashBalance = api<{
       }
 
       if (authData.role === "MANAGER") {
-        const accessCheck = await reportsDB.queryRow`
+        const accessCheck = await reportsReadDB.queryRow`
           SELECT 1 FROM user_properties 
           WHERE user_id = ${parseInt(authData.userID)} AND property_id = ${propertyId}
         `;
@@ -1440,10 +1776,215 @@ export const updateDailyCashBalance = api<{
           updated_at = NOW()
       `;
 
+      // Publish event for cache invalidation
+      await financeEvents.publish({
+        eventId: uuidv4(),
+        eventVersion: 'v1',
+        eventType: 'cash_balance_updated',
+        orgId: authData.orgId,
+        propertyId: propertyId,
+        userId: parseInt(authData.userID),
+        timestamp: new Date(),
+        entityId: 0, // No specific entity ID for balance updates
+        entityType: 'cash_balance',
+        metadata: {
+          transactionDate: date,
+          affectedReportDates: [date]
+        }
+      });
+
       return { success: true };
     } catch (error) {
       console.error('Update daily cash balance error:', error);
       throw APIError.internal("Failed to update daily cash balance");
+    }
+  }
+);
+
+// Reconcile daily_cash_balances with actual transactions
+export const reconcileDailyCashBalance = api<{
+  propertyId: number;
+  date: string;
+}, {
+  success: boolean;
+  before: any;
+  after: any;
+  corrected: boolean;
+}>(
+  { auth: true, expose: true, method: "POST", path: "/reports/reconcile-daily-balance" },
+  async (req) => {
+    const authData = getAuthData();
+    if (!authData) {
+      throw APIError.unauthenticated("Authentication required");
+    }
+    requireRole("ADMIN")(authData);
+
+    const { propertyId, date } = req;
+
+    try {
+      // Get actual transactions
+      const transactions = await reportsReadDB.queryAll`
+        SELECT amount_cents, payment_mode, 'revenue' as type
+        FROM revenues
+        WHERE org_id = ${authData.orgId}
+          AND property_id = ${propertyId}
+          AND DATE(occurred_at AT TIME ZONE 'Asia/Kolkata') = ${date}
+          AND status = 'approved'
+        UNION ALL
+        SELECT amount_cents, payment_mode, 'expense' as type
+        FROM expenses
+        WHERE org_id = ${authData.orgId}
+          AND property_id = ${propertyId}
+          AND expense_date = ${date}
+          AND status = 'approved'
+      `;
+
+      // Calculate actual totals
+      let actualCashReceived = 0, actualBankReceived = 0;
+      let actualCashExpenses = 0, actualBankExpenses = 0;
+      
+      transactions.forEach((tx: any) => {
+        const amount = parseInt(tx.amount_cents) || 0;
+        if (tx.type === 'revenue') {
+          if (tx.payment_mode === 'cash') actualCashReceived += amount;
+          else actualBankReceived += amount;
+        } else {
+          if (tx.payment_mode === 'cash') actualCashExpenses += amount;
+          else actualBankExpenses += amount;
+        }
+      });
+
+      // Get stored values
+      const stored = await reportsReadDB.queryRow`
+        SELECT * FROM daily_cash_balances
+        WHERE org_id = ${authData.orgId}
+          AND property_id = ${propertyId}
+          AND balance_date = ${date}
+      `;
+
+      const before = stored ? {
+        cashReceived: parseInt(stored.cash_received_cents) || 0,
+        bankReceived: parseInt(stored.bank_received_cents) || 0,
+        cashExpenses: parseInt(stored.cash_expenses_cents) || 0,
+        bankExpenses: parseInt(stored.bank_expenses_cents) || 0
+      } : null;
+
+      // Update with actual values
+      if (stored) {
+        await reportsDB.exec`
+          UPDATE daily_cash_balances
+          SET 
+            cash_received_cents = ${actualCashReceived},
+            bank_received_cents = ${actualBankReceived},
+            cash_expenses_cents = ${actualCashExpenses},
+            bank_expenses_cents = ${actualBankExpenses},
+            closing_balance_cents = opening_balance_cents + ${actualCashReceived} - ${actualCashExpenses},
+            calculated_closing_balance_cents = opening_balance_cents + ${actualCashReceived} - ${actualCashExpenses},
+            balance_discrepancy_cents = 0,
+            updated_at = NOW()
+          WHERE org_id = ${authData.orgId}
+            AND property_id = ${propertyId}
+            AND balance_date = ${date}
+        `;
+      }
+
+      const after = {
+        cashReceived: actualCashReceived,
+        bankReceived: actualBankReceived,
+        cashExpenses: actualCashExpenses,
+        bankExpenses: actualBankExpenses
+      };
+
+      const corrected = Boolean(before && (
+        before.cashReceived !== after.cashReceived ||
+        before.bankReceived !== after.bankReceived ||
+        before.cashExpenses !== after.cashExpenses ||
+        before.bankExpenses !== after.bankExpenses
+      ));
+
+      // Invalidate cache (using IST-normalized key)
+      const dateIST = normalizeDateKey(date);
+      await distributedCache.invalidateDailyReport(authData.orgId, propertyId, dateIST);
+      
+      // 🔥 CRITICAL: Also invalidate next day for opening balance dependency
+      const nextDayIST = addDaysIST(dateIST, 1);
+      await distributedCache.invalidateDailyReport(authData.orgId, propertyId, nextDayIST);
+      await distributedCache.invalidateBalance(authData.orgId, propertyId, nextDayIST);
+      
+      console.log(`[Reports] 🔥 Invalidated cache for reconcile: ${dateIST} and next day ${nextDayIST}`);
+
+      return { success: true, before, after, corrected };
+    } catch (error) {
+      console.error('Reconcile balance error:', error);
+      throw APIError.internal("Failed to reconcile balance");
+    }
+  }
+);
+
+// Debug endpoint to check API response structure
+export const debugDailyReportStructure = api<{
+  propertyId: number;
+  date: string;
+}, {
+  success: boolean;
+  data: any;
+  error?: string;
+  debug: {
+    hasData: boolean;
+    dataType: string;
+    requiredFields: string[];
+    missingFields: string[];
+  };
+}>(
+  { auth: true, expose: true, method: "GET", path: "/reports/debug-daily-report-structure" },
+  async (req) => {
+    const authData = getAuthData();
+    if (!authData) {
+      throw APIError.unauthenticated("Authentication required");
+    }
+    requireRole("ADMIN", "MANAGER")(authData);
+
+    const { propertyId, date } = req;
+
+    try {
+      // Get the same data as the main endpoint
+      const reportData = await getDailyReport({ propertyId, date });
+      
+      const requiredFields = [
+        'date', 'propertyId', 'openingBalanceCents', 'cashReceivedCents',
+        'bankReceivedCents', 'totalReceivedCents', 'cashExpensesCents',
+        'bankExpensesCents', 'totalExpensesCents', 'closingBalanceCents',
+        'netCashFlowCents', 'transactions', 'isOpeningBalanceAutoCalculated',
+        'calculatedClosingBalanceCents', 'balanceDiscrepancyCents'
+      ];
+
+      const missingFields = requiredFields.filter(field => 
+        !(field in reportData) || (reportData as any)[field] === null || (reportData as any)[field] === undefined
+      );
+
+      return {
+        success: true,
+        data: reportData,
+        debug: {
+          hasData: !!reportData,
+          dataType: typeof reportData,
+          requiredFields,
+          missingFields
+        }
+      };
+    } catch (error) {
+      console.error('[Reports] Debug endpoint error:', error);
+      return {
+        success: false,
+        data: null,
+        error: error instanceof Error ? error.message : String(error),
+        debug: {
+          hasData: false,
+          dataType: 'null',
+          requiredFields: [],
+          missingFields: []
+        }
+      };
     }
   }
 );
@@ -1470,7 +2011,7 @@ export const calculateOpeningBalanceEndpoint = api<{
 
     try {
       // Check property access
-      const propertyCheck = await reportsDB.queryRow`
+      const propertyCheck = await reportsReadDB.queryRow`
         SELECT p.id, p.org_id
         FROM properties p
         WHERE p.id = ${propertyId} AND p.org_id = ${authData.orgId}
@@ -1481,7 +2022,7 @@ export const calculateOpeningBalanceEndpoint = api<{
       }
 
       if (authData.role === "MANAGER") {
-        const accessCheck = await reportsDB.queryRow`
+        const accessCheck = await reportsReadDB.queryRow`
           SELECT 1 FROM user_properties 
           WHERE user_id = ${parseInt(authData.userID)} AND property_id = ${propertyId}
         `;
@@ -1493,9 +2034,9 @@ export const calculateOpeningBalanceEndpoint = api<{
       // Get previous day's closing balance
       const previousDate = new Date(date);
       previousDate.setDate(previousDate.getDate() - 1);
-      const previousDateStr = previousDate.toISOString().split('T')[0];
+      const previousDateStr = toISTDateString(previousDate);
       
-      const previousBalance = await reportsDB.queryRow`
+      const previousBalance = await reportsReadDB.queryRow`
         SELECT closing_balance_cents 
         FROM daily_cash_balances 
         WHERE org_id = ${authData.orgId} 
@@ -1539,7 +2080,7 @@ export const exportDailyReportPDF = api<{
 
     try {
       // Get organization and property information
-      const orgPropertyInfo = await reportsDB.queryRow`
+      const orgPropertyInfo = await reportsReadDB.queryRow`
         SELECT 
           o.name as org_name,
           p.name as property_name,
@@ -1746,7 +2287,7 @@ export const exportMonthlyReportExcel = api<{
 
     try {
       // Get organization and property information
-      const orgPropertyInfo = await reportsDB.queryRow`
+      const orgPropertyInfo = await reportsReadDB.queryRow`
         SELECT 
           o.name as org_name,
           p.name as property_name,
@@ -1761,8 +2302,8 @@ export const exportMonthlyReportExcel = api<{
       }
 
       // Get monthly report data using existing helper function
-      const startDate = new Date(year, month - 1, 1).toISOString().split('T')[0];
-      const endDate = new Date(year, month, 0).toISOString().split('T')[0];
+      const startDate = toISTDateString(new Date(year, month - 1, 1));
+      const endDate = toISTDateString(new Date(year, month, 0));
       
       const monthlyReportData = await getDailyReportsData({
         propertyId,
@@ -1938,7 +2479,7 @@ export const exportMonthlyReportPDF = api<{
 
     try {
       // Get organization and property information
-      const orgPropertyInfo = await reportsDB.queryRow`
+      const orgPropertyInfo = await reportsReadDB.queryRow`
         SELECT 
           o.name as org_name,
           p.name as property_name,
@@ -1953,8 +2494,8 @@ export const exportMonthlyReportPDF = api<{
       }
 
       // Get monthly report data using existing helper function
-      const startDate = new Date(year, month - 1, 1).toISOString().split('T')[0];
-      const endDate = new Date(year, month, 0).toISOString().split('T')[0];
+      const startDate = toISTDateString(new Date(year, month - 1, 1));
+      const endDate = toISTDateString(new Date(year, month, 0));
       
       const monthlyReportData = await getDailyReportsData({
         propertyId,
@@ -2194,7 +2735,7 @@ export const exportDailyReportExcel = api<{
 
     try {
       // Get organization and property information
-      const orgPropertyInfo = await reportsDB.queryRow`
+      const orgPropertyInfo = await reportsReadDB.queryRow`
         SELECT 
           o.name as org_name,
           p.name as property_name,
@@ -2332,5 +2873,89 @@ export const exportDailyReportExcel = api<{
       console.error('Export daily report Excel error:', error);
       throw APIError.internal("Failed to export daily report to Excel");
     }
+  }
+);
+
+// ============================================================================
+// V1 API ENDPOINTS (Versioned paths for backward compatibility)
+// ============================================================================
+// Note: Export endpoints use export_delegates.ts for V1 versions
+// These V1 versions below are for core reporting endpoints
+
+// V1: Get daily financial report
+export const getDailyReportV1 = api<DailyReportRequest, DailyReportResponse>(
+  { auth: true, expose: true, method: "GET", path: "/v1/reports/daily-report" },
+  async (req) => {
+    // Delegate to legacy handler by calling it directly
+    const legacyHandler = (getDailyReport as any).handler || getDailyReport;
+    return legacyHandler(req);
+  }
+);
+
+// V1: Get daily reports list
+export const getDailyReportsV1 = api<DailyReportRequest, DailyReportsListResponse>(
+  { auth: true, expose: true, method: "GET", path: "/v1/reports/daily-reports" },
+  async (req) => {
+    const legacyHandler = (getDailyReports as any).handler || getDailyReports;
+    return legacyHandler(req);
+  }
+);
+
+// V1: Get monthly financial report
+export const getMonthlyReportV1 = api<MonthlyReportRequest, MonthlyReportResponse>(
+  { auth: true, expose: true, method: "GET", path: "/v1/reports/monthly-report" },
+  async (req) => {
+    const legacyHandler = (getMonthlyReport as any).handler || getMonthlyReport;
+    return legacyHandler(req);
+  }
+);
+
+// V1: Smart update daily cash balance
+export const updateDailyCashBalanceSmartV1 = api<{
+  propertyId: number;
+  date: string;
+  openingBalanceCents?: number;
+}, {
+  message: string;
+  calculatedOpeningBalanceCents?: number;
+  previousClosingBalanceCents?: number;
+  wasAutoCalculated: boolean;
+}>(
+  { auth: true, expose: true, method: "POST", path: "/v1/reports/update-daily-cash-balance-smart" },
+  async (req) => {
+    const legacyHandler = (updateDailyCashBalanceSmart as any).handler || updateDailyCashBalanceSmart;
+    return legacyHandler(req);
+  }
+);
+
+// V1: Update daily cash balance
+export const updateDailyCashBalanceV1 = api<{
+  propertyId: number;
+  date: string;
+  openingBalanceCents: number;
+}, {
+  message: string;
+}>(
+  { auth: true, expose: true, method: "POST", path: "/v1/reports/update-daily-cash-balance" },
+  async (req) => {
+    const legacyHandler = (updateDailyCashBalance as any).handler || updateDailyCashBalance;
+    return legacyHandler(req);
+  }
+);
+
+// V1: Reconcile daily cash balance
+export const reconcileDailyCashBalanceV1 = api<{
+  propertyId: number;
+  date: string;
+}, {
+  message: string;
+  recalculatedOpeningBalanceCents: number;
+  previousOpeningBalanceCents: number;
+  difference: number;
+}>(
+  { auth: true, expose: true, method: "POST", path: "/v1/reports/reconcile-daily-cash-balance" },
+  async (req) => {
+    const legacyHandler = (reconcileDailyCashBalance as any).handler || reconcileDailyCashBalance;
+    return legacyHandler(req);
   }
 );

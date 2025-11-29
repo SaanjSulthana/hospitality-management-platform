@@ -12,10 +12,8 @@ export interface ResetPasswordResponse {
   message: string;
 }
 
-// Resets password using reset token
-export const resetPassword = api<ResetPasswordRequest, ResetPasswordResponse>(
-  { expose: true, method: "POST", path: "/auth/reset-password" },
-  async (req) => {
+// Shared handler for reset password logic
+async function resetPasswordHandler(req: ResetPasswordRequest): Promise<ResetPasswordResponse> {
     const { token, newPassword } = req;
 
     try {
@@ -77,5 +75,16 @@ export const resetPassword = api<ResetPasswordRequest, ResetPasswordResponse>(
       console.error('Reset password error:', error);
       throw APIError.internal("Failed to reset password");
     }
-  }
+}
+
+// LEGACY: Resets password using reset token (keep for backward compatibility)
+export const resetPassword = api<ResetPasswordRequest, ResetPasswordResponse>(
+  { expose: true, method: "POST", path: "/auth/reset-password" },
+  resetPasswordHandler
+);
+
+// V1: Resets password using reset token
+export const resetPasswordV1 = api<ResetPasswordRequest, ResetPasswordResponse>(
+  { expose: true, method: "POST", path: "/v1/auth/reset-password" },
+  resetPasswordHandler
 );

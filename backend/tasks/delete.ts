@@ -2,7 +2,10 @@ import { api, APIError } from "encore.dev/api";
 import { getAuthData } from "~encore/auth";
 import { requireRole } from "../auth/middleware";
 import { tasksDB } from "./db";
+import { v1Path } from "../shared/http";
 import log from "encore.dev/log";
+import { taskEvents } from "./events";
+import { v4 as uuidv4 } from "uuid";
 
 export interface DeleteTaskRequest {
   id: number;
@@ -13,10 +16,8 @@ export interface DeleteTaskResponse {
   message: string;
 }
 
-// Deletes a task
-export const deleteTask = api<DeleteTaskRequest, DeleteTaskResponse>(
-  { auth: true, expose: true, method: "DELETE", path: "/tasks/:id" },
-  async (req) => {
+// Handler function for deleting a task
+async function deleteTaskHandler(req: DeleteTaskRequest): Promise<DeleteTaskResponse> {
     const authData = getAuthData();
     if (!authData) {
       throw APIError.unauthenticated("Authentication required");
@@ -77,6 +78,26 @@ export const deleteTask = api<DeleteTaskRequest, DeleteTaskResponse>(
       await tx.commit();
       log.info("Task deleted successfully", { taskId: id, taskTitle: taskRow.title });
 
+      // Publish task_deleted
+      try {
+        await taskEvents.publish({
+          eventId: uuidv4(),
+          eventVersion: 'v1',
+          eventType: 'task_deleted',
+          orgId: authData.orgId,
+          propertyId: taskRow.property_id,
+          userId: parseInt(authData.userID),
+          timestamp: new Date(),
+          entityId: id,
+          entityType: 'task',
+          metadata: {
+            title: taskRow.title,
+          },
+        });
+      } catch (e) {
+        log.warn("Task event publish failed (task_deleted)", { error: e instanceof Error ? e.message : String(e) });
+      }
+
       return {
         success: true,
         message: `Task "${taskRow.title}" has been deleted successfully`,
@@ -86,5 +107,16 @@ export const deleteTask = api<DeleteTaskRequest, DeleteTaskResponse>(
       log.error("Failed to delete task", { error, taskId: id });
       throw error;
     }
-  }
+}
+
+// Legacy path
+export const deleteTask = api<DeleteTaskRequest, DeleteTaskResponse>(
+  { auth: true, expose: true, method: "DELETE", path: "/tasks/:id" },
+  deleteTaskHandler
+);
+
+// Versioned path
+export const deleteTaskV1 = api<DeleteTaskRequest, DeleteTaskResponse>(
+  { auth: true, expose: true, method: "DELETE", path: "/v1/tasks/:id" },
+  deleteTaskHandler
 );

@@ -24,10 +24,8 @@ export interface SignupResponse {
   };
 }
 
-// Creates a new admin user and organization
-export const signup = api<SignupRequest, SignupResponse>(
-  { expose: true, method: "POST", path: "/auth/signup" },
-  async (req) => {
+// Shared handler for signup logic
+async function signupHandler(req: SignupRequest): Promise<SignupResponse> {
     const { email, password, displayName, organizationName, subdomainPrefix } = req;
 
     const tx = await authDB.begin();
@@ -178,5 +176,16 @@ export const signup = api<SignupRequest, SignupResponse>(
       
       throw APIError.internal("Failed to create account. Please try again.");
     }
-  }
+}
+
+// LEGACY: Creates a new admin user and organization (keep for backward compatibility)
+export const signup = api<SignupRequest, SignupResponse>(
+  { expose: true, method: "POST", path: "/auth/signup" },
+  signupHandler
+);
+
+// V1: Creates a new admin user and organization
+export const signupV1 = api<SignupRequest, SignupResponse>(
+  { expose: true, method: "POST", path: "/v1/auth/signup" },
+  signupHandler
 );

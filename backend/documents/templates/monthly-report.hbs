@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Monthly Cash Balance Report - {{period}}</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: 'Segoe UI', Arial, sans-serif; font-size: 12px; color: #1e293b; padding: 40px; }
+    .header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 30px; margin-bottom: 30px; border-radius: 12px; color: white; }
+    .header h1 { font-size: 28px; margin-bottom: 8px; }
+    .header .subtitle { font-size: 16px; opacity: 0.9; }
+    .info-box { border: 1px solid #e2e8f0; padding: 20px; margin-bottom: 25px; border-radius: 8px; background: #ffffff; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+    .info-row { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px dashed #e2e8f0; }
+    .info-row:last-child { border-bottom: none; }
+    .info-label { font-weight: 600; color: #475569; }
+    .info-value { color: #1e293b; font-weight: 500; }
+    .section { margin-bottom: 30px; }
+    .section-title { font-size: 20px; font-weight: 700; color: #0f172a; margin-bottom: 20px; padding-bottom: 10px; border-bottom: 3px solid #667eea; }
+    .metrics-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 20px; margin-bottom: 25px; }
+    .metric-card { border: 1px solid #e2e8f0; padding: 20px; border-radius: 8px; background: linear-gradient(135deg, #ffffff 0%, #f8fafc 100%); box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
+    .metric-label { font-size: 11px; color: #64748b; text-transform: uppercase; font-weight: 600; margin-bottom: 10px; letter-spacing: 0.5px; }
+    .metric-value { font-size: 24px; font-weight: 700; color: #0f172a; }
+    .metric-value.positive { color: #059669; }
+    .metric-value.negative { color: #dc2626; }
+    .metric-value.neutral { color: #3b82f6; }
+    .summary-section { background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%); border: 2px solid #3b82f6; padding: 25px; border-radius: 10px; margin-bottom: 25px; }
+    .summary-title { font-size: 18px; font-weight: 700; color: #1e40af; margin-bottom: 15px; }
+    .summary-item { display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px dashed #93c5fd; }
+    .summary-item:last-child { border-bottom: none; font-size: 16px; font-weight: 700; padding-top: 15px; border-top: 2px solid #3b82f6; }
+    .summary-label { color: #1e40af; font-weight: 600; }
+    .summary-value { font-weight: 700; }
+    .stats-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 15px; }
+    .stat-box { background: white; border: 1px solid #e2e8f0; padding: 15px; border-radius: 6px; text-align: center; }
+    .stat-number { font-size: 28px; font-weight: 700; color: #667eea; margin-bottom: 5px; }
+    .stat-label { font-size: 11px; color: #64748b; text-transform: uppercase; font-weight: 600; }
+    .footer { margin-top: 50px; padding-top: 25px; border-top: 2px solid #e2e8f0; text-align: center; color: #64748b; font-size: 10px; }
+    .badge { display: inline-block; padding: 4px 12px; border-radius: 20px; font-size: 10px; font-weight: 600; text-transform: uppercase; }
+    .badge-success { background: #d1fae5; color: #065f46; }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1>Monthly Cash Balance Report</h1>
+    <div class="subtitle">Financial Summary Report</div>
+  </div>
+
+  <div class="info-box">
+    <div class="info-row">
+      <span class="info-label">Organization:</span>
+      <span class="info-value">{{orgName}}</span>
+    </div>
+    <div class="info-row">
+      <span class="info-label">Property:</span>
+      <span class="info-value">{{propertyName}}</span>
+    </div>
+    <div class="info-row">
+      <span class="info-label">Report Period:</span>
+      <span class="info-value">{{period}}</span>
+    </div>
+    <div class="info-row">
+      <span class="info-label">Generated:</span>
+      <span class="info-value">{{formatDate generatedAt 'datetime'}}</span>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-title">Monthly Financial Overview</div>
+    <div class="metrics-grid">
+      <div class="metric-card">
+        <div class="metric-label">Opening Balance (Cash)</div>
+        <div class="metric-value neutral">{{formatCurrency openingBalanceCents}}</div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-label">Closing Balance (Cash)</div>
+        <div class="metric-value {{#if (gte closingBalanceCents 0)}}positive{{else}}negative{{/if}}">
+          {{formatCurrency closingBalanceCents}}
+        </div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-label">Total Revenue</div>
+        <div class="metric-value positive">{{formatCurrency totalReceivedCents}}</div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-label">Total Expenses</div>
+        <div class="metric-value negative">{{formatCurrency totalExpensesCents}}</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="summary-section">
+    <div class="summary-title">Revenue Breakdown</div>
+    <div class="summary-item">
+      <span class="summary-label">Cash Revenue:</span>
+      <span class="summary-value">{{formatCurrency cashRevenueCents}}</span>
+    </div>
+    <div class="summary-item">
+      <span class="summary-label">Bank Revenue:</span>
+      <span class="summary-value">{{formatCurrency bankRevenueCents}}</span>
+    </div>
+    <div class="summary-item">
+      <span class="summary-label">Total Revenue:</span>
+      <span class="summary-value" style="color: #059669;">{{formatCurrency totalReceivedCents}}</span>
+    </div>
+  </div>
+
+  <div class="summary-section" style="background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%); border-color: #f59e0b;">
+    <div class="summary-title" style="color: #92400e;">Expense Breakdown</div>
+    <div class="summary-item" style="border-color: #fbbf24;">
+      <span class="summary-label" style="color: #92400e;">Cash Expenses:</span>
+      <span class="summary-value">{{formatCurrency cashExpensesCents}}</span>
+    </div>
+    <div class="summary-item" style="border-color: #fbbf24;">
+      <span class="summary-label" style="color: #92400e;">Bank Expenses:</span>
+      <span class="summary-value">{{formatCurrency bankExpensesCents}}</span>
+    </div>
+    <div class="summary-item" style="border-color: #f59e0b;">
+      <span class="summary-label" style="color: #92400e;">Total Expenses:</span>
+      <span class="summary-value" style="color: #dc2626;">{{formatCurrency totalExpensesCents}}</span>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-title">Transaction Statistics</div>
+    <div class="stats-grid">
+      <div class="stat-box">
+        <div class="stat-number">{{totalRevenueTransactions}}</div>
+        <div class="stat-label">Revenue Transactions</div>
+      </div>
+      <div class="stat-box">
+        <div class="stat-number">{{totalExpenseTransactions}}</div>
+        <div class="stat-label">Expense Transactions</div>
+      </div>
+      <div class="stat-box">
+        <div class="stat-number">{{add totalRevenueTransactions totalExpenseTransactions}}</div>
+        <div class="stat-label">Total Transactions</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="footer">
+    <p><strong>Generated by Hospitality Management Platform</strong></p>
+    <p>{{formatDate generatedAt 'datetime'}} IST</p>
+    <p style="margin-top: 10px; color: #94a3b8;">This is a system-generated report for {{propertyName}}</p>
+  </div>
+</body>
+</html>
+

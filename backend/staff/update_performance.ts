@@ -19,10 +19,8 @@ export interface UpdatePerformanceResponse {
   updatedAt: Date;
 }
 
-// Updates staff performance rating and review notes
-export const updatePerformance = api<UpdatePerformanceRequest, UpdatePerformanceResponse>(
-  { auth: true, expose: true, method: "PUT", path: "/staff/:staffId/performance" },
-  async (req) => {
+// Shared handler for updating staff performance
+async function updatePerformanceHandler(req: UpdatePerformanceRequest): Promise<UpdatePerformanceResponse> {
     const authData = getAuthData();
     if (!authData) {
       throw APIError.unauthenticated("Authentication required");
@@ -99,5 +97,16 @@ export const updatePerformance = api<UpdatePerformanceRequest, UpdatePerformance
       }
       throw APIError.internal("Failed to update staff performance");
     }
-  }
+}
+
+// LEGACY: Updates staff performance (keep for backward compatibility)
+export const updatePerformance = api<UpdatePerformanceRequest, UpdatePerformanceResponse>(
+  { auth: true, expose: true, method: "PUT", path: "/staff/:staffId/performance" },
+  updatePerformanceHandler
+);
+
+// V1: Updates staff performance
+export const updatePerformanceV1 = api<UpdatePerformanceRequest, UpdatePerformanceResponse>(
+  { auth: true, expose: true, method: "PUT", path: "/v1/staff/:staffId/performance" },
+  updatePerformanceHandler
 );

@@ -37,15 +37,13 @@ export interface ValidateLeaveResponse {
   };
 }
 
-// Validates leave request creation and provides guidance
-export const validateLeaveRequest = api<ValidateLeaveRequest, ValidateLeaveResponse>(
-  { auth: true, expose: true, method: "POST", path: "/staff/leave/validate" },
-  async (req) => {
-    const authData = getAuthData();
-    if (!authData) {
-      throw APIError.unauthenticated("Authentication required");
-    }
-    requireRole("ADMIN", "MANAGER")(authData);
+// Shared handler for validating leave request creation and providing guidance
+async function validateLeaveRequestHandler(req: ValidateLeaveRequest): Promise<ValidateLeaveResponse> {
+  const authData = getAuthData();
+  if (!authData) {
+    throw APIError.unauthenticated("Authentication required");
+  }
+  requireRole("ADMIN", "MANAGER")(authData);
 
     const { staffId, leaveType, startDate, endDate, reason } = req;
     const warnings: string[] = [];
@@ -245,5 +243,16 @@ export const validateLeaveRequest = api<ValidateLeaveRequest, ValidateLeaveRespo
       console.error('Validate leave request error:', error);
       throw APIError.internal("Failed to validate leave request");
     }
-  }
+}
+
+// LEGACY: Validates leave request creation and provides guidance (keep for backward compatibility)
+export const validateLeaveRequest = api<ValidateLeaveRequest, ValidateLeaveResponse>(
+  { auth: true, expose: true, method: "POST", path: "/staff/leave/validate" },
+  validateLeaveRequestHandler
+);
+
+// V1: Validates leave request creation and provides guidance
+export const validateLeaveRequestV1 = api<ValidateLeaveRequest, ValidateLeaveResponse>(
+  { auth: true, expose: true, method: "POST", path: "/v1/staff/leave/validate" },
+  validateLeaveRequestHandler
 );

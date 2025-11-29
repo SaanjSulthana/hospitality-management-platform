@@ -1,10 +1,11 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { usePageTitle } from '../contexts/PageTitleContext';
 import { formatCurrency as formatCurrencyUtil } from '../lib/currency';
 import { getCurrentDateString } from '../lib/date-utils';
+import { getFlagBool } from '../lib/feature-flags';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -51,6 +52,20 @@ function DailyReportPopup({ date, propertyId, orgId, isOpen, onClose }: DailyRep
   const { getAuthenticatedBackend } = useAuth();
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const TELEMETRY_SAMPLE = 0.02;
+  const sendClientTelemetry = (events: any[]) => {
+    try {
+      if (Math.random() >= TELEMETRY_SAMPLE) return;
+      fetch(`${API_CONFIG.BASE_URL}/telemetry/client`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('accessToken') || ''}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ sampleRate: TELEMETRY_SAMPLE, events }),
+      }).catch(() => {});
+    } catch {}
+  };
   
   // State for the popup
   const [openingBalance, setOpeningBalance] = useState<number>(0);
@@ -514,11 +529,43 @@ function DailyReportManagerContent({ selectedPropertyId, selectedDate, onPropert
       return response;
     },
     enabled: !!propertyId && !!selectedDate && !!orgId,
-    staleTime: 30000, // 30 seconds
-    gcTime: 600000, // 10 minutes
-    refetchInterval: 30000, // Auto-refresh every 30 seconds for live data
-    refetchOnWindowFocus: true, // Refresh when user returns to tab
+    staleTime: 25000, // Match Finance pattern
+    gcTime: 300000, // 5 minutes
+    refetchInterval: false, // Rely on realtime events from RealtimeProvider
     refetchOnMount: true, // Refresh when component mounts
+    onSuccess: () => {
+      try {
+        const last = (window as any).__reportsLastInvalidateAt;
+        if (!last) return;
+        const key = `daily|${propertyId}|${selectedDate}`;
+        const started = last[key];
+        if (started) {
+          const ms = Date.now() - started;
+          if (process.env.NODE_ENV !== 'production') {
+            console.log('[ReportsTelemetry] daily refetch duration ms:', ms, { propertyId, date: selectedDate });
+          }
+          if (Math.random() < 0.02) {
+            fetch(`${API_CONFIG.BASE_URL}/telemetry/client`, {
+              method: 'POST',
+              headers: {
+                'Authorization': `Bearer ${localStorage.getItem('accessToken') || ''}`,
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                sampleRate: 0.02,
+                events: [{
+                  type: 'reports_refetch_ms',
+                  ts: new Date().toISOString(),
+                  scope: 'daily',
+                  ms,
+                  propertyId, date: selectedDate,
+                }],
+              }),
+            }).catch(() => {});
+          }
+        }
+      } catch {}
+    }
   });
 
   // Use values from backend API
@@ -552,9 +599,10 @@ function DailyReportManagerContent({ selectedPropertyId, selectedDate, onPropert
 
     setIsExportingPDF(true);
     try {
-      // Use direct fetch call since the client hasn't been regenerated yet
       const token = localStorage.getItem('accessToken');
-      const response = await fetch(`${API_CONFIG.BASE_URL}/reports/export-daily-pdf`, {
+      
+      // Step 1: Create export using new v2 endpoint
+      const response = await fetch(`${API_CONFIG.BASE_URL}/reports/v2/export-daily-pdf`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -571,19 +619,84 @@ function DailyReportManagerContent({ selectedPropertyId, selectedDate, onPropert
       }
 
       const result = await response.json();
+      const { exportId, statusUrl } = result;
 
-      // Create download link
-      const link = document.createElement('a');
-      link.href = `data:application/pdf;base64,${result.pdfData}`;
-      link.download = result.filename;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-
+      // Step 2: Poll for status
       toast({
-        title: "PDF Exported",
-        description: "Daily report PDF has been downloaded successfully.",
+        title: "Generating PDF",
+        description: "Your export is being processed...",
       });
+
+      const pollStatus = async (): Promise<any> => {
+        const statusResponse = await fetch(`${API_CONFIG.BASE_URL}${statusUrl}`, {
+          headers: { 'Authorization': `Bearer ${token}` },
+        });
+        
+        if (!statusResponse.ok) {
+          throw new Error('Failed to check export status');
+        }
+        
+        return statusResponse.json();
+      };
+
+      // Poll until ready
+      let attempts = 0;
+      const maxAttempts = 60; // 60 seconds max
+      
+      while (attempts < maxAttempts) {
+        const status = await pollStatus();
+        
+        if (status.status === 'ready') {
+          // Step 3: Download with authentication
+          const downloadResponse = await fetch(`${API_CONFIG.BASE_URL}/documents/exports/${exportId}/download`, {
+            headers: {
+              'Authorization': `Bearer ${token}`,
+            },
+          });
+          
+          if (!downloadResponse.ok) {
+            throw new Error('Failed to download file');
+          }
+          
+          // Get the JSON response with base64 data
+          const downloadData = await downloadResponse.json();
+          
+          // Convert base64 to blob
+          const byteCharacters = atob(downloadData.data);
+          const byteNumbers = new Array(byteCharacters.length);
+          for (let i = 0; i < byteCharacters.length; i++) {
+            byteNumbers[i] = byteCharacters.charCodeAt(i);
+          }
+          const byteArray = new Uint8Array(byteNumbers);
+          const blob = new Blob([byteArray], { type: downloadData.mimeType });
+          
+          // Create download link
+          const url = window.URL.createObjectURL(blob);
+          const link = document.createElement('a');
+          link.href = url;
+          link.download = downloadData.filename || `daily-report-${selectedDate}.pdf`;
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+          window.URL.revokeObjectURL(url);
+          
+          toast({
+            title: "PDF Ready",
+            description: "Daily report PDF has been downloaded.",
+          });
+          break;
+        } else if (status.status === 'failed') {
+          throw new Error(status.errorMessage || 'Export generation failed');
+        }
+        
+        // Wait 1 second before next poll
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        attempts++;
+      }
+      
+      if (attempts >= maxAttempts) {
+        throw new Error('Export timed out');
+      }
     } catch (error: any) {
       console.error('PDF export error:', error);
       toast({
@@ -1062,6 +1175,7 @@ export default function ReportsPage() {
   const { theme } = useTheme();
   const { setPageTitle } = usePageTitle();
   const { toast } = useToast();
+  const queryClient = useQueryClient();
 
   // Set page title and description
   useEffect(() => {
@@ -1080,6 +1194,143 @@ export default function ReportsPage() {
   const formatCurrency = (amountCents: number) => {
     return formatCurrencyUtil(amountCents, theme.currency);
   };
+
+  // Reports realtime invalidation (server refetch, debounced)
+  useEffect(() => {
+    const reportsRealtimeEnabled = getFlagBool('REPORTS_REALTIME_V1', true);
+    if (!reportsRealtimeEnabled) return;
+
+    // Track keys to invalidate per batch
+    const dailyKeys = new Set<string>();
+    const monthlyKeys = new Set<string>();
+    const quarterlyKeys = new Set<string>();
+    const yearlyKeys = new Set<string>();
+    const seenEventIds = new Set<string>();
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    let batches = 0;
+
+    // Expose last-invalidation timestamps for telemetry in child queries
+    const lastInvalidateAt: Record<string, number> = {};
+    (window as any).__reportsLastInvalidateAt = lastInvalidateAt;
+
+    const toISTDate = (iso: string | Date | undefined): string | null => {
+      if (!iso) return null;
+      try {
+        const d = new Date(iso);
+        const y = d.toLocaleString('en-CA', { year: 'numeric', timeZone: 'Asia/Kolkata' });
+        const m = d.toLocaleString('en-CA', { month: '2-digit', timeZone: 'Asia/Kolkata' });
+        const day = d.toLocaleString('en-CA', { day: '2-digit', timeZone: 'Asia/Kolkata' });
+        return `${y}-${m}-${day}`;
+      } catch {
+        return null;
+      }
+    };
+
+    const monthFromDate = (dateStr: string) => {
+      const [y, m] = dateStr.split('-');
+      return { year: parseInt(y, 10), month: parseInt(m, 10) };
+    };
+
+    const quarterFromMonth = (year: number, month: number): { q: 'Q1' | 'Q2' | 'Q3' | 'Q4'; year: number } => {
+      if (month >= 4 && month <= 6) return { q: 'Q1', year };
+      if (month >= 7 && month <= 9) return { q: 'Q2', year };
+      if (month >= 10 && month <= 12) return { q: 'Q3', year };
+      return { q: 'Q4', year }; // Jan-Mar
+    };
+
+    const scheduleInvalidate = () => {
+      if (timer) return;
+      timer = setTimeout(() => {
+        const started = Date.now();
+        // Daily
+        dailyKeys.forEach((k) => {
+          const [_, propertyIdStr, dateStr] = k.split('|');
+          lastInvalidateAt[`daily|${propertyIdStr}|${dateStr}`] = Date.now();
+          queryClient.invalidateQueries({ queryKey: ['daily-report', parseInt(propertyIdStr, 10), dateStr], exact: false });
+        });
+        // Monthly
+        monthlyKeys.forEach((k) => {
+          const [_, propertyIdStr, yearStr, monthStr] = k.split('|');
+          lastInvalidateAt[`monthly|${propertyIdStr}|${yearStr}-${monthStr}`] = Date.now();
+          queryClient.invalidateQueries({ queryKey: ['monthly-report', parseInt(propertyIdStr, 10), parseInt(yearStr, 10), parseInt(monthStr, 10)], exact: false });
+        });
+        // Quarterly
+        quarterlyKeys.forEach((k) => {
+          const [_, yearStr, q, propertyIdStr] = k.split('|');
+          lastInvalidateAt[`quarterly|${yearStr}|${q}|${propertyIdStr}`] = Date.now();
+          queryClient.invalidateQueries({ queryKey: ['quarterly-report', yearStr, q, propertyIdStr], exact: false });
+        });
+        // Yearly
+        yearlyKeys.forEach((k) => {
+          const [_, yearStr, propertyIdStr] = k.split('|');
+          lastInvalidateAt[`yearly|${yearStr}|${propertyIdStr}`] = Date.now();
+          queryClient.invalidateQueries({ queryKey: ['yearly-report', yearStr, propertyIdStr], exact: false });
+        });
+        batches += 1;
+        if (process.env.NODE_ENV !== 'production') {
+          // Dev-only diagnostics
+          console.log('[ReportsRealtime] invalidation batch', {
+            daily: dailyKeys.size, monthly: monthlyKeys.size,
+            quarterly: quarterlyKeys.size, yearly: yearlyKeys.size,
+            debounceMs: Date.now() - started,
+            batches,
+          });
+        }
+        sendClientTelemetry([{
+          type: 'reports_realtime_invalidation',
+          ts: new Date().toISOString(),
+          daily: dailyKeys.size, monthly: monthlyKeys.size,
+          quarterly: quarterlyKeys.size, yearly: yearlyKeys.size,
+          batches,
+        }]);
+        dailyKeys.clear();
+        monthlyKeys.clear();
+        quarterlyKeys.clear();
+        yearlyKeys.clear();
+        timer = null;
+      }, 1000);
+    };
+
+    const onReportsEvents = (e: any) => {
+      const events = e?.detail?.events || [];
+      if (!Array.isArray(events) || events.length === 0) return;
+      for (const ev of events) {
+        const id = ev?.eventId;
+        if (!id || seenEventIds.has(id)) continue;
+        seenEventIds.add(id);
+        const propertyId: number | undefined = ev?.propertyId;
+        const txDateIso: string | undefined = ev?.metadata?.transactionDate || ev?.timestamp;
+        const dates: string[] = Array.isArray(ev?.metadata?.affectedReportDates) ? ev.metadata.affectedReportDates : [];
+        const candidates = new Set<string>();
+        const d = toISTDate(txDateIso);
+        if (d) candidates.add(d);
+        dates.forEach((raw) => {
+          const dd = toISTDate(raw);
+          if (dd) candidates.add(dd);
+        });
+        // Build keys
+        for (const dateStr of candidates) {
+          if (!propertyId) continue;
+          // Daily key
+          dailyKeys.add(['daily', String(propertyId), dateStr].join('|'));
+          // Monthly key
+          const { year, month } = monthFromDate(dateStr);
+          monthlyKeys.add(['monthly', String(propertyId), String(year), String(month)].join('|'));
+          // Quarterly & yearly
+          const q = quarterFromMonth(year, month);
+          quarterlyKeys.add(['quarterly', String(q.year), q.q, String(propertyId)].join('|'));
+          yearlyKeys.add(['yearly', String(year), String(propertyId)].join('|'));
+        }
+      }
+      scheduleInvalidate();
+    };
+
+    window.addEventListener('finance-stream-events', onReportsEvents as EventListener);
+    return () => {
+      window.removeEventListener('finance-stream-events', onReportsEvents as EventListener);
+      if (timer) clearTimeout(timer);
+    };
+  }, [queryClient]);
 
   return (
     <div className="w-full min-h-screen bg-gray-50">

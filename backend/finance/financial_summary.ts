@@ -2,6 +2,7 @@ import { api, APIError } from "encore.dev/api";
 import { getAuthData } from "~encore/auth";
 import { financeDB } from "./db";
 import { requireRole } from "../auth/middleware";
+import { v1Path } from "../shared/http";
 
 export interface FinancialSummaryRequest {
   propertyId?: number;
@@ -48,9 +49,7 @@ export interface FinancialSummaryResponse {
 }
 
 // Get comprehensive financial summary with payment mode breakdown
-export const getFinancialSummary = api<FinancialSummaryRequest, FinancialSummaryResponse>(
-  { auth: true, expose: true, method: "GET", path: "/finance/summary" },
-  async (req) => {
+async function getFinancialSummaryHandler(req: FinancialSummaryRequest): Promise<FinancialSummaryResponse> {
     console.log('=== GETTING FINANCIAL SUMMARY ===');
     console.log('Request:', req);
     
@@ -198,6 +197,15 @@ export const getFinancialSummary = api<FinancialSummaryRequest, FinancialSummary
       console.error('Error getting financial summary:', error);
       throw APIError.internal(`Failed to get financial summary: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
-  }
+}
+
+export const getFinancialSummary = api<FinancialSummaryRequest, FinancialSummaryResponse>(
+  { auth: true, expose: true, method: "GET", path: "/finance/summary" },
+  getFinancialSummaryHandler
+);
+
+export const getFinancialSummaryV1 = api<FinancialSummaryRequest, FinancialSummaryResponse>(
+  { auth: true, expose: true, method: "GET", path: "/v1/finance/summary" },
+  getFinancialSummaryHandler
 );
 

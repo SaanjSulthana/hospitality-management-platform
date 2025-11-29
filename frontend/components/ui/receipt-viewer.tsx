@@ -57,6 +57,17 @@ export function ReceiptViewer({ isOpen, onClose, transaction }: ReceiptViewerPro
     }
   }, [transaction]);
 
+  // Suspend realtime while the heavy receipt modal is open
+  useEffect(() => {
+    if (isOpen) {
+      try { window.dispatchEvent(new CustomEvent('realtime:suspend')); } catch {}
+      return () => {
+        try { window.dispatchEvent(new CustomEvent('realtime:resume')); } catch {}
+      };
+    }
+    return;
+  }, [isOpen]);
+
   // Zoom control functions
   const handleZoomIn = () => {
     setZoomLevel(prev => Math.min(prev + 25, 300));
@@ -70,14 +81,33 @@ export function ReceiptViewer({ isOpen, onClose, transaction }: ReceiptViewerPro
     setZoomLevel(100);
   };
 
+  // Extract file ID from receiptUrl if receiptFileId is missing or doesn't match
+  const getReceiptFileId = () => {
+    if (transaction?.receiptFileId) {
+      return transaction.receiptFileId;
+    }
+    
+    // Try to extract file ID from receiptUrl (e.g., "/uploads/file/123" -> "123")
+    if (transaction?.receiptUrl) {
+      const match = transaction.receiptUrl.match(/\/uploads\/file\/(\d+)/);
+      if (match) {
+        return parseInt(match[1]);
+      }
+    }
+    
+    return null;
+  };
+
+  const receiptFileId = getReceiptFileId();
+
   // Fetch file info if we have a receipt file ID
   const { data: fileInfo, isLoading: fileInfoLoading } = useQuery({
-    queryKey: ['file-info', transaction?.receiptFileId],
+    queryKey: ['file-info', receiptFileId],
     queryFn: async () => {
-      if (!transaction?.receiptFileId) return null;
+      if (!receiptFileId) return null;
       
       // Direct API call since uploads service isn't in generated client yet
-      const response = await fetch(`${API_CONFIG.BASE_URL}/uploads/${transaction.receiptFileId}/info`, {
+      const response = await fetch(`${API_CONFIG.BASE_URL}/uploads/${receiptFileId}/info`, {
         headers: {
           'Authorization': `Bearer ${localStorage.getItem('accessToken')}`,
         },
@@ -89,17 +119,17 @@ export function ReceiptViewer({ isOpen, onClose, transaction }: ReceiptViewerPro
       
       return response.json();
     },
-    enabled: !!transaction?.receiptFileId && isOpen,
+    enabled: !!receiptFileId && isOpen,
   });
 
   // Fetch file data for viewing
   const { data: fileData, isLoading: fileDataLoading } = useQuery({
-    queryKey: ['file-data', transaction?.receiptFileId],
+    queryKey: ['file-data', receiptFileId],
     queryFn: async () => {
-      if (!transaction?.receiptFileId) return null;
+      if (!receiptFileId) return null;
       
       // Direct API call since uploads service isn't in generated client yet
-      const response = await fetch(`${API_CONFIG.BASE_URL}/uploads/${transaction.receiptFileId}/download`, {
+      const response = await fetch(`${API_CONFIG.BASE_URL}/uploads/${receiptFileId}/download`, {
         headers: {
           'Authorization': `Bearer ${localStorage.getItem('accessToken')}`,
         },
@@ -111,7 +141,7 @@ export function ReceiptViewer({ isOpen, onClose, transaction }: ReceiptViewerPro
       
       return response.json();
     },
-    enabled: !!transaction?.receiptFileId && isOpen,
+    enabled: !!receiptFileId && isOpen,
   });
 
   const downloadReceipt = () => {
@@ -415,7 +445,7 @@ export function ReceiptViewer({ isOpen, onClose, transaction }: ReceiptViewerPro
               </div>
             </div>
 
-            {!transaction.receiptFileId && !transaction.receiptUrl ? (
+            {!receiptFileId && !transaction.receiptUrl ? (
               <div className="flex items-center justify-center h-64 border-2 border-dashed border-gray-400 rounded-xl bg-gradient-to-br from-gray-100 to-gray-200">
                 <div className="text-center">
                   <div className="p-4 bg-gray-200 rounded-full inline-block mb-4">

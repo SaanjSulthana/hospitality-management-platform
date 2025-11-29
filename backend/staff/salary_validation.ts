@@ -37,15 +37,13 @@ export interface ValidateSalaryResponse {
   };
 }
 
-// Validates salary calculation and provides guidance
-export const validateSalary = api<ValidateSalaryRequest, ValidateSalaryResponse>(
-  { auth: true, expose: true, method: "POST", path: "/staff/salary/validate" },
-  async (req) => {
-    const authData = getAuthData();
-    if (!authData) {
-      throw APIError.unauthenticated("Authentication required");
-    }
-    requireRole("ADMIN", "MANAGER")(authData);
+// Shared handler for validating salary calculation and providing guidance
+async function validateSalaryHandler(req: ValidateSalaryRequest): Promise<ValidateSalaryResponse> {
+  const authData = getAuthData();
+  if (!authData) {
+    throw APIError.unauthenticated("Authentication required");
+  }
+  requireRole("ADMIN", "MANAGER")(authData);
 
     const { staffId, payPeriodStart, payPeriodEnd } = req;
     const warnings: string[] = [];
@@ -220,5 +218,16 @@ export const validateSalary = api<ValidateSalaryRequest, ValidateSalaryResponse>
       console.error('Validate salary error:', error);
       throw APIError.internal("Failed to validate salary");
     }
-  }
+}
+
+// LEGACY: Validates salary (keep for backward compatibility)
+export const validateSalary = api<ValidateSalaryRequest, ValidateSalaryResponse>(
+  { auth: true, expose: true, method: "POST", path: "/staff/salary/validate" },
+  validateSalaryHandler
+);
+
+// V1: Validates salary
+export const validateSalaryV1 = api<ValidateSalaryRequest, ValidateSalaryResponse>(
+  { auth: true, expose: true, method: "POST", path: "/v1/staff/salary/validate" },
+  validateSalaryHandler
 );

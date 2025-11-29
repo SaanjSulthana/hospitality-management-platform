@@ -62,6 +62,15 @@ export const generatePDF = api<GeneratePDFRequest, GeneratePDFResponse>(
   }
 );
 
+// V1: Generate PDF report
+export const generatePDFV1 = api<GeneratePDFRequest, GeneratePDFResponse>(
+  { auth: true, expose: true, method: "POST", path: "/v1/reports/generate-pdf" },
+  async (req) => {
+    const legacyHandler = (generatePDF as any).handler || generatePDF;
+    return legacyHandler(req);
+  }
+);
+
 function generateDailyReportHTML(reportData: any, orgId: number): string {
   const formatCurrency = (cents: number) => {
     return new Intl.NumberFormat('en-IN', {

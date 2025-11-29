@@ -6,10 +6,9 @@ import { staffDB } from "./db";
 export interface StaffStatisticsRequest {
   propertyId?: number;
   department?: string;
-  dateRange?: {
-    start: Date;
-    end: Date;
-  };
+  // Flattened date range for GET query compatibility
+  startDate?: string; // ISO string 'YYYY-MM-DD' or full ISO
+  endDate?: string;   // ISO string
 }
 
 export interface StaffStatisticsResponse {
@@ -79,17 +78,15 @@ export interface StaffStatisticsResponse {
   }[];
 }
 
-// Gets comprehensive staff statistics and analytics
-export const getStatistics = api<StaffStatisticsRequest, StaffStatisticsResponse>(
-  { auth: true, expose: true, method: "GET", path: "/staff/statistics" },
-  async (req) => {
-    const authData = getAuthData();
-    if (!authData) {
-      throw APIError.unauthenticated("Authentication required");
-    }
-    requireRole("ADMIN", "MANAGER")(authData);
+// Shared handler for getting comprehensive staff statistics and analytics
+async function getStatisticsHandler(req: StaffStatisticsRequest): Promise<StaffStatisticsResponse> {
+  const authData = getAuthData();
+  if (!authData) {
+    throw APIError.unauthenticated("Authentication required");
+  }
+  requireRole("ADMIN", "MANAGER")(authData);
 
-    const { propertyId, department, dateRange } = req || {};
+    const { propertyId, department, startDate, endDate } = req || {};
 
     try {
       // Build base WHERE clause
@@ -119,9 +116,9 @@ export const getStatistics = api<StaffStatisticsRequest, StaffStatisticsResponse
         paramIndex++;
       }
 
-      if (dateRange) {
+      if (startDate && endDate) {
         whereClause += ` AND s.hire_date >= $${paramIndex} AND s.hire_date <= $${paramIndex + 1}`;
-        params.push(dateRange.start, dateRange.end);
+        params.push(startDate, endDate);
         paramIndex += 2;
       }
 
@@ -371,5 +368,16 @@ export const getStatistics = api<StaffStatisticsRequest, StaffStatisticsResponse
       console.error('Get staff statistics error:', error);
       throw APIError.internal("Failed to get staff statistics");
     }
-  }
+}
+
+// LEGACY: Gets comprehensive staff statistics and analytics (keep for backward compatibility)
+export const getStatistics = api<StaffStatisticsRequest, StaffStatisticsResponse>(
+  { auth: true, expose: true, method: "GET", path: "/staff/statistics" },
+  getStatisticsHandler
+);
+
+// V1: Gets comprehensive staff statistics and analytics
+export const getStatisticsV1 = api<StaffStatisticsRequest, StaffStatisticsResponse>(
+  { auth: true, expose: true, method: "GET", path: "/v1/staff/statistics" },
+  getStatisticsHandler
 );

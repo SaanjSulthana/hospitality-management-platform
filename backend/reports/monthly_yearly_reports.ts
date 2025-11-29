@@ -2,6 +2,8 @@ import { api, APIError } from "encore.dev/api";
 import { getAuthData } from "~encore/auth";
 import { requireRole } from "../auth/middleware";
 import { reportsDB } from "./db";
+import { distributedCache } from "../cache/distributed_cache_manager";
+import { normalizeDateKey } from "../shared/date_utils";
 
 interface MonthlyYearlyReportRequest {
   propertyId?: number;
@@ -44,6 +46,17 @@ export const getMonthlyYearlyReport = api<MonthlyYearlyReportRequest, MonthlyYea
     requireRole("ADMIN", "MANAGER")(authData);
 
     const { propertyId, startDate, endDate, includePending = true } = req || {};
+
+    // Check cache first
+    const monthKey = normalizeDateKey(startDate || new Date().toISOString()).substring(0, 7);
+    const cacheKey = `monthly_report:${authData.orgId}:${propertyId || 'all'}:${monthKey}`;
+    const cached = await distributedCache.getSummary(authData.orgId, propertyId || 0, `month:${monthKey}`);
+    if (cached) {
+      console.log('[Reports] Cache hit for monthly report (IST):', { orgId: authData.orgId, propertyId, monthKey });
+      return cached;
+    }
+    
+    console.log('[Reports] Cache miss, fetching from DB:', { orgId: authData.orgId, propertyId, monthKey });
 
     console.log('=== DEBUG: Monthly/Yearly Report Request ===');
     console.log('Property ID:', propertyId);
@@ -191,7 +204,7 @@ export const getMonthlyYearlyReport = api<MonthlyYearlyReportRequest, MonthlyYea
         }
       }
 
-      return {
+      const result = {
         data: {
           totalRevenue,
           totalExpenses,
@@ -216,6 +229,11 @@ export const getMonthlyYearlyReport = api<MonthlyYearlyReportRequest, MonthlyYea
         propertyId,
         propertyName,
       };
+
+      // Cache the result before returning (using IST-normalized key)
+      await distributedCache.setSummary(authData.orgId, propertyId || 0, `month:${monthKey}`, result);
+      
+      return result;
     } catch (error) {
       console.error('Get monthly/yearly report error:', error);
       throw APIError.internal("Failed to get monthly/yearly report");
@@ -702,3 +720,83 @@ export const getQuarterlySummary = api<{
     throw APIError.internal("Failed to get quarterly summary");
   }
 });
+
+// ============================================================================
+// V1 API ENDPOINTS (Versioned paths for backward compatibility)
+// ============================================================================
+
+// V1: Get monthly/yearly profit & loss report
+export const getMonthlyYearlyReportV1 = api<MonthlyYearlyReportRequest, MonthlyYearlyReportResponse>(
+  { auth: true, expose: true, method: "GET", path: "/v1/reports/monthly-yearly-report" },
+  async (req) => {
+    const legacyHandler = (getMonthlyYearlyReport as any).handler || getMonthlyYearlyReport;
+    return legacyHandler(req);
+  }
+);
+
+// V1: Get monthly summary
+export const getMonthlySummaryV1 = api<{
+  year: string;
+  month: string;
+  propertyId?: number;
+}, {
+  monthName: string;
+  year: string;
+  totalRevenue: number;
+  totalExpenses: number;
+  netProfit: number;
+}>(
+  { auth: true, expose: true, method: "GET", path: "/v1/reports/monthly-summary" },
+  async (req) => {
+    const legacyHandler = (getMonthlySummary as any).handler || getMonthlySummary;
+    return legacyHandler(req);
+  }
+);
+
+// V1: Get yearly summary
+export const getYearlySummaryV1 = api<{
+  year: string;
+  propertyId?: number;
+}, {
+  year: string;
+  totalRevenue: number;
+  totalExpenses: number;
+  netProfit: number;
+  monthlyBreakdown: Array<{
+    month: string;
+    revenue: number;
+    expenses: number;
+    netProfit: number;
+  }>;
+}>(
+  { auth: true, expose: true, method: "GET", path: "/v1/reports/yearly-summary" },
+  async (req) => {
+    const legacyHandler = (getYearlySummary as any).handler || getYearlySummary;
+    return legacyHandler(req);
+  }
+);
+
+// V1: Get quarterly summary
+export const getQuarterlySummaryV1 = api<{
+  year: string;
+  quarter: number;
+  propertyId?: number;
+}, {
+  year: string;
+  quarter: number;
+  totalRevenue: number;
+  totalExpenses: number;
+  netProfit: number;
+  monthlyBreakdown: Array<{
+    month: string;
+    revenue: number;
+    expenses: number;
+    netProfit: number;
+  }>;
+}>(
+  { auth: true, expose: true, method: "GET", path: "/v1/reports/quarterly-summary" },
+  async (req) => {
+    const legacyHandler = (getQuarterlySummary as any).handler || getQuarterlySummary;
+    return legacyHandler(req);
+  }
+);

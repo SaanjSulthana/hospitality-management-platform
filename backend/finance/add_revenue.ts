@@ -5,6 +5,9 @@ import { requireRole } from "../auth/middleware";
 import { checkDailyApprovalInternal } from "./check_daily_approval";
 import { handleFinanceError } from "./error_handling";
 import { executeQueryWithStability } from "./connection_stability";
+import { financeEvents } from "./events";
+import { v4 as uuidv4 } from 'uuid';
+import { toISTDateString } from "../shared/date_utils";
 
 export interface AddRevenueRequest {
   propertyId: number;
@@ -33,34 +36,39 @@ export interface AddRevenueResponse {
   bankReference?: string;
   createdByUserId: number;
   createdAt: Date;
+  status: string;
+  approvedByUserId?: number | null;
+  approvedAt?: Date | null;
 }
 
-// Adds a new revenue record
-export const addRevenue = api<AddRevenueRequest, AddRevenueResponse>(
-  { auth: true, expose: true, method: "POST", path: "/finance/revenues" },
-  async (req) => {
-    console.log('=== ADD REVENUE FUNCTION CALLED ===');
-    console.log('Request data:', req);
-    
-    const authData = getAuthData();
-    console.log('Auth data:', { userId: authData?.userID, role: authData?.role, orgId: authData?.orgId });
-    
-    if (!authData) {
-      throw APIError.unauthenticated("Authentication required");
-    }
-    requireRole("ADMIN", "MANAGER")(authData);
+// Shared handler for adding revenue (used by both legacy and v1 endpoints)
+async function addRevenueHandler(req: AddRevenueRequest): Promise<AddRevenueResponse> {
+  console.log('=== ADD REVENUE FUNCTION CALLED ===');
+  console.log('Request data:', req);
+  
+  const authData = getAuthData();
+  console.log('Auth data:', { userId: authData?.userID, role: authData?.role, orgId: authData?.orgId });
+  
+  if (!authData) {
+    throw APIError.unauthenticated("Authentication required");
+  }
+  requireRole("ADMIN", "MANAGER")(authData);
 
-    // Check if manager can add transactions based on daily approval workflow
-    if (authData.role === "MANAGER") {
-      const approvalCheck = await checkDailyApprovalInternal(authData);
-      if (!approvalCheck.canAddTransactions) {
-        throw APIError.permissionDenied(
-          approvalCheck.message || "You cannot add transactions at this time. Please wait for admin approval."
-        );
-      }
+    // Check approval workflow for all users (ADMIN and MANAGER)
+    const approvalCheck = await checkDailyApprovalInternal(authData);
+    if (!approvalCheck.canAddTransactions) {
+      throw APIError.permissionDenied(
+        approvalCheck.message || "You cannot add transactions at this time. Please wait for admin approval."
+      );
     }
 
-    const { propertyId, source, amountCents, currency = "USD", description, receiptUrl, receiptFileId, occurredAt, paymentMode = "cash", bankReference } = req;
+    const { propertyId, source, amountCents, currency = "INR", description, receiptUrl, receiptFileId, occurredAt, paymentMode = "cash", bankReference } = req;
+    
+    // If we have a receiptFileId but no receiptUrl, construct the URL
+    let finalReceiptUrl = receiptUrl;
+    if (receiptFileId && !receiptUrl) {
+      finalReceiptUrl = `/uploads/file/${receiptFileId}`;
+    }
     
     // Use provided revenue date for occurred_at field, but current timestamp for created_at
     const occurredAtDate = occurredAt ? new Date(occurredAt) : new Date();
@@ -90,8 +98,8 @@ export const addRevenue = api<AddRevenueRequest, AddRevenueResponse>(
 
       // Check property access with org scoping using connection stability
       const propertyRow = await executeQueryWithStability(
-        () => financeDB.queryRow`
-          SELECT p.id, p.org_id
+          () => financeDB.queryRow`
+          SELECT p.id, p.org_id, p.name
           FROM properties p
           WHERE p.id = ${propertyId} AND p.org_id = ${authData.orgId}
         `,
@@ -127,7 +135,7 @@ export const addRevenue = api<AddRevenueRequest, AddRevenueResponse>(
         revenueRow = await executeQueryWithStability(
           () => financeDB.queryRow`
             INSERT INTO revenues (org_id, property_id, source, amount_cents, currency, description, receipt_url, occurred_at, created_by_user_id, status, payment_mode, bank_reference, receipt_file_id, created_at, approved_by_user_id, approved_at)
-            VALUES (${authData.orgId}, ${propertyId}, ${source}, ${amountCents}, ${currency}, ${description || null}, ${receiptUrl || null}, ${occurredAtDate}, ${parseInt(authData.userID)}, ${status}, ${paymentMode}, ${bankReference || null}, ${receiptFileId || null}, ${currentTimestamp}, ${approvedByUserId}, ${approvedAt})
+            VALUES (${authData.orgId}, ${propertyId}, ${source}, ${amountCents}, ${currency}, ${description || null}, ${finalReceiptUrl || null}, ${occurredAtDate}, ${parseInt(authData.userID)}, ${status}, ${paymentMode}, ${bankReference || null}, ${receiptFileId || null}, ${currentTimestamp}, ${approvedByUserId}, ${approvedAt})
             RETURNING id, property_id, source, amount_cents, currency, description, receipt_url, occurred_at, status, created_by_user_id, created_at, payment_mode, bank_reference, receipt_file_id, approved_by_user_id, approved_at
           `,
           'create_revenue_with_new_columns'
@@ -142,7 +150,7 @@ export const addRevenue = api<AddRevenueRequest, AddRevenueResponse>(
             revenueRow = await executeQueryWithStability(
               () => financeDB.queryRow`
                 INSERT INTO revenues (org_id, property_id, source, amount_cents, currency, description, receipt_url, occurred_at, created_by_user_id, created_at)
-                VALUES (${authData.orgId}, ${propertyId}, ${source}, ${amountCents}, ${currency}, ${description || null}, ${receiptUrl || null}, ${occurredAtDate}, ${parseInt(authData.userID)}, ${currentTimestamp})
+                VALUES (${authData.orgId}, ${propertyId}, ${source}, ${amountCents}, ${currency}, ${description || null}, ${finalReceiptUrl || null}, ${occurredAtDate}, ${parseInt(authData.userID)}, ${currentTimestamp})
                 RETURNING id, property_id, source, amount_cents, currency, description, receipt_url, occurred_at, created_by_user_id, created_at
               `,
               'create_revenue_fallback'
@@ -187,9 +195,40 @@ export const addRevenue = api<AddRevenueRequest, AddRevenueResponse>(
 
       console.log('Revenue creation completed successfully');
 
+      // Publish event for real-time updates BEFORE returning
+      try {
+        await financeEvents.publish({
+          eventId: uuidv4(),
+          eventVersion: 'v1',
+          eventType: 'revenue_added',
+          orgId: authData.orgId,
+          propertyId: revenueRow.property_id,
+          userId: parseInt(authData.userID),
+          timestamp: new Date(),
+          entityId: revenueRow.id,
+          entityType: 'revenue',
+          metadata: {
+            amountCents: revenueRow.amount_cents,
+            currency: revenueRow.currency,
+            transactionDate: toISTDateString(revenueRow.occurred_at || new Date()),
+            paymentMode: revenueRow.payment_mode,
+            source: revenueRow.source,
+            affectedReportDates: [toISTDateString(revenueRow.occurred_at || new Date())],
+            propertyName: propertyRow?.name || undefined,
+            newStatus: revenueRow.status || undefined
+          }
+        });
+        console.log(`[Finance] Published revenue_added event for revenue ID: ${revenueRow.id}`);
+      } catch (eventError) {
+        console.error('[Finance] Failed to publish revenue_added event:', eventError);
+        // Don't fail the transaction if event publishing fails
+      }
+
       return {
         id: revenueRow.id,
         propertyId: revenueRow.property_id,
+        // Include property name so frontend can render immediately without extra lookups
+        propertyName: propertyRow?.name || 'Unknown Property',
         source: revenueRow.source,
         amountCents: revenueRow.amount_cents,
         currency: revenueRow.currency,
@@ -200,7 +239,12 @@ export const addRevenue = api<AddRevenueRequest, AddRevenueResponse>(
         paymentMode: revenueRow.payment_mode,
         bankReference: revenueRow.bank_reference,
         createdByUserId: revenueRow.created_by_user_id,
+        // Best-effort creator name; frontend also has user context
+        createdByName: (authData as any)?.displayName || (authData as any)?.email || 'Unknown User',
         createdAt: revenueRow.created_at,
+        status: revenueRow.status || 'pending',
+        approvedByUserId: revenueRow.approved_by_user_id,
+        approvedAt: revenueRow.approved_at,
       };
     } catch (error) {
       // Use enhanced error handling for any remaining errors
@@ -212,5 +256,16 @@ export const addRevenue = api<AddRevenueRequest, AddRevenueResponse>(
       });
     }
   }
+
+// LEGACY: Adds a new revenue record (keep for backward compatibility)
+export const addRevenue = api<AddRevenueRequest, AddRevenueResponse>(
+  { auth: true, expose: true, method: "POST", path: "/finance/revenues" },
+  addRevenueHandler
+);
+
+// V1: Adds a new revenue record
+export const addRevenueV1 = api<AddRevenueRequest, AddRevenueResponse>(
+  { auth: true, expose: true, method: "POST", path: "/v1/finance/revenues" },
+  addRevenueHandler
 );
 

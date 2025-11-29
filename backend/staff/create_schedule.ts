@@ -2,6 +2,8 @@ import { api, APIError } from "encore.dev/api";
 import { getAuthData } from "~encore/auth";
 import { requireRole } from "../auth/middleware";
 import { staffDB } from "./db";
+import { staffEvents } from "./events";
+import { v4 as uuidv4 } from "uuid";
 
 export interface CreateScheduleRequest {
   staffId: number;
@@ -28,10 +30,8 @@ export interface CreateScheduleResponse {
   createdAt: Date;
 }
 
-// Creates a new staff schedule
-export const createSchedule = api<CreateScheduleRequest, CreateScheduleResponse>(
-  { auth: true, expose: true, method: "POST", path: "/staff/schedules" },
-  async (req) => {
+// Shared handler for creating schedule
+async function createScheduleHandler(req: CreateScheduleRequest): Promise<CreateScheduleResponse> {
     const authData = getAuthData();
     if (!authData) {
       throw APIError.unauthenticated("Authentication required");
@@ -114,6 +114,34 @@ export const createSchedule = api<CreateScheduleRequest, CreateScheduleResponse>
       throw new Error('Failed to create schedule');
     }
 
+    // Publish schedule_created event
+    try {
+      await staffEvents.publish({
+        eventId: uuidv4(),
+        eventVersion: 'v1',
+        eventType: 'schedule_created',
+        orgId: authData.orgId,
+        propertyId: scheduleRow.property_id ?? propertyId,
+        userId: parseInt(authData.userID),
+        timestamp: new Date(),
+        entityId: scheduleRow.id,
+        entityType: 'schedule',
+        metadata: {
+          staffId,
+          staffName: staffRow.staff_name,
+          propertyId,
+          propertyName: propertyRow.name,
+          shiftDate,
+          startTime,
+          endTime,
+          breakMinutes,
+          status: scheduleRow.status,
+        },
+      });
+    } catch (e) {
+      console.warn("[Staff Events] Failed to publish schedule_created", e);
+    }
+
     return {
       id: scheduleRow.id,
       staffId: scheduleRow.staff_id,
@@ -128,6 +156,17 @@ export const createSchedule = api<CreateScheduleRequest, CreateScheduleResponse>
       notes: scheduleRow.notes,
       createdAt: scheduleRow.created_at,
     };
-  }
+}
+
+// LEGACY: Creates schedule (keep for backward compatibility)
+export const createSchedule = api<CreateScheduleRequest, CreateScheduleResponse>(
+  { auth: true, expose: true, method: "POST", path: "/staff/schedules/create" },
+  createScheduleHandler
+);
+
+// V1: Creates schedule
+export const createScheduleV1 = api<CreateScheduleRequest, CreateScheduleResponse>(
+  { auth: true, expose: true, method: "POST", path: "/v1/staff/schedules/create" },
+  createScheduleHandler
 );
 

@@ -3,6 +3,7 @@ import { getAuthData } from "~encore/auth";
 import { financeDB } from "./db";
 import { requireRole } from "../auth/middleware";
 import { handleFinanceError, executeWithRetry, generateFallbackQuery, isSchemaError } from "./error_handling";
+import { v1Path } from "../shared/http";
 
 interface ListRevenuesRequest {
   propertyId?: number;
@@ -36,9 +37,7 @@ export interface ListRevenuesResponse {
 }
 
 // Lists revenues with filtering
-export const listRevenues = api<ListRevenuesRequest, ListRevenuesResponse>(
-  { auth: true, expose: true, method: "GET", path: "/finance/revenues" },
-  async (req) => {
+async function listRevenuesHandler(req: ListRevenuesRequest): Promise<ListRevenuesResponse> {
     const authData = getAuthData();
     if (!authData) {
       throw APIError.unauthenticated("Authentication required");
@@ -49,50 +48,23 @@ export const listRevenues = api<ListRevenuesRequest, ListRevenuesResponse>(
 
     console.log('List revenues request:', { propertyId, source, startDate, endDate, orgId: authData.orgId });
     
-    // Check if new columns exist and build query dynamically
-    let hasNewColumns = false;
-    try {
-      const columnCheck = await financeDB.queryRow`
-        SELECT column_name 
-        FROM information_schema.columns 
-        WHERE table_name = 'revenues' AND column_name IN ('status', 'payment_mode', 'bank_reference', 'receipt_file_id', 'approved_by_user_id', 'approved_at')
-      `;
-      hasNewColumns = !!columnCheck;
-    } catch (error) {
-      console.log('Column check failed, using fallback query:', error);
-    }
-
+    // Use full query with all columns (they are guaranteed to exist after migrations)
     let query = `
       SELECT
         r.id, r.property_id, p.name as property_name, r.source, r.amount_cents, r.currency,
-        r.description, r.receipt_url, r.occurred_at,
-        r.created_by_user_id, r.created_at,
-        u.display_name as created_by_name
+        r.description, r.receipt_url, r.receipt_file_id, r.occurred_at,
+        r.payment_mode, r.bank_reference,
+        COALESCE(r.status, 'pending') as status, r.created_by_user_id, r.created_at,
+        u.display_name as created_by_name,
+        r.approved_by_user_id,
+        approver.display_name as approved_by_name,
+        r.approved_at
       FROM revenues r
       JOIN properties p ON r.property_id = p.id AND p.org_id = $1
       JOIN users u ON r.created_by_user_id = u.id AND u.org_id = $1
+      LEFT JOIN users approver ON r.approved_by_user_id = approver.id AND approver.org_id = $1
       WHERE r.org_id = $1
     `;
-
-    // Add new columns if they exist
-    if (hasNewColumns) {
-      query = `
-        SELECT
-          r.id, r.property_id, p.name as property_name, r.source, r.amount_cents, r.currency,
-          r.description, r.receipt_url, r.receipt_file_id, r.occurred_at,
-          r.payment_mode, r.bank_reference,
-          COALESCE(r.status, 'pending') as status, r.created_by_user_id, r.created_at,
-          u.display_name as created_by_name,
-          r.approved_by_user_id,
-          approver.display_name as approved_by_name,
-          r.approved_at
-        FROM revenues r
-        JOIN properties p ON r.property_id = p.id AND p.org_id = $1
-        JOIN users u ON r.created_by_user_id = u.id AND u.org_id = $1
-        LEFT JOIN users approver ON r.approved_by_user_id = approver.id AND approver.org_id = $1
-        WHERE r.org_id = $1
-      `;
-    }
     const params: any[] = [authData.orgId];
     let paramIndex = 2;
 
@@ -134,7 +106,7 @@ export const listRevenues = api<ListRevenuesRequest, ListRevenuesResponse>(
         paramIndex++;
       }
 
-      query += ` ORDER BY r.occurred_at DESC, r.created_at DESC`;
+      query += ` ORDER BY r.created_at DESC, r.occurred_at DESC`;
 
       console.log('Executing query:', query);
       console.log('Query params:', params);
@@ -162,16 +134,16 @@ export const listRevenues = api<ListRevenuesRequest, ListRevenuesResponse>(
           currency: revenue.currency,
           description: revenue.description,
           receiptUrl: revenue.receipt_url,
-          receiptFileId: hasNewColumns ? revenue.receipt_file_id : null,
+          receiptFileId: revenue.receipt_file_id,
           occurredAt: revenue.occurred_at,
-          paymentMode: hasNewColumns ? (revenue.payment_mode || 'cash') : 'cash',
-          bankReference: hasNewColumns ? revenue.bank_reference : null,
-          status: hasNewColumns ? (revenue.status || 'pending') : 'pending',
+          paymentMode: revenue.payment_mode || 'cash',
+          bankReference: revenue.bank_reference,
+          status: revenue.status || 'pending',
           createdByUserId: revenue.created_by_user_id,
           createdByName: revenue.created_by_name,
-          approvedByUserId: hasNewColumns ? revenue.approved_by_user_id : null,
-          approvedByName: hasNewColumns ? revenue.approved_by_name : null,
-          approvedAt: hasNewColumns ? revenue.approved_at : null,
+          approvedByUserId: revenue.approved_by_user_id,
+          approvedByName: revenue.approved_by_name,
+          approvedAt: revenue.approved_at,
           createdAt: revenue.created_at,
         })),
         totalAmount,
@@ -238,5 +210,16 @@ export const listRevenues = api<ListRevenuesRequest, ListRevenuesResponse>(
         table: 'revenues'
       });
     }
-  }
+}
+
+// Legacy path (kept during migration window)
+export const listRevenues = api<ListRevenuesRequest, ListRevenuesResponse>(
+  { auth: true, expose: true, method: "GET", path: "/finance/revenues" },
+  listRevenuesHandler
+);
+
+// Versioned path
+export const listRevenuesV1 = api<ListRevenuesRequest, ListRevenuesResponse>(
+  { auth: true, expose: true, method: "GET", path: "/v1/finance/revenues" },
+  listRevenuesHandler
 );

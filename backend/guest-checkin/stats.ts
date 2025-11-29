@@ -4,9 +4,7 @@ import { guestCheckinDB } from "./db";
 import { CheckInStatsRequest, CheckInStatsResponse } from "./types";
 import log from "encore.dev/log";
 
-export const getCheckInStats = api(
-  { expose: true, method: "GET", path: "/guest-checkin/stats", auth: true },
-  async (req: CheckInStatsRequest): Promise<CheckInStatsResponse> => {
+async function getCheckInStatsHandler(req: CheckInStatsRequest): Promise<CheckInStatsResponse> {
     const authData = getAuthData()!;
 
     log.info("Getting check-in statistics", {
@@ -80,4 +78,15 @@ export const getCheckInStats = api(
       throw APIError.internal("Failed to get statistics");
     }
   }
+
+// Legacy endpoint
+export const getCheckInStats = api<CheckInStatsRequest, CheckInStatsResponse>(
+  { expose: true, method: "GET", path: "/guest-checkin/stats", auth: true },
+  getCheckInStatsHandler
+);
+
+// V1 endpoint
+export const getCheckInStatsV1 = api<CheckInStatsRequest, CheckInStatsResponse>(
+  { expose: true, method: "GET", path: "/v1/guest-checkin/stats", auth: true },
+  getCheckInStatsHandler
 );

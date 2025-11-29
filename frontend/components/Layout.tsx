@@ -10,6 +10,9 @@ import { LogoutProgress } from '@/components/ui/logout-progress';
 import { useWelcomePopup } from '@/hooks/use-welcome-popup';
 import { WelcomePopup } from '@/components/ui/welcome-popup';
 import { API_CONFIG } from '../src/config/api';
+import { GlobalAuthBanner } from './GlobalAuthBanner';
+import RealtimeProviderV2Fixed from '../providers/RealtimeProviderV2_Fixed';
+import RealtimeHealthBadge from './RealtimeHealthBadge';
 import { 
   LayoutDashboard, 
   Building2, 
@@ -51,13 +54,16 @@ export default function Layout({ children }: LayoutProps) {
   const [currentTime, setCurrentTime] = useState(new Date());
   const [isOnline, setIsOnline] = useState(navigator.onLine);
   const [connectionQuality, setConnectionQuality] = useState<'excellent' | 'good' | 'poor' | 'offline'>('good');
-  const { user, logout, showLogoutProgress, setShowLogoutProgress } = useAuth();
+  const { user, logout, showLogoutProgress, setShowLogoutProgress, authError } = useAuth();
   const { theme } = useTheme();
   const { title, description } = usePageTitle();
   const { toast } = useToast();
   const location = useLocation();
   const navigate = useNavigate();
   const { showWelcomePopup, closeWelcomePopup, resetWelcomePopup, dashboardData, userData, onboardingSteps, markStepCompleted, isLoading: welcomeLoading } = useWelcomePopup();
+
+  // Banner state: offline vs expired
+  const bannerMode: 'offline' | 'expired' | null = !isOnline ? 'offline' : (authError === 'expired' ? 'expired' : null);
 
   // Enhanced prop validation and logging (development only)
   useEffect(() => {
@@ -145,6 +151,27 @@ export default function Layout({ children }: LayoutProps) {
       clearInterval(connectionTimer);
     };
   }, []);
+
+  // Global auth error banner
+  const AuthBanner = () => {
+    if (authError !== 'expired') return null;
+    return (
+      <div className="fixed top-0 inset-x-0 z-50 bg-red-600 text-white px-4 py-2 text-sm flex items-center justify-between shadow">
+        <div className="flex items-center gap-2">
+          <span className="font-semibold">Session expired</span>
+          <span className="opacity-90">Please log in again to continue.</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <Button size="sm" variant="outline" className="bg-white text-red-700 border-red-200 hover:bg-red-50" onClick={() => window.location.href = '/login'}>
+            Log in
+          </Button>
+          <Button size="sm" variant="secondary" onClick={() => window.location.reload()}>
+            Reload
+          </Button>
+        </div>
+      </div>
+    );
+  };
 
   // Listen for theme changes to force re-render
   useEffect(() => {
@@ -513,6 +540,9 @@ export default function Layout({ children }: LayoutProps) {
 
   return (
     <div className="min-h-screen bg-gray-50">
+      {/* WebSocket-based realtime is always enabled via RealtimeProviderV2Fixed */}
+      <RealtimeProviderV2Fixed />
+      <AuthBanner />
       {/* Desktop sidebar */}
       <div className="hidden lg:fixed lg:inset-y-0 lg:flex lg:w-60 lg:flex-col">
         <div 
@@ -588,12 +618,21 @@ export default function Layout({ children }: LayoutProps) {
               )}
             </div>
 
+            {/* Center - Mobile Page Title (no subtitle) */}
+            {title && (
+              <div className="lg:hidden absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 px-4 z-20">
+                <h1 className="text-base sm:text-lg font-semibold truncate" style={{ color: theme.primaryColor }}>
+                  {title}
+                </h1>
+              </div>
+            )}
+
             {/* Right side - Status and Actions */}
             <div className="flex items-center gap-2 sm:gap-4 min-w-0 flex-shrink-0 z-10 h-full">
               {/* Live Date and Time */}
-              <div className="hidden sm:flex items-center gap-3 text-xs text-gray-500 h-full">
+              <div className="hidden lg:flex items-center gap-3 text-xs text-gray-500 h-full">
                 <div className="flex items-center gap-2">
-                  <span>{currentTime.toLocaleDateString()}</span>
+                  <span>{new Intl.DateTimeFormat('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric' }).format(currentTime)}</span>
                   <div className="w-1.5 h-1.5 bg-blue-500 rounded-full"></div>
                   <span>{currentTime.toLocaleTimeString()}</span>
                 </div>
@@ -601,6 +640,7 @@ export default function Layout({ children }: LayoutProps) {
 
               {/* User Info */}
               <div className="flex items-center space-x-3 h-full">
+                <RealtimeHealthBadge />
                 <div className="hidden sm:flex items-center space-x-2 px-3 py-1 rounded-full bg-gray-100 h-8">
                   {React.createElement(getRoleIcon(user?.role || ''), { 
                     className: "h-4 w-4",
@@ -621,9 +661,11 @@ export default function Layout({ children }: LayoutProps) {
                     backgroundColor: isLoggingOut || showLogoutProgress ? theme.primaryColor + '20' : undefined,
                     color: isLoggingOut || showLogoutProgress ? theme.primaryColor : undefined
                   }}
+                  aria-label="Sign out"
+                  title="Sign out"
                 >
-                  <LogOut className="mr-2 h-4 w-4" />
-                  Sign out
+                  <LogOut className="h-5 w-5" />
+                  <span className="hidden sm:inline ml-2">Sign out</span>
                 </Button>
 
 
@@ -633,31 +675,20 @@ export default function Layout({ children }: LayoutProps) {
           </div>
         </div>
 
-        {/* Mobile Page Title - Only show on smaller screens */}
-        {title && (
-          <div 
-            className="lg:hidden bg-gradient-to-r from-gray-50 to-white border-b border-gray-200 px-4 py-4 shadow-sm"
-            style={{ 
-              boxShadow: `0 1px 3px 0 ${theme.primaryColor}20, 0 1px 2px 0 ${theme.primaryColor}10`
-            }}
-          >
-            <div className="text-center">
-              <h1 className="text-2xl font-bold truncate mb-1 drop-shadow-sm" style={{ color: theme.primaryColor }}>
-                {title}
-              </h1>
-              {description && (
-                <p className="text-xs text-gray-600 truncate font-medium">
-                  {description}
-                </p>
-              )}
-            </div>
-          </div>
-        )}
+        
 
         {/* Page content */}
         <main className="flex-1">
+          {bannerMode && (
+            <GlobalAuthBanner
+              mode={bannerMode}
+              onLogin={() => navigate('/login')}
+              onReload={() => window.location.reload()}
+              onRetry={() => window.location.reload()}
+            />
+          )}
           <div className="py-6">
-            <div className="w-full px-0 sm:px-4 lg:max-w-7xl lg:mx-auto lg:px-8">
+            <div className={`w-full px-0 sm:px-4 lg:max-w-7xl lg:mx-auto lg:px-8 ${bannerMode ? 'pointer-events-none select-none opacity-95' : ''}`}>
               {children}
             </div>
           </div>
@@ -678,6 +709,7 @@ export default function Layout({ children }: LayoutProps) {
         onboardingSteps={onboardingSteps}
         markStepCompleted={markStepCompleted}
       />
+      {/* Realtime debug panel removed */}
     </div>
   );
 }

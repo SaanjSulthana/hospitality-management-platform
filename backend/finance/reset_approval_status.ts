@@ -12,15 +12,13 @@ export interface ResetApprovalStatusResponse {
   };
 }
 
-// Reset all approved transactions to pending status (for testing purposes)
-export const resetApprovalStatus = api<{}, ResetApprovalStatusResponse>(
-  { auth: true, expose: true, method: "POST", path: "/finance/reset-approval-status" },
-  async () => {
-    const authData = getAuthData();
-    if (!authData) {
-      throw APIError.unauthenticated("Authentication required");
-    }
-    requireRole("ADMIN")(authData);
+// Shared handler for resetting approval status (used by both legacy and v1 endpoints)
+async function resetApprovalStatusHandler(req: {}): Promise<ResetApprovalStatusResponse> {
+  const authData = getAuthData();
+  if (!authData) {
+    throw APIError.unauthenticated("Authentication required");
+  }
+  requireRole("ADMIN")(authData);
 
     try {
       // Reset all approved revenues to pending
@@ -50,5 +48,16 @@ export const resetApprovalStatus = api<{}, ResetApprovalStatusResponse>(
       throw APIError.internal(`Failed to reset approval status: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }
+
+// LEGACY: Reset all approved transactions to pending status (keep for backward compatibility)
+export const resetApprovalStatus = api<{}, ResetApprovalStatusResponse>(
+  { auth: true, expose: true, method: "POST", path: "/finance/reset-approval-status" },
+  resetApprovalStatusHandler
+);
+
+// V1: Reset all approved transactions to pending status
+export const resetApprovalStatusV1 = api<{}, ResetApprovalStatusResponse>(
+  { auth: true, expose: true, method: "POST", path: "/v1/finance/reset-approval-status" },
+  resetApprovalStatusHandler
 );
 

@@ -1,14 +1,11 @@
 module.exports = {
-  preset: 'ts-jest',
+  preset: 'ts-jest/presets/default-esm',
   testEnvironment: 'node',
   roots: ['<rootDir>'],
   testMatch: [
     '<rootDir>/__tests__/**/*.(test|spec).(ts|js)',
     '<rootDir>/**/*.(test|spec).(ts|js)',
   ],
-  transform: {
-    '^.+\\.(ts|tsx)$': 'ts-jest',
-  },
   moduleFileExtensions: ['ts', 'tsx', 'js', 'jsx', 'json', 'node'],
   collectCoverageFrom: [
     '**/*.(ts|js)',
@@ -25,15 +22,20 @@ module.exports = {
   moduleNameMapper: {
     '^~encore/(.*)$': '<rootDir>/encore.gen/$1',
   },
+  extensionsToTreatAsEsm: ['.ts'],
+  globals: {
+    'ts-jest': {
+      useESM: true,
+      tsconfig: 'tsconfig.json',
+    },
+  },
   transform: {
     '^.+\\.(ts|tsx)$': ['ts-jest', {
+      useESM: true,
       tsconfig: 'tsconfig.json',
     }],
   },
-  // Add ESM support
-  extensionsToTreatAsEsm: ['.ts'],
-  // Fix for jest.mock in ESM
   transformIgnorePatterns: [
-    'node_modules/(?!(.*\\.mjs$))'
+    'node_modules/(?!(encore\\.dev)/)',
   ],
 };

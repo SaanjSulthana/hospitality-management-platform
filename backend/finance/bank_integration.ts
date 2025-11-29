@@ -45,18 +45,15 @@ export interface BankSyncResponse {
   lastSyncAt: Date;
 }
 
-// Placeholder for future bank API integration
-// This will be implemented when integrating with specific bank APIs like Plaid, Yodlee, etc.
-export const syncBankTransactions = api<BankSyncRequest, BankSyncResponse>(
-  { auth: true, expose: true, method: "POST", path: "/finance/sync-bank-transactions" },
-  async (req) => {
-    const authData = getAuthData();
-    if (!authData) {
-      throw APIError.unauthenticated("Authentication required");
-    }
-    requireRole("ADMIN")(authData);
+// Shared handler for syncing bank transactions
+async function syncBankTransactionsHandler(req: BankSyncRequest): Promise<BankSyncResponse> {
+  const authData = getAuthData();
+  if (!authData) {
+    throw APIError.unauthenticated("Authentication required");
+  }
+  requireRole("ADMIN")(authData);
 
-    // TODO: Implement actual bank API integration
+  // TODO: Implement actual bank API integration
     // This is a placeholder structure for future implementation
 
     throw APIError.unimplemented("Bank API integration not yet implemented. This endpoint will be available in a future update.");
@@ -121,24 +118,33 @@ export const syncBankTransactions = api<BankSyncRequest, BankSyncResponse>(
       throw new Error('Failed to sync bank transactions');
     }
     */
-  }
+}
+
+// LEGACY: Placeholder for future bank API integration (keep for backward compatibility)
+export const syncBankTransactions = api<BankSyncRequest, BankSyncResponse>(
+  { auth: true, expose: true, method: "POST", path: "/finance/sync-bank-transactions" },
+  syncBankTransactionsHandler
+);
+
+// V1: Sync bank transactions
+export const syncBankTransactionsV1 = api<BankSyncRequest, BankSyncResponse>(
+  { auth: true, expose: true, method: "POST", path: "/v1/finance/bank-sync" },
+  syncBankTransactionsHandler
 );
 
 export interface GetBankAccountsResponse {
   accounts: BankAccount[];
 }
 
-// Placeholder for retrieving connected bank accounts
-export const getBankAccounts = api<{}, GetBankAccountsResponse>(
-  { auth: true, expose: true, method: "GET", path: "/finance/bank-accounts" },
-  async (req) => {
-    const authData = getAuthData();
-    if (!authData) {
-      throw APIError.unauthenticated("Authentication required");
-    }
-    requireRole("ADMIN", "MANAGER")(authData);
+// Shared handler for getting bank accounts
+async function getBankAccountsHandler(req: {}): Promise<GetBankAccountsResponse> {
+  const authData = getAuthData();
+  if (!authData) {
+    throw APIError.unauthenticated("Authentication required");
+  }
+  requireRole("ADMIN", "MANAGER")(authData);
 
-    // TODO: Implement bank account retrieval
+  // TODO: Implement bank account retrieval
     throw APIError.unimplemented("Bank account integration not yet implemented.");
 
     /*
@@ -171,7 +177,18 @@ export const getBankAccounts = api<{}, GetBankAccountsResponse>(
       throw new Error('Failed to fetch bank accounts');
     }
     */
-  }
+}
+
+// LEGACY: Placeholder for retrieving connected bank accounts (keep for backward compatibility)
+export const getBankAccounts = api<{}, GetBankAccountsResponse>(
+  { auth: true, expose: true, method: "GET", path: "/finance/bank-accounts" },
+  getBankAccountsHandler
+);
+
+// V1: Get bank accounts
+export const getBankAccountsV1 = api<{}, GetBankAccountsResponse>(
+  { auth: true, expose: true, method: "GET", path: "/v1/finance/bank-accounts" },
+  getBankAccountsHandler
 );
 
 export interface ReconcileTransactionRequest {
@@ -187,17 +204,15 @@ export interface ReconcileTransactionResponse {
   message: string;
 }
 
-// Placeholder for transaction reconciliation
-export const reconcileTransaction = api<ReconcileTransactionRequest, ReconcileTransactionResponse>(
-  { auth: true, expose: true, method: "POST", path: "/finance/reconcile-transaction" },
-  async (req) => {
-    const authData = getAuthData();
-    if (!authData) {
-      throw APIError.unauthenticated("Authentication required");
-    }
-    requireRole("ADMIN", "MANAGER")(authData);
+// Shared handler for reconciling transactions
+async function reconcileTransactionHandler(req: ReconcileTransactionRequest): Promise<ReconcileTransactionResponse> {
+  const authData = getAuthData();
+  if (!authData) {
+    throw APIError.unauthenticated("Authentication required");
+  }
+  requireRole("ADMIN", "MANAGER")(authData);
 
-    // TODO: Implement transaction reconciliation
+  // TODO: Implement transaction reconciliation
     throw APIError.unimplemented("Transaction reconciliation not yet implemented.");
 
     /*
@@ -241,7 +256,18 @@ export const reconcileTransaction = api<ReconcileTransactionRequest, ReconcileTr
       throw new Error('Failed to reconcile transaction');
     }
     */
-  }
+}
+
+// LEGACY: Placeholder for transaction reconciliation (keep for backward compatibility)
+export const reconcileTransaction = api<ReconcileTransactionRequest, ReconcileTransactionResponse>(
+  { auth: true, expose: true, method: "POST", path: "/finance/reconcile-transaction" },
+  reconcileTransactionHandler
+);
+
+// V1: Reconcile transaction
+export const reconcileTransactionV1 = api<ReconcileTransactionRequest, ReconcileTransactionResponse>(
+  { auth: true, expose: true, method: "POST", path: "/v1/finance/reconcile" },
+  reconcileTransactionHandler
 );
 
 /*

@@ -4,24 +4,26 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogPortal } from '../ui/dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui/tabs';
 import { Button } from '../ui/button';
-import { Badge } from '../ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/card';
+import { Badge } from '../ui/badge';
+import { useQuery } from '@tanstack/react-query';
 import { 
   ZoomIn, 
   ZoomOut, 
   RotateCw, 
   Download, 
-  X, 
   FileText,
-  CheckCircle,
-  AlertCircle,
   Maximize2,
-  Minimize2
+  Minimize2,
+  X,
+  CheckCircle,
+  Calendar,
+  Shield,
+  Eye
 } from 'lucide-react';
-import { ConfidenceBadge } from './ConfidenceBadge';
 import { API_CONFIG } from '../../src/config/api';
 
 interface ExtractedField {
@@ -63,6 +65,7 @@ export function DocumentViewer({
   const [zoom, setZoom] = useState(100);
   const [rotation, setRotation] = useState(0);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [imageError, setImageError] = useState<Record<number, boolean>>({});
 
   useEffect(() => {
     if (documents.length > 0 && !selectedDocId) {
@@ -70,7 +73,38 @@ export function DocumentViewer({
     }
   }, [documents, selectedDocId]);
 
-  const selectedDoc = documents.find(d => d.id === selectedDocId);
+  // Suspend realtime while the heavy documents modal is open
+  useEffect(() => {
+    if (open) {
+      try { window.dispatchEvent(new CustomEvent('realtime:suspend')); } catch {}
+      return () => {
+        try { window.dispatchEvent(new CustomEvent('realtime:resume')); } catch {}
+      };
+    }
+    return;
+  }, [open]);
+
+  // Fetch document data for the selected document
+  const { data: documentData, isLoading: documentLoading } = useQuery({
+    queryKey: ['document-data', selectedDocId],
+    queryFn: async () => {
+      if (!selectedDocId) return null;
+      
+      const response = await fetch(`${API_CONFIG.BASE_URL}/guest-checkin/documents/${selectedDocId}/view`, {
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('accessToken')}`,
+        },
+      });
+      
+      if (!response.ok) {
+        throw new Error(`Failed to fetch document: ${response.statusText}`);
+      }
+      
+      return response.json() as Promise<{ filename: string; mimeType: string; fileData: string }>;
+    },
+    enabled: !!selectedDocId && open,
+    staleTime: 5 * 60 * 1000, // Cache for 5 minutes
+  });
 
   const handleZoomIn = () => setZoom(prev => Math.min(prev + 25, 200));
   const handleZoomOut = () => setZoom(prev => Math.max(prev - 25, 50));
@@ -90,12 +124,26 @@ export function DocumentViewer({
 
       if (!response.ok) throw new Error('Download failed');
 
-      const data = await response.json();
-      // Trigger download
-      const link = document.createElement('a');
-      link.href = data.url || data.filePath;
-      link.download = data.filename;
-      link.click();
+      const data = await response.json() as { filename: string; mimeType: string; fileData: string };
+      
+      // Convert base64 to blob and trigger download
+      const byteCharacters = atob(data.fileData);
+      const byteNumbers = new Array(byteCharacters.length);
+      for (let i = 0; i < byteCharacters.length; i++) {
+        byteNumbers[i] = byteCharacters.charCodeAt(i);
+      }
+      const byteArray = new Uint8Array(byteNumbers);
+      const blob = new Blob([byteArray], { type: data.mimeType });
+      
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.style.display = 'none';
+      a.href = url;
+      a.download = data.filename;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
     } catch (error) {
       console.error('Download error:', error);
     }
@@ -117,224 +165,228 @@ export function DocumentViewer({
     return field.replace(/([A-Z])/g, ' $1').replace(/^./, str => str.toUpperCase());
   };
 
+  const selectedDoc = documents.find(doc => doc.id === selectedDocId);
+
   return (
     <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="max-w-6xl max-h-[95vh] overflow-hidden flex flex-col">
-        <DialogHeader className="pb-4 border-b">
-          <div className="flex items-center justify-between">
-            <div>
-              <DialogTitle className="text-xl font-bold text-gray-900">Guest Documents</DialogTitle>
-              <p className="text-sm text-gray-600 mt-1">{guestName}</p>
-            </div>
-            <Button variant="ghost" size="sm" onClick={onClose}>
-              <X className="h-5 w-5" />
-            </Button>
-          </div>
-        </DialogHeader>
-
-        {documents.length === 0 ? (
-          <div className="flex items-center justify-center p-12">
-            <div className="text-center">
-              <FileText className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-              <p className="text-lg font-medium text-gray-900">No documents uploaded</p>
-              <p className="text-sm text-gray-600 mt-2">Upload documents during check-in to view them here</p>
-            </div>
-          </div>
-        ) : (
-          <Tabs value={selectedDocId?.toString()} onValueChange={(val) => setSelectedDocId(parseInt(val))} className="flex-1 flex flex-col overflow-hidden">
-            {/* Document Tabs */}
-            <div className="border-b border-gray-200">
-              <TabsList className="w-full justify-start overflow-x-auto bg-gray-50 rounded-none h-auto p-2">
-                {documents.map((doc) => (
-                  <TabsTrigger
-                    key={doc.id}
-                    value={doc.id.toString()}
-                    className="text-xs px-4 py-2 data-[state=active]:bg-white data-[state=active]:shadow-sm"
-                  >
-                    <div className="flex items-center gap-2">
-                      {formatDocumentType(doc.documentType)}
-                      {doc.isVerified && (
-                        <CheckCircle className="h-3 w-3 text-green-600" />
-                      )}
-                    </div>
-                  </TabsTrigger>
-                ))}
-              </TabsList>
-            </div>
-
-            {/* Document Content */}
-            {documents.map((doc) => (
-              <TabsContent 
-                key={doc.id}
-                value={doc.id.toString()}
-                className="flex-1 overflow-y-auto mt-0 pt-4"
-              >
-                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                  {/* Image Viewer */}
-                  <div className="lg:col-span-2">
-                    <Card className="border-l-4 border-l-blue-500">
-                      <CardHeader className="pb-4">
-                        <div className="flex items-center justify-between">
-                          <CardTitle className="text-lg">{formatDocumentType(doc.documentType)}</CardTitle>
-                          
-                          {/* View Controls */}
-                          <div className="flex gap-2">
-                            <Button variant="outline" size="sm" onClick={handleZoomOut}>
-                              <ZoomOut className="h-4 w-4" />
-                            </Button>
-                            <Button variant="outline" size="sm" onClick={handleZoomIn}>
-                              <ZoomIn className="h-4 w-4" />
-                            </Button>
-                            <Button variant="outline" size="sm" onClick={handleRotate}>
-                              <RotateCw className="h-4 w-4" />
-                            </Button>
-                            <Button variant="outline" size="sm" onClick={handleResetView}>
-                              Reset
-                            </Button>
-                            <Button variant="outline" size="sm" onClick={() => setIsFullscreen(!isFullscreen)}>
-                              {isFullscreen ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
-                            </Button>
-                            <Button 
-                              className="bg-blue-600 hover:bg-blue-700" 
-                              size="sm"
-                              onClick={() => handleDownload(doc.id)}
-                            >
-                              <Download className="h-4 w-4 mr-2" />
-                              Download
-                            </Button>
-                          </div>
-                        </div>
-                      </CardHeader>
-                      <CardContent>
-                        <div className={`bg-gray-100 rounded-lg overflow-hidden flex items-center justify-center ${isFullscreen ? 'h-[70vh]' : 'h-96'}`}>
-                          <div
-                            style={{
-                              transform: `scale(${zoom / 100}) rotate(${rotation}deg)`,
-                              transition: 'transform 0.3s ease',
-                            }}
-                          >
-                            {/* Placeholder for document image */}
-                            <div className="bg-white p-8 shadow-lg rounded-lg text-center">
-                              <FileText className="h-32 w-32 text-gray-300 mx-auto mb-4" />
-                              <p className="text-sm text-gray-500">Document: {doc.filename}</p>
-                              <p className="text-xs text-gray-400 mt-2">Image display coming soon</p>
-                            </div>
-                          </div>
-                        </div>
-
-                        <div className="mt-4 flex items-center justify-between text-sm text-gray-600">
-                          <span>Zoom: {zoom}%</span>
-                          <span>Rotation: {rotation}°</span>
-                        </div>
-                      </CardContent>
-                    </Card>
-                  </div>
-
-                  {/* Extracted Information */}
-                  <div className="space-y-4">
-                    {/* Extraction Status */}
-                    <Card className="border-l-4 border-l-green-500 shadow-sm">
-                      <CardHeader className="pb-4">
-                        <CardTitle className="text-md flex items-center gap-2">
-                          <FileText className="h-4 w-4 text-green-600" />
-                          Extraction Status
-                        </CardTitle>
-                      </CardHeader>
-                      <CardContent className="space-y-3">
-                        <div className="flex items-center justify-between">
-                          <span className="text-sm text-gray-700">Status:</span>
-                          <Badge className={
-                            doc.extractionStatus === 'completed' ? 'bg-green-100 text-green-800' :
-                            doc.extractionStatus === 'processing' ? 'bg-blue-100 text-blue-800' :
-                            doc.extractionStatus === 'failed' ? 'bg-red-100 text-red-800' :
-                            'bg-gray-100 text-gray-800'
-                          }>
-                            {doc.extractionStatus}
-                          </Badge>
-                        </div>
-
-                        {doc.overallConfidence !== null && (
-                          <div className="flex items-center justify-between">
-                            <span className="text-sm text-gray-700">Confidence:</span>
-                            <ConfidenceBadge score={doc.overallConfidence} size="md" />
-                          </div>
-                        )}
-
-                        {doc.isVerified && (
-                          <div className="p-3 bg-green-50 rounded-lg border border-green-200">
-                            <div className="flex items-center gap-2 text-green-700">
-                              <CheckCircle className="h-4 w-4" />
-                              <span className="text-sm font-medium">Verified by Staff</span>
-                            </div>
-                          </div>
-                        )}
-                      </CardContent>
-                    </Card>
-
-                    {/* Extracted Fields */}
-                    {doc.extractedData && Object.keys(doc.extractedData).length > 0 && (
-                      <Card className="border-l-4 border-l-purple-500 shadow-sm">
-                        <CardHeader className="pb-4">
-                          <CardTitle className="text-md">Extracted Information</CardTitle>
-                        </CardHeader>
-                        <CardContent>
-                          <div className="space-y-3">
-                            {Object.entries(doc.extractedData).map(([field, data]) => (
-                              <div key={field} className="p-3 bg-gray-50 rounded-lg">
-                                <div className="flex items-start justify-between mb-1">
-                                  <span className="text-xs font-medium text-gray-700">
-                                    {formatFieldName(field)}
-                                  </span>
-                                  {data.needsVerification && (
-                                    <AlertCircle className="h-3 w-3 text-orange-600" />
-                                  )}
-                                </div>
-                                <p className="text-sm text-gray-900 font-medium break-words">
-                                  {data.value}
-                                </p>
-                                <div className="mt-2">
-                                  <ConfidenceBadge score={data.confidence} showIcon={false} size="sm" />
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-                        </CardContent>
-                      </Card>
-                    )}
-
-                    {/* Document Metadata */}
-                    <Card className="border-l-4 border-l-gray-500 shadow-sm">
-                      <CardHeader className="pb-4">
-                        <CardTitle className="text-md">Document Details</CardTitle>
-                      </CardHeader>
-                      <CardContent className="space-y-2 text-sm">
-                        <div className="flex justify-between">
-                          <span className="text-gray-600">File Size:</span>
-                          <span className="font-medium text-gray-900">
-                            {(doc.fileSize / 1024).toFixed(1)} KB
-                          </span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span className="text-gray-600">Uploaded:</span>
-                          <span className="font-medium text-gray-900">
-                            {new Date(doc.createdAt).toLocaleDateString()}
-                          </span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span className="text-gray-600">Original Name:</span>
-                          <span className="font-medium text-gray-900 truncate ml-2">
-                            {doc.originalFilename}
-                          </span>
-                        </div>
-                      </CardContent>
-                    </Card>
+      <DialogPortal>
+        <DialogContent 
+          className="max-w-6xl max-h-[98vh] w-[95vw] border-0 shadow-2xl bg-gradient-to-br from-slate-50 via-white to-green-50 flex flex-col rounded-3xl overflow-hidden"
+          showCloseButton={false}
+        >
+          {/* Enhanced Sticky Header */}
+          <div className="sticky top-0 z-[60] bg-gradient-to-r from-white via-green-50 to-emerald-50 border-b border-green-200/50 shadow-xl backdrop-blur-sm">
+            <div className="flex items-center justify-between p-4 sm:p-6">
+              <div className="flex items-center gap-3 sm:gap-4 flex-1 min-w-0">
+                <div className="p-3 rounded-2xl shadow-lg bg-gradient-to-br from-green-100 to-emerald-200">
+                  <div className="text-2xl">
+                    📄
                   </div>
                 </div>
-              </TabsContent>
-            ))}
-          </Tabs>
-        )}
-      </DialogContent>
+                <div className="flex-1 min-w-0">
+                  <DialogTitle className="text-xl sm:text-2xl lg:text-3xl font-bold bg-gradient-to-r from-green-600 via-emerald-600 to-teal-600 bg-clip-text text-transparent truncate">
+                    Guest Documents
+                  </DialogTitle>
+                  <div className="flex items-center gap-2 mt-1">
+                    <Badge className="bg-green-100 text-green-800 text-xs sm:text-sm font-bold px-3 py-1 shadow-md rounded-full">
+                      <Shield className="h-3 w-3 mr-1" />
+                      {guestName}
+                    </Badge>
+                    <div className="text-xs sm:text-sm text-gray-600 bg-white/50 px-2 py-1 rounded-full">
+                      {documents.length} {documents.length === 1 ? 'Document' : 'Documents'}
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <Button 
+                variant="ghost" 
+                size="sm" 
+                onClick={onClose}
+                className="h-10 w-10 sm:h-12 sm:w-12 rounded-full bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 text-white shadow-xl hover:shadow-2xl transition-all duration-300 hover:scale-110 flex-shrink-0"
+              >
+                <X className="h-5 w-5 sm:h-6 sm:w-6" />
+              </Button>
+            </div>
+          </div>
+
+          {documents.length === 0 ? (
+            <div className="flex items-center justify-center h-64 border-2 border-dashed border-gray-400 rounded-xl bg-gradient-to-br from-gray-100 to-gray-200 m-6">
+              <div className="text-center">
+                <div className="p-4 bg-gray-200 rounded-full inline-block mb-4">
+                  <FileText className="h-12 w-12 text-gray-500" />
+                </div>
+                <p className="text-gray-700 font-semibold text-lg">📝 No Documents Available</p>
+                <p className="text-gray-600 text-sm">Upload documents during check-in to view them here</p>
+              </div>
+            </div>
+          ) : (
+            <div className="flex-1 overflow-auto px-6 pb-6">
+              <div className="space-y-6 p-2">
+                <Tabs value={selectedDocId?.toString()} onValueChange={(val) => setSelectedDocId(parseInt(val))} className="space-y-6">
+                  <div className="overflow-x-auto">
+                    <TabsList className="w-full justify-start bg-gradient-to-r from-gray-100 to-green-100 rounded-lg p-2 border border-green-200">
+                      {documents.map((doc) => (
+                        <TabsTrigger
+                          key={doc.id}
+                          value={doc.id.toString()}
+                          className="text-xs sm:text-sm px-4 py-3 data-[state=active]:bg-white data-[state=active]:shadow-lg data-[state=active]:text-green-700 font-semibold rounded-lg transition-all"
+                        >
+                          <div className="flex items-center gap-2">
+                            <FileText className="h-4 w-4" />
+                            {formatDocumentType(doc.documentType)}
+                            {doc.isVerified && (
+                              <CheckCircle className="h-3 w-3 text-green-600" />
+                            )}
+                          </div>
+                        </TabsTrigger>
+                      ))}
+                    </TabsList>
+                  </div>
+
+                  {/* Document Content */}
+                  {documents.map((doc) => (
+                    <TabsContent 
+                      key={doc.id}
+                      value={doc.id.toString()}
+                      className="space-y-6 mt-0"
+                    >
+                      {/* Document Preview */}
+                      <div className="space-y-4">
+                        <div className="flex flex-wrap items-center justify-center sm:justify-end gap-3 p-4 bg-gradient-to-r from-indigo-100 to-purple-100 rounded-lg border-2 border-indigo-200">
+                          <div className="flex flex-wrap items-center justify-center gap-2">
+                            <div className="flex items-center gap-1 bg-white rounded-lg px-3 py-1 border border-indigo-200">
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                onClick={handleZoomOut}
+                                disabled={zoom <= 50}
+                                className="h-8 w-8 p-0 hover:bg-indigo-100"
+                              >
+                                −
+                              </Button>
+                              <span className="text-sm font-medium text-indigo-700 min-w-[3rem] text-center">
+                                {zoom}%
+                              </span>
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                onClick={handleZoomIn}
+                                disabled={zoom >= 200}
+                                className="h-8 w-8 p-0 hover:bg-indigo-100"
+                              >
+                                +
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                onClick={handleResetView}
+                                className="h-8 px-2 text-xs hover:bg-indigo-100"
+                              >
+                                Reset
+                              </Button>
+                            </div>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={handleRotate}
+                              className="h-8 w-8 p-0 bg-white border border-indigo-200 hover:bg-indigo-100"
+                            >
+                              <RotateCw className="h-4 w-4 text-indigo-700" />
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => setIsFullscreen(!isFullscreen)}
+                              className="h-8 w-8 p-0 bg-white border border-indigo-200 hover:bg-indigo-100"
+                            >
+                              {isFullscreen ? <Minimize2 className="h-4 w-4 text-indigo-700" /> : <Maximize2 className="h-4 w-4 text-indigo-700" />}
+                            </Button>
+                            <Button 
+                              onClick={() => handleDownload(doc.id)} 
+                              size="sm"
+                              className="bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700 text-white font-semibold px-3 py-2 shadow-lg hover:shadow-xl transition-all duration-200 transform hover:scale-105"
+                              title="Download Document"
+                            >
+                              <Download className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        </div>
+
+                        <div className="border-2 border-gray-200 rounded-xl p-6 bg-white shadow-lg">
+                          {documentLoading ? (
+                            <div className="flex items-center justify-center h-64 border-2 border-dashed border-blue-300 rounded-xl bg-gradient-to-br from-blue-50 to-indigo-50">
+                              <div className="text-center">
+                                <div className="animate-spin rounded-full h-12 w-12 border-b-4 border-blue-600 mx-auto"></div>
+                                <p className="mt-4 text-blue-700 font-semibold">Loading document...</p>
+                                <p className="text-blue-600 text-sm">Please wait while we fetch your document</p>
+                              </div>
+                            </div>
+                          ) : !documentData ? (
+                            <div className="flex items-center justify-center h-64 border-2 border-dashed border-gray-400 rounded-xl bg-gradient-to-br from-gray-100 to-gray-200">
+                              <div className="text-center">
+                                <div className="p-4 bg-gray-200 rounded-full inline-block mb-4">
+                                  <FileText className="h-12 w-12 text-gray-500" />
+                                </div>
+                                <p className="text-gray-700 font-semibold text-lg">📝 No Document Data</p>
+                                <p className="text-gray-600 text-sm">Unable to load document preview</p>
+                              </div>
+                            </div>
+                          ) : (
+                          <div className={`flex justify-center p-4 bg-gray-50 rounded-lg border-2 border-gray-200 overflow-auto ${isFullscreen ? 'h-[70vh]' : 'h-96'}`}>
+                              {!imageError[doc.id] ? (
+                                <img
+                                  src={`data:${documentData.mimeType};base64,${documentData.fileData}`}
+                                  alt={formatDocumentType(doc.documentType)}
+                                  className="rounded-lg shadow-lg border border-gray-300 hover:shadow-xl transition-shadow duration-300"
+                                  style={{ 
+                                    transform: `scale(${zoom / 100}) rotate(${rotation}deg)`,
+                                    transition: 'transform 0.3s ease',
+                                    maxWidth: '100%',
+                                    height: 'auto',
+                                    objectFit: 'contain'
+                                  }}
+                                  onError={() => setImageError(prev => ({ ...prev, [doc.id]: true }))}
+                                />
+                              ) : (
+                                <div className="bg-white p-8 shadow-lg rounded-lg text-center">
+                                <FileText className="h-32 w-32 text-gray-300 mx-auto mb-4" />
+                                <p className="text-sm text-gray-500">Document: {doc.filename}</p>
+                                  <p className="text-xs text-gray-400 mt-2">Preview failed to load</p>
+                              </div>
+                              )}
+                            </div>
+                          )}
+
+                          {/* File Info Below Preview */}
+                          <div className="grid grid-cols-2 gap-4 mt-6">
+                            <div className="bg-gray-50 p-3 rounded-lg">
+                              <span className="text-xs text-gray-500 block mb-1">Filename</span>
+                              <p className="font-semibold text-gray-800 text-sm truncate">
+                                {documentData?.filename || doc.originalFilename}
+                              </p>
+                            </div>
+                            <div className="bg-gray-50 p-3 rounded-lg">
+                              <span className="text-xs text-gray-500 block mb-1">Size</span>
+                              <p className="font-semibold text-gray-800">{(doc.fileSize / 1024).toFixed(2)} KB</p>
+                            </div>
+                            {documentData && (
+                              <div className="bg-gray-50 p-3 rounded-lg col-span-2">
+                                <span className="text-xs text-gray-500 block mb-1">Type</span>
+                                <p className="font-semibold text-gray-800">{documentData.mimeType}</p>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+
+                      </div>
+                    </TabsContent>
+                  ))}
+                </Tabs>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </DialogPortal>
     </Dialog>
   );
 }

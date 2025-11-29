@@ -2,6 +2,8 @@ import { api, APIError } from "encore.dev/api";
 import { getAuthData } from "~encore/auth";
 import { financeDB } from "./db";
 import { requireRole } from "../auth/middleware";
+import { financeEvents } from "./events";
+import { v4 as uuidv4 } from 'uuid';
 
 export interface DailyApprovalStatsRequest {
   date?: string; // YYYY-MM-DD format, defaults to today
@@ -60,17 +62,15 @@ export interface DailyApprovalStatsResponse {
   };
 }
 
-// Get daily approval statistics and transactions
-export const getDailyApprovalStats = api<DailyApprovalStatsRequest, DailyApprovalStatsResponse>(
-  { auth: true, expose: true, method: "GET", path: "/finance/daily-approval-stats" },
-  async (req) => {
-    const authData = getAuthData();
-    if (!authData) {
-      throw APIError.unauthenticated("Authentication required");
-    }
-    requireRole("ADMIN")(authData);
+// Shared handler for daily approval stats (used by both legacy and v1 endpoints)
+async function getDailyApprovalStatsHandler(req: DailyApprovalStatsRequest): Promise<DailyApprovalStatsResponse> {
+  const authData = getAuthData();
+  if (!authData) {
+    throw APIError.unauthenticated("Authentication required");
+  }
+  requireRole("ADMIN")(authData);
 
-    const { date } = req || {};
+  const { date } = req || {};
     const targetDate = date ? new Date(date) : new Date();
     const startOfDay = new Date(targetDate);
     startOfDay.setHours(0, 0, 0, 0);
@@ -317,6 +317,17 @@ export const getDailyApprovalStats = api<DailyApprovalStatsRequest, DailyApprova
       throw APIError.internal(`Failed to get daily approval statistics: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }
+
+// LEGACY: Get daily approval statistics and transactions (keep for backward compatibility)
+export const getDailyApprovalStats = api<DailyApprovalStatsRequest, DailyApprovalStatsResponse>(
+  { auth: true, expose: true, method: "GET", path: "/finance/daily-approval-stats" },
+  getDailyApprovalStatsHandler
+);
+
+// V1: Get daily approval statistics and transactions
+export const getDailyApprovalStatsV1 = api<DailyApprovalStatsRequest, DailyApprovalStatsResponse>(
+  { auth: true, expose: true, method: "GET", path: "/v1/finance/daily-approval-stats" },
+  getDailyApprovalStatsHandler
 );
 
 export interface BulkApproveRequest {
@@ -337,22 +348,15 @@ export interface BulkApproveResponse {
   };
 }
 
-// Bulk approve or reject transactions for a specific day
-export const bulkApproveTransactions = api<BulkApproveRequest, BulkApproveResponse>(
-  { auth: true, expose: true, method: "POST", path: "/finance/bulk-approve" },
-  async (req) => {
-    const authData = getAuthData();
-    if (!authData) {
-      throw APIError.unauthenticated("Authentication required");
-    }
-    requireRole("ADMIN")(authData);
+// Shared handler for bulk approve/reject (used by both legacy and v1 endpoints)
+async function bulkApproveTransactionsHandler(req: BulkApproveRequest): Promise<BulkApproveResponse> {
+  const authData = getAuthData();
+  if (!authData) {
+    throw APIError.unauthenticated("Authentication required");
+  }
+  requireRole("ADMIN")(authData);
 
-    const { transactionIds, transactionType, action, date } = req;
-    const targetDate = date ? new Date(date) : new Date();
-    const startOfDay = new Date(targetDate);
-    startOfDay.setHours(0, 0, 0, 0);
-    const endOfDay = new Date(targetDate);
-    endOfDay.setHours(23, 59, 59, 999);
+  const { transactionIds, transactionType, action } = req;
 
     if (!transactionIds || transactionIds.length === 0) {
       throw APIError.invalidArgument("No transaction IDs provided");
@@ -377,8 +381,6 @@ export const bulkApproveTransactions = api<BulkApproveRequest, BulkApproveRespon
               SELECT id FROM revenues 
               WHERE id = ${transactionId} 
               AND org_id = ${authData.orgId}
-              AND created_at >= ${startOfDay}
-              AND created_at <= ${endOfDay}
               AND status = 'pending'
             `;
             
@@ -388,8 +390,6 @@ export const bulkApproveTransactions = api<BulkApproveRequest, BulkApproveRespon
                 SET status = ${newStatus}, approved_by_user_id = ${parseInt(authData.userID)}, approved_at = ${currentTime}
                 WHERE id = ${transactionId} 
                 AND org_id = ${authData.orgId}
-                AND created_at >= ${startOfDay}
-                AND created_at <= ${endOfDay}
                 AND status = 'pending'
               `;
               
@@ -406,8 +406,6 @@ export const bulkApproveTransactions = api<BulkApproveRequest, BulkApproveRespon
               SELECT id FROM expenses 
               WHERE id = ${transactionId} 
               AND org_id = ${authData.orgId}
-              AND created_at >= ${startOfDay}
-              AND created_at <= ${endOfDay}
               AND status = 'pending'
             `;
             
@@ -417,8 +415,6 @@ export const bulkApproveTransactions = api<BulkApproveRequest, BulkApproveRespon
                 SET status = ${newStatus}, approved_by_user_id = ${parseInt(authData.userID)}, approved_at = ${currentTime}
                 WHERE id = ${transactionId} 
                 AND org_id = ${authData.orgId}
-                AND created_at >= ${startOfDay}
-                AND created_at <= ${endOfDay}
                 AND status = 'pending'
               `;
               
@@ -439,6 +435,24 @@ export const bulkApproveTransactions = api<BulkApproveRequest, BulkApproveRespon
 
       await tx.commit();
 
+      // Publish event for real-time updates
+      await financeEvents.publish({
+        eventId: uuidv4(),
+        eventVersion: 'v1',
+        eventType: 'daily_approval_granted', // Valid event type from schema
+        orgId: authData.orgId,
+        propertyId: 0, // Bulk operation across properties
+        entityId: 0, // Bulk operation
+        entityType: 'daily_approval',
+        userId: parseInt(authData.userID),
+        timestamp: new Date(),
+        metadata: {
+          count: approved + rejected,
+          approved,
+          rejected,
+        },
+      });
+
       return {
         success: true,
         message: `Bulk ${action} completed: ${approved} approved, ${rejected} rejected, ${failed} failed`,
@@ -454,6 +468,17 @@ export const bulkApproveTransactions = api<BulkApproveRequest, BulkApproveRespon
       throw APIError.internal(`Failed to bulk ${action} transactions: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }
+
+// LEGACY: Bulk approve or reject transactions (keep for backward compatibility)
+export const bulkApproveTransactions = api<BulkApproveRequest, BulkApproveResponse>(
+  { auth: true, expose: true, method: "POST", path: "/finance/bulk-approve" },
+  bulkApproveTransactionsHandler
+);
+
+// V1: Bulk approve or reject transactions
+export const bulkApproveTransactionsV1 = api<BulkApproveRequest, BulkApproveResponse>(
+  { auth: true, expose: true, method: "POST", path: "/v1/finance/bulk-approve" },
+  bulkApproveTransactionsHandler
 );
 
 export interface DailyApprovalSummaryRequest {
@@ -501,17 +526,15 @@ export interface TodayPendingTransactionsResponse {
   }>;
 }
 
-// Get daily approval summary for a date range
-export const getDailyApprovalSummary = api<DailyApprovalSummaryRequest, DailyApprovalSummaryResponse>(
-  { auth: true, expose: true, method: "GET", path: "/finance/daily-approval-summary" },
-  async (req) => {
-    const authData = getAuthData();
-    if (!authData) {
-      throw APIError.unauthenticated("Authentication required");
-    }
-    requireRole("ADMIN")(authData);
+// Shared handler for daily approval summary (used by both legacy and v1 endpoints)
+async function getDailyApprovalSummaryHandler(req: DailyApprovalSummaryRequest): Promise<DailyApprovalSummaryResponse> {
+  const authData = getAuthData();
+  if (!authData) {
+    throw APIError.unauthenticated("Authentication required");
+  }
+  requireRole("ADMIN")(authData);
 
-    const { startDate, endDate } = req || {};
+  const { startDate, endDate } = req || {};
     const start = startDate ? new Date(startDate) : new Date(Date.now() - 7 * 24 * 60 * 60 * 1000); // Default to last 7 days
     const end = endDate ? new Date(endDate) : new Date();
 
@@ -592,266 +615,381 @@ export const getDailyApprovalSummary = api<DailyApprovalSummaryRequest, DailyApp
       throw APIError.internal(`Failed to get daily approval summary: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }
+
+// LEGACY: Get daily approval summary for a date range (keep for backward compatibility)
+export const getDailyApprovalSummary = api<DailyApprovalSummaryRequest, DailyApprovalSummaryResponse>(
+  { auth: true, expose: true, method: "GET", path: "/finance/daily-approval-summary" },
+  getDailyApprovalSummaryHandler
 );
 
-// Get today's pending transactions for approval
-export const getTodayPendingTransactions = api<TodayPendingTransactionsRequest, TodayPendingTransactionsResponse>(
-  { auth: true, expose: true, method: "GET", path: "/finance/today-pending-transactions" },
-  async (req) => {
-    const authData = getAuthData();
-    if (!authData) {
-      throw APIError.unauthenticated("Authentication required");
-    }
-    requireRole("ADMIN")(authData);
+// V1: Get daily approval summary for a date range
+export const getDailyApprovalSummaryV1 = api<DailyApprovalSummaryRequest, DailyApprovalSummaryResponse>(
+  { auth: true, expose: true, method: "GET", path: "/v1/finance/daily-approval-summary" },
+  getDailyApprovalSummaryHandler
+);
 
-    const { date, propertyId, startDate, endDate } = req || {};
-    const targetDate = date || new Date().toISOString().split('T')[0];
+// Shared handler for today's pending transactions (used by both legacy and v1 endpoints)
+async function getTodayPendingTransactionsHandler(req: TodayPendingTransactionsRequest): Promise<TodayPendingTransactionsResponse> {
+  const authData = getAuthData();
+  if (!authData) {
+    throw APIError.unauthenticated("Authentication required");
+  }
+  requireRole("ADMIN")(authData);
 
-    // Check if status columns exist in both tables
-    let hasStatusColumns = false;
-    try {
-      const statusCheck = await financeDB.queryAll`
-        SELECT table_name, column_name FROM information_schema.columns 
-        WHERE table_name IN ('expenses', 'revenues') AND column_name = 'status'
-      `;
-      // Both tables must have the status column
-      hasStatusColumns = statusCheck.length === 2;
-      console.log('Status column check result:', statusCheck, 'hasStatusColumns:', hasStatusColumns);
-    } catch (error) {
-      console.log('Status column check failed:', error);
-    }
+  const { date, propertyId, startDate, endDate } = req || {};
+
+  // Date filtering is now handled directly in the SQL queries below
 
     try {
-      // Get pending revenues for the date
-      let pendingRevenues;
+      // Single optimized query using UNION ALL to get both revenues and expenses in one go
+      // This eliminates the need for multiple queries and schema checking
+      let transactions;
       if (propertyId) {
-        if (hasStatusColumns) {
-          pendingRevenues = await financeDB.queryAll`
-            SELECT 
-              r.id,
-              'revenue' as type,
-              r.source,
-              r.amount_cents,
-              r.description,
-              p.name as property_name,
-              u.display_name as created_by_name,
-              r.created_at,
-              COALESCE(r.status, 'pending') as status,
-              r.payment_mode,
-              r.bank_reference,
-              r.receipt_url
-            FROM revenues r
-            JOIN properties p ON r.property_id = p.id AND p.org_id = ${authData.orgId}
-            JOIN users u ON r.created_by_user_id = u.id AND u.org_id = ${authData.orgId}
-            WHERE r.org_id = ${authData.orgId}
-              AND DATE(r.created_at) = ${targetDate}
-              AND COALESCE(r.status, 'pending') = 'pending'
-              AND r.property_id = ${propertyId}
-            ORDER BY r.created_at DESC
+        // Use template literals with proper parameter binding
+        if (startDate && endDate) {
+          transactions = await financeDB.queryAll`
+            WITH pending_transactions AS (
+              -- Get pending revenues
+              SELECT 
+                r.id,
+                'revenue' as type,
+                r.source,
+                NULL as category,
+                r.amount_cents,
+                r.description,
+                p.name as property_name,
+                u.display_name as created_by_name,
+                r.created_at,
+                COALESCE(r.status, 'pending') as status,
+                COALESCE(r.payment_mode, 'cash') as payment_mode,
+                r.bank_reference,
+                r.receipt_url
+              FROM revenues r
+              JOIN properties p ON r.property_id = p.id AND p.org_id = ${authData.orgId}
+              JOIN users u ON r.created_by_user_id = u.id AND u.org_id = ${authData.orgId}
+              WHERE r.org_id = ${authData.orgId}
+                AND DATE(r.created_at) BETWEEN ${startDate} AND ${endDate}
+                AND COALESCE(r.status, 'pending') = 'pending'
+                AND r.property_id = ${propertyId}
+              
+              UNION ALL
+              
+              -- Get pending expenses
+              SELECT 
+                e.id,
+                'expense' as type,
+                NULL as source,
+                e.category,
+                e.amount_cents,
+                e.description,
+                p.name as property_name,
+                u.display_name as created_by_name,
+                e.created_at,
+                COALESCE(e.status, 'pending') as status,
+                COALESCE(e.payment_mode, 'cash') as payment_mode,
+                e.bank_reference,
+                e.receipt_url
+              FROM expenses e
+              JOIN properties p ON e.property_id = p.id AND p.org_id = ${authData.orgId}
+              JOIN users u ON e.created_by_user_id = u.id AND u.org_id = ${authData.orgId}
+              WHERE e.org_id = ${authData.orgId}
+                AND DATE(e.created_at) BETWEEN ${startDate} AND ${endDate}
+                AND COALESCE(e.status, 'pending') = 'pending'
+                AND e.property_id = ${propertyId}
+            )
+            SELECT * FROM pending_transactions
+            ORDER BY created_at DESC
+            LIMIT 100
+          `;
+        } else if (date) {
+          transactions = await financeDB.queryAll`
+            WITH pending_transactions AS (
+              -- Get pending revenues
+              SELECT 
+                r.id,
+                'revenue' as type,
+                r.source,
+                NULL as category,
+                r.amount_cents,
+                r.description,
+                p.name as property_name,
+                u.display_name as created_by_name,
+                r.created_at,
+                COALESCE(r.status, 'pending') as status,
+                COALESCE(r.payment_mode, 'cash') as payment_mode,
+                r.bank_reference,
+                r.receipt_url
+              FROM revenues r
+              JOIN properties p ON r.property_id = p.id AND p.org_id = ${authData.orgId}
+              JOIN users u ON r.created_by_user_id = u.id AND u.org_id = ${authData.orgId}
+              WHERE r.org_id = ${authData.orgId}
+                AND DATE(r.created_at) = ${date}
+                AND COALESCE(r.status, 'pending') = 'pending'
+                AND r.property_id = ${propertyId}
+              
+              UNION ALL
+              
+              -- Get pending expenses
+              SELECT 
+                e.id,
+                'expense' as type,
+                NULL as source,
+                e.category,
+                e.amount_cents,
+                e.description,
+                p.name as property_name,
+                u.display_name as created_by_name,
+                e.created_at,
+                COALESCE(e.status, 'pending') as status,
+                COALESCE(e.payment_mode, 'cash') as payment_mode,
+                e.bank_reference,
+                e.receipt_url
+              FROM expenses e
+              JOIN properties p ON e.property_id = p.id AND p.org_id = ${authData.orgId}
+              JOIN users u ON e.created_by_user_id = u.id AND u.org_id = ${authData.orgId}
+              WHERE e.org_id = ${authData.orgId}
+                AND DATE(e.created_at) = ${date}
+                AND COALESCE(e.status, 'pending') = 'pending'
+                AND e.property_id = ${propertyId}
+            )
+            SELECT * FROM pending_transactions
+            ORDER BY created_at DESC
+            LIMIT 100
           `;
         } else {
-          // Fallback query without status column
-          pendingRevenues = await financeDB.queryAll`
-            SELECT 
-              r.id,
-              'revenue' as type,
-              r.source,
-              r.amount_cents,
-              r.description,
-              p.name as property_name,
-              u.display_name as created_by_name,
-              r.created_at,
-              'pending' as status,
-              r.receipt_url
-            FROM revenues r
-            JOIN properties p ON r.property_id = p.id AND p.org_id = ${authData.orgId}
-            JOIN users u ON r.created_by_user_id = u.id AND u.org_id = ${authData.orgId}
-            WHERE r.org_id = ${authData.orgId}
-              AND DATE(r.created_at) = ${targetDate}
-              AND r.property_id = ${propertyId}
-            ORDER BY r.created_at DESC
+          // No date filter - show ALL pending transactions
+          transactions = await financeDB.queryAll`
+            WITH pending_transactions AS (
+              -- Get pending revenues
+              SELECT 
+                r.id,
+                'revenue' as type,
+                r.source,
+                NULL as category,
+                r.amount_cents,
+                r.description,
+                p.name as property_name,
+                u.display_name as created_by_name,
+                r.created_at,
+                COALESCE(r.status, 'pending') as status,
+                COALESCE(r.payment_mode, 'cash') as payment_mode,
+                r.bank_reference,
+                r.receipt_url
+              FROM revenues r
+              JOIN properties p ON r.property_id = p.id AND p.org_id = ${authData.orgId}
+              JOIN users u ON r.created_by_user_id = u.id AND u.org_id = ${authData.orgId}
+              WHERE r.org_id = ${authData.orgId}
+                AND COALESCE(r.status, 'pending') = 'pending'
+                AND r.property_id = ${propertyId}
+              
+              UNION ALL
+              
+              -- Get pending expenses
+              SELECT 
+                e.id,
+                'expense' as type,
+                NULL as source,
+                e.category,
+                e.amount_cents,
+                e.description,
+                p.name as property_name,
+                u.display_name as created_by_name,
+                e.created_at,
+                COALESCE(e.status, 'pending') as status,
+                COALESCE(e.payment_mode, 'cash') as payment_mode,
+                e.bank_reference,
+                e.receipt_url
+              FROM expenses e
+              JOIN properties p ON e.property_id = p.id AND p.org_id = ${authData.orgId}
+              JOIN users u ON e.created_by_user_id = u.id AND u.org_id = ${authData.orgId}
+              WHERE e.org_id = ${authData.orgId}
+                AND COALESCE(e.status, 'pending') = 'pending'
+                AND e.property_id = ${propertyId}
+            )
+            SELECT * FROM pending_transactions
+            ORDER BY created_at DESC
+            LIMIT 100
           `;
         }
       } else {
-        if (hasStatusColumns) {
-          pendingRevenues = await financeDB.queryAll`
-            SELECT 
-              r.id,
-              'revenue' as type,
-              r.source,
-              r.amount_cents,
-              r.description,
-              p.name as property_name,
-              u.display_name as created_by_name,
-              r.created_at,
-              COALESCE(r.status, 'pending') as status,
-              r.payment_mode,
-              r.bank_reference,
-              r.receipt_url
-            FROM revenues r
-            JOIN properties p ON r.property_id = p.id AND p.org_id = ${authData.orgId}
-            JOIN users u ON r.created_by_user_id = u.id AND u.org_id = ${authData.orgId}
-            WHERE r.org_id = ${authData.orgId}
-              AND DATE(r.created_at) = ${targetDate}
-              AND COALESCE(r.status, 'pending') = 'pending'
-            ORDER BY r.created_at DESC
+        // Use template literals with proper parameter binding
+        if (startDate && endDate) {
+          transactions = await financeDB.queryAll`
+            WITH pending_transactions AS (
+              -- Get pending revenues
+              SELECT 
+                r.id,
+                'revenue' as type,
+                r.source,
+                NULL as category,
+                r.amount_cents,
+                r.description,
+                p.name as property_name,
+                u.display_name as created_by_name,
+                r.created_at,
+                COALESCE(r.status, 'pending') as status,
+                COALESCE(r.payment_mode, 'cash') as payment_mode,
+                r.bank_reference,
+                r.receipt_url
+              FROM revenues r
+              JOIN properties p ON r.property_id = p.id AND p.org_id = ${authData.orgId}
+              JOIN users u ON r.created_by_user_id = u.id AND u.org_id = ${authData.orgId}
+              WHERE r.org_id = ${authData.orgId}
+                AND DATE(r.created_at) BETWEEN ${startDate} AND ${endDate}
+                AND COALESCE(r.status, 'pending') = 'pending'
+              
+              UNION ALL
+              
+              -- Get pending expenses
+              SELECT 
+                e.id,
+                'expense' as type,
+                NULL as source,
+                e.category,
+                e.amount_cents,
+                e.description,
+                p.name as property_name,
+                u.display_name as created_by_name,
+                e.created_at,
+                COALESCE(e.status, 'pending') as status,
+                COALESCE(e.payment_mode, 'cash') as payment_mode,
+                e.bank_reference,
+                e.receipt_url
+              FROM expenses e
+              JOIN properties p ON e.property_id = p.id AND p.org_id = ${authData.orgId}
+              JOIN users u ON e.created_by_user_id = u.id AND u.org_id = ${authData.orgId}
+              WHERE e.org_id = ${authData.orgId}
+                AND DATE(e.created_at) BETWEEN ${startDate} AND ${endDate}
+                AND COALESCE(e.status, 'pending') = 'pending'
+            )
+            SELECT * FROM pending_transactions
+            ORDER BY created_at DESC
+            LIMIT 100
+          `;
+        } else if (date) {
+          transactions = await financeDB.queryAll`
+            WITH pending_transactions AS (
+              -- Get pending revenues
+              SELECT 
+                r.id,
+                'revenue' as type,
+                r.source,
+                NULL as category,
+                r.amount_cents,
+                r.description,
+                p.name as property_name,
+                u.display_name as created_by_name,
+                r.created_at,
+                COALESCE(r.status, 'pending') as status,
+                COALESCE(r.payment_mode, 'cash') as payment_mode,
+                r.bank_reference,
+                r.receipt_url
+              FROM revenues r
+              JOIN properties p ON r.property_id = p.id AND p.org_id = ${authData.orgId}
+              JOIN users u ON r.created_by_user_id = u.id AND u.org_id = ${authData.orgId}
+              WHERE r.org_id = ${authData.orgId}
+                AND DATE(r.created_at) = ${date}
+                AND COALESCE(r.status, 'pending') = 'pending'
+              
+              UNION ALL
+              
+              -- Get pending expenses
+              SELECT 
+                e.id,
+                'expense' as type,
+                NULL as source,
+                e.category,
+                e.amount_cents,
+                e.description,
+                p.name as property_name,
+                u.display_name as created_by_name,
+                e.created_at,
+                COALESCE(e.status, 'pending') as status,
+                COALESCE(e.payment_mode, 'cash') as payment_mode,
+                e.bank_reference,
+                e.receipt_url
+              FROM expenses e
+              JOIN properties p ON e.property_id = p.id AND p.org_id = ${authData.orgId}
+              JOIN users u ON e.created_by_user_id = u.id AND u.org_id = ${authData.orgId}
+              WHERE e.org_id = ${authData.orgId}
+                AND DATE(e.created_at) = ${date}
+                AND COALESCE(e.status, 'pending') = 'pending'
+            )
+            SELECT * FROM pending_transactions
+            ORDER BY created_at DESC
+            LIMIT 100
           `;
         } else {
-          // Fallback query without status column
-          pendingRevenues = await financeDB.queryAll`
-            SELECT 
-              r.id,
-              'revenue' as type,
-              r.source,
-              r.amount_cents,
-              r.description,
-              p.name as property_name,
-              u.display_name as created_by_name,
-              r.created_at,
-              'pending' as status,
-              r.receipt_url
-            FROM revenues r
-            JOIN properties p ON r.property_id = p.id AND p.org_id = ${authData.orgId}
-            JOIN users u ON r.created_by_user_id = u.id AND u.org_id = ${authData.orgId}
-            WHERE r.org_id = ${authData.orgId}
-              AND DATE(r.created_at) = ${targetDate}
-            ORDER BY r.created_at DESC
+          // No date filter - show ALL pending transactions
+          transactions = await financeDB.queryAll`
+            WITH pending_transactions AS (
+              -- Get pending revenues
+              SELECT 
+                r.id,
+                'revenue' as type,
+                r.source,
+                NULL as category,
+                r.amount_cents,
+                r.description,
+                p.name as property_name,
+                u.display_name as created_by_name,
+                r.created_at,
+                COALESCE(r.status, 'pending') as status,
+                COALESCE(r.payment_mode, 'cash') as payment_mode,
+                r.bank_reference,
+                r.receipt_url
+              FROM revenues r
+              JOIN properties p ON r.property_id = p.id AND p.org_id = ${authData.orgId}
+              JOIN users u ON r.created_by_user_id = u.id AND u.org_id = ${authData.orgId}
+              WHERE r.org_id = ${authData.orgId}
+                AND COALESCE(r.status, 'pending') = 'pending'
+              
+              UNION ALL
+              
+              -- Get pending expenses
+              SELECT 
+                e.id,
+                'expense' as type,
+                NULL as source,
+                e.category,
+                e.amount_cents,
+                e.description,
+                p.name as property_name,
+                u.display_name as created_by_name,
+                e.created_at,
+                COALESCE(e.status, 'pending') as status,
+                COALESCE(e.payment_mode, 'cash') as payment_mode,
+                e.bank_reference,
+                e.receipt_url
+              FROM expenses e
+              JOIN properties p ON e.property_id = p.id AND p.org_id = ${authData.orgId}
+              JOIN users u ON e.created_by_user_id = u.id AND u.org_id = ${authData.orgId}
+              WHERE e.org_id = ${authData.orgId}
+                AND COALESCE(e.status, 'pending') = 'pending'
+            )
+            SELECT * FROM pending_transactions
+            ORDER BY created_at DESC
+            LIMIT 100
           `;
         }
       }
 
-      // Get pending expenses for the date
-      let pendingExpenses;
-      if (propertyId) {
-        if (hasStatusColumns) {
-          pendingExpenses = await financeDB.queryAll`
-            SELECT 
-              e.id,
-              'expense' as type,
-              e.category,
-              e.amount_cents,
-              e.description,
-              p.name as property_name,
-              u.display_name as created_by_name,
-              e.created_at,
-              COALESCE(e.status, 'pending') as status,
-              e.payment_mode,
-              e.bank_reference,
-              e.receipt_url
-            FROM expenses e
-            JOIN properties p ON e.property_id = p.id AND p.org_id = ${authData.orgId}
-            JOIN users u ON e.created_by_user_id = u.id AND u.org_id = ${authData.orgId}
-            WHERE e.org_id = ${authData.orgId}
-              AND DATE(e.created_at) = ${targetDate}
-              AND COALESCE(e.status, 'pending') = 'pending'
-              AND e.property_id = ${propertyId}
-            ORDER BY e.created_at DESC
-          `;
-        } else {
-          // Fallback query without status column
-          pendingExpenses = await financeDB.queryAll`
-            SELECT 
-              e.id,
-              'expense' as type,
-              e.category,
-              e.amount_cents,
-              e.description,
-              p.name as property_name,
-              u.display_name as created_by_name,
-              e.created_at,
-              'pending' as status,
-              e.receipt_url
-            FROM expenses e
-            JOIN properties p ON e.property_id = p.id AND p.org_id = ${authData.orgId}
-            JOIN users u ON e.created_by_user_id = u.id AND u.org_id = ${authData.orgId}
-            WHERE e.org_id = ${authData.orgId}
-              AND DATE(e.created_at) = ${targetDate}
-              AND e.property_id = ${propertyId}
-            ORDER BY e.created_at DESC
-          `;
-        }
-      } else {
-        if (hasStatusColumns) {
-          pendingExpenses = await financeDB.queryAll`
-            SELECT 
-              e.id,
-              'expense' as type,
-              e.category,
-              e.amount_cents,
-              e.description,
-              p.name as property_name,
-              u.display_name as created_by_name,
-              e.created_at,
-              COALESCE(e.status, 'pending') as status,
-              e.payment_mode,
-              e.bank_reference,
-              e.receipt_url
-            FROM expenses e
-            JOIN properties p ON e.property_id = p.id AND p.org_id = ${authData.orgId}
-            JOIN users u ON e.created_by_user_id = u.id AND u.org_id = ${authData.orgId}
-            WHERE e.org_id = ${authData.orgId}
-              AND DATE(e.created_at) = ${targetDate}
-              AND COALESCE(e.status, 'pending') = 'pending'
-            ORDER BY e.created_at DESC
-          `;
-        } else {
-          // Fallback query without status column
-          pendingExpenses = await financeDB.queryAll`
-            SELECT 
-              e.id,
-              'expense' as type,
-              e.category,
-              e.amount_cents,
-              e.description,
-              p.name as property_name,
-              u.display_name as created_by_name,
-              e.created_at,
-              'pending' as status,
-              e.receipt_url
-            FROM expenses e
-            JOIN properties p ON e.property_id = p.id AND p.org_id = ${authData.orgId}
-            JOIN users u ON e.created_by_user_id = u.id AND u.org_id = ${authData.orgId}
-            WHERE e.org_id = ${authData.orgId}
-              AND DATE(e.created_at) = ${targetDate}
-            ORDER BY e.created_at DESC
-          `;
-        }
-      }
-
-      // Combine and format the results
-      const allTransactions = [
-        ...pendingRevenues.map((r: any) => ({
-          id: r.id,
-          type: 'revenue' as const,
-          source: r.source,
-          amountCents: parseInt(r.amount_cents),
-          description: r.description,
-          propertyName: r.property_name,
-          createdByName: r.created_by_name,
-          createdAt: r.created_at,
-          status: r.status,
-          paymentMode: r.payment_mode,
-          bankReference: r.bank_reference,
-          receiptUrl: r.receipt_url,
-        })),
-        ...pendingExpenses.map((e: any) => ({
-          id: e.id,
-          type: 'expense' as const,
-          category: e.category,
-          amountCents: parseInt(e.amount_cents),
-          description: e.description,
-          propertyName: e.property_name,
-          createdByName: e.created_by_name,
-          createdAt: e.created_at,
-          status: e.status,
-          paymentMode: e.payment_mode,
-          bankReference: e.bank_reference,
-          receiptUrl: e.receipt_url,
-        })),
-      ];
-
-      // Sort by creation time (newest first)
-      allTransactions.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+      // Format the results
+      const allTransactions = transactions.map((t: any) => ({
+        id: t.id,
+        type: t.type as 'revenue' | 'expense',
+        source: t.source,
+        category: t.category,
+        amountCents: parseInt(t.amount_cents),
+        description: t.description,
+        propertyName: t.property_name,
+        createdByName: t.created_by_name,
+        createdAt: t.created_at,
+        status: t.status,
+        paymentMode: t.payment_mode,
+        bankReference: t.bank_reference,
+        receiptUrl: t.receipt_url,
+      }));
 
       return {
         success: true,
@@ -859,7 +997,33 @@ export const getTodayPendingTransactions = api<TodayPendingTransactionsRequest, 
       };
     } catch (error) {
       console.error('Error getting today\'s pending transactions:', error);
+      
+      // Handle timeout and connection errors gracefully
+      if (error instanceof Error && (
+        error.message.includes('timeout') || 
+        error.message.includes('connection') ||
+        error.message.includes('ECONNREFUSED') ||
+        error.message.includes('GenericFailure')
+      )) {
+        console.log('Database connection timeout, returning empty result to prevent UI blocking');
+        return {
+          success: true,
+          transactions: [],
+        };
+      }
+      
       throw APIError.internal(`Failed to get today's pending transactions: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }
+
+// LEGACY: Get today's pending transactions for approval (keep for backward compatibility)
+export const getTodayPendingTransactions = api<TodayPendingTransactionsRequest, TodayPendingTransactionsResponse>(
+  { auth: true, expose: true, method: "GET", path: "/finance/today-pending-transactions" },
+  getTodayPendingTransactionsHandler
+);
+
+// V1: Get today's pending transactions for approval
+export const getTodayPendingTransactionsV1 = api<TodayPendingTransactionsRequest, TodayPendingTransactionsResponse>(
+  { auth: true, expose: true, method: "GET", path: "/v1/finance/today-pending-transactions" },
+  getTodayPendingTransactionsHandler
 );

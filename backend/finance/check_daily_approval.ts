@@ -34,14 +34,14 @@ export async function checkDailyApprovalInternal(authData: any): Promise<CheckDa
   console.log('=== CHECK DAILY APPROVAL INTERNAL DEBUG ===');
   console.log('Auth data:', { userId: authData?.userID, role: authData?.role, orgId: authData?.orgId });
   
-  // All users (including admins) now require daily approval for transactions
-  // This ensures all transactions go through the approval workflow
-  console.log('All users require daily approval - checking approval status');
+  // Only MANAGERS require daily approval for transactions
+  // ADMINS can add transactions without approval
+  console.log('Checking approval status for role:', authData.role);
 
   try {
 
-    // For all users (managers and admins), check the approval workflow
-    if (authData.role === "MANAGER" || authData.role === "ADMIN") {
+    // For MANAGERS, check the approval workflow
+    if (authData.role === "MANAGER") {
       const userId = parseInt(authData.userID);
 
       try {
@@ -63,17 +63,15 @@ export async function checkDailyApprovalInternal(authData: any): Promise<CheckDa
         console.log('Today:', today);
         console.log('Daily approval for today:', dailyApproval);
 
-        // If user has daily approval for today, they can add transactions
+        // If manager has daily approval for today, they can add transactions
         if (dailyApproval) {
-          console.log('User has daily approval for today - can add transactions');
+          console.log('Manager has daily approval for today - can add transactions');
           return {
             canAddTransactions: true,
             requiresApproval: true,
             hasApprovalForToday: true,
             hasUnapprovedTransactions: false,
-            message: authData.role === "ADMIN" 
-              ? "You have daily approval for today. You can add transactions."
-              : "You have daily approval for today. You can add transactions.",
+            message: "You have daily approval for today. You can add transactions.",
           };
         }
 
@@ -111,16 +109,14 @@ export async function checkDailyApprovalInternal(authData: any): Promise<CheckDa
           };
         }
 
-        // If no pending transactions from previous days, user can add transactions for today
-        console.log('No pending transactions from previous days - can add transactions for today');
+        // If no pending transactions from previous days, manager can add transactions for today
+        console.log('No pending transactions from previous days - manager can add transactions for today');
         return {
           canAddTransactions: true,
           requiresApproval: true,
           hasApprovalForToday: false,
           hasUnapprovedTransactions: false,
-          message: authData.role === "ADMIN" 
-            ? "You can add transactions for today, but they will require approval."
-            : "You can add transactions for today, but they will require admin approval.",
+          message: "You can add transactions for today, but they will require admin approval.",
         };
 
 
@@ -136,6 +132,18 @@ export async function checkDailyApprovalInternal(authData: any): Promise<CheckDa
           message: "You can add transactions. (Approval system temporarily unavailable)",
         };
       }
+    }
+
+    // For ADMIN users, no approval required
+    if (authData.role === "ADMIN") {
+      console.log('Admin user - no approval required');
+      return {
+        canAddTransactions: true,
+        requiresApproval: false,
+        hasApprovalForToday: true,
+        hasUnapprovedTransactions: false,
+        message: "As an admin, you can add transactions without approval.",
+      };
     }
 
     // For any other role (shouldn't happen with current setup)
@@ -160,18 +168,27 @@ export async function checkDailyApprovalInternal(authData: any): Promise<CheckDa
   }
 }
 
-// API endpoint that calls the helper function
+// Shared handler for checking daily approval (used by both legacy and v1 endpoints)
+async function checkDailyApprovalHandler(req: {}): Promise<CheckDailyApprovalResponse> {
+  const authData = getAuthData();
+  if (!authData) {
+    throw APIError.unauthenticated("Authentication required");
+  }
+  requireRole("ADMIN", "MANAGER")(authData);
+
+  return await checkDailyApprovalInternal(authData);
+}
+
+// LEGACY: API endpoint that checks daily approval (keep for backward compatibility)
 export const checkDailyApproval = api<{}, CheckDailyApprovalResponse>(
   { auth: true, expose: true, method: "POST", path: "/finance/check-daily-approval" },
-  async (req) => {
-    const authData = getAuthData();
-    if (!authData) {
-      throw APIError.unauthenticated("Authentication required");
-    }
-    requireRole("ADMIN", "MANAGER")(authData);
+  checkDailyApprovalHandler
+);
 
-    return await checkDailyApprovalInternal(authData);
-  }
+// V1: API endpoint that checks daily approval
+export const checkDailyApprovalV1 = api<{}, CheckDailyApprovalResponse>(
+  { auth: true, expose: true, method: "POST", path: "/v1/finance/check-daily-approval" },
+  checkDailyApprovalHandler
 );
 
 // Debug endpoint to check transaction status for a manager

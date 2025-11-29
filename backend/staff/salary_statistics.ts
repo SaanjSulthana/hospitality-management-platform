@@ -84,15 +84,13 @@ export interface SalaryStatisticsResponse {
   };
 }
 
-// Gets comprehensive salary statistics and analytics
-export const getSalaryStatistics = api<SalaryStatisticsRequest, SalaryStatisticsResponse>(
-  { auth: true, expose: true, method: "GET", path: "/staff/salary/statistics" },
-  async (req) => {
-    const authData = getAuthData();
-    if (!authData) {
-      throw APIError.unauthenticated("Authentication required");
-    }
-    requireRole("ADMIN", "MANAGER")(authData);
+// Shared handler for getting comprehensive salary statistics and analytics
+async function getSalaryStatisticsHandler(req: SalaryStatisticsRequest): Promise<SalaryStatisticsResponse> {
+  const authData = getAuthData();
+  if (!authData) {
+    throw APIError.unauthenticated("Authentication required");
+  }
+  requireRole("ADMIN", "MANAGER")(authData);
 
     const { propertyId, startDate, endDate, groupBy = 'month' } = req || {};
 
@@ -386,5 +384,16 @@ export const getSalaryStatistics = api<SalaryStatisticsRequest, SalaryStatistics
       console.error('Get salary statistics error:', error);
       throw APIError.internal("Failed to get salary statistics");
     }
-  }
+}
+
+// LEGACY: Gets comprehensive salary statistics and analytics (keep for backward compatibility)
+export const getSalaryStatistics = api<SalaryStatisticsRequest, SalaryStatisticsResponse>(
+  { auth: true, expose: true, method: "GET", path: "/staff/salary/statistics" },
+  getSalaryStatisticsHandler
+);
+
+// V1: Gets comprehensive salary statistics and analytics
+export const getSalaryStatisticsV1 = api<SalaryStatisticsRequest, SalaryStatisticsResponse>(
+  { auth: true, expose: true, method: "GET", path: "/v1/staff/salary/statistics" },
+  getSalaryStatisticsHandler
 );

@@ -16,7 +16,7 @@ const IMAGE_QUALITY = 85;
 const THUMBNAIL_QUALITY = 80;
 // Note: This validates the decoded file size, not the base64-encoded request size
 // Base64 encoding adds ~33% overhead, so a 100MB file becomes ~133MB in the request
-const MAX_FILE_SIZE = 200 * 1024 * 1024; // 200MB (decoded file size) - Increased to handle larger documents
+const MAX_FILE_SIZE = 100 * 1024 * 1024; // 100MB (decoded file size) - Maximum file size limit
 
 const ALLOWED_MIME_TYPES = [
   "image/jpeg",

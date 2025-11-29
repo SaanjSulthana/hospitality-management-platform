@@ -3,6 +3,10 @@ import { getAuthData } from "~encore/auth";
 import { requireRole } from "../auth/middleware";
 import { financeDB } from "./db";
 import { checkDailyApproval } from "./check_daily_approval";
+import { financeEvents } from "./events";
+import { v1Path } from "../shared/http";
+import { v4 as uuidv4 } from 'uuid';
+import { toISTDateString } from "../shared/date_utils";
 
 export interface UpdateExpenseRequest {
   id: number;
@@ -36,9 +40,7 @@ export interface UpdateExpenseResponse {
 }
 
 // Updates an existing expense record
-export const updateExpense = api<UpdateExpenseRequest, UpdateExpenseResponse>(
-  { auth: true, expose: true, method: "PATCH", path: "/finance/expenses/:id" },
-  async (req) => {
+async function updateExpenseHandler(req: UpdateExpenseRequest): Promise<UpdateExpenseResponse> {
     const authData = getAuthData();
     if (!authData) {
       throw APIError.unauthenticated("Authentication required");
@@ -285,6 +287,35 @@ export const updateExpense = api<UpdateExpenseRequest, UpdateExpenseResponse>(
 
       await tx.commit();
 
+      // Publish event for real-time updates (after commit, before return)
+      try {
+        const expenseDate = toISTDateString(updatedExpense.expense_date || new Date());
+        await financeEvents.publish({
+          eventId: uuidv4(),
+          eventVersion: 'v1',
+          eventType: 'expense_updated',
+          orgId: authData.orgId,
+          propertyId: updatedExpense.property_id,
+          userId: parseInt(authData.userID),
+          timestamp: new Date(),
+          entityId: updatedExpense.id,
+          entityType: 'expense',
+          metadata: {
+            amountCents: updatedExpense.amount_cents,
+            currency: updatedExpense.currency,
+            transactionDate: expenseDate,
+            paymentMode: updatedExpense.payment_mode,
+            category: updatedExpense.category,
+            affectedReportDates: [expenseDate],
+            newStatus: updatedExpense.status || 'pending',
+          }
+        });
+        console.log('[Finance] Published expense_updated event for expense ID:', updatedExpense.id);
+      } catch (eventError) {
+        console.error('[Finance] Failed to publish expense_updated event:', eventError);
+        // Don't fail the request if event publishing fails
+      }
+
       return {
         id: updatedExpense.id,
         propertyId: updatedExpense.property_id,
@@ -305,5 +336,14 @@ export const updateExpense = api<UpdateExpenseRequest, UpdateExpenseResponse>(
       await tx.rollback();
       throw error;
     }
-  }
+}
+
+export const updateExpense = api<UpdateExpenseRequest, UpdateExpenseResponse>(
+  { auth: true, expose: true, method: "PATCH", path: "/finance/expenses/:id" },
+  updateExpenseHandler
+);
+
+export const updateExpenseV1 = api<UpdateExpenseRequest, UpdateExpenseResponse>(
+  { auth: true, expose: true, method: "PATCH", path: "/v1/finance/expenses/:id" },
+  updateExpenseHandler
 );

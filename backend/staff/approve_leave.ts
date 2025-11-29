@@ -2,6 +2,8 @@ import { api, APIError } from "encore.dev/api";
 import { getAuthData } from "~encore/auth";
 import { requireRole } from "../auth/middleware";
 import { staffDB } from "./db";
+import { staffEvents } from "./events";
+import { v4 as uuidv4 } from "uuid";
 
 export interface ApproveLeaveRequest {
   id: number;
@@ -14,10 +16,8 @@ export interface ApproveLeaveResponse {
   status: string;
 }
 
-// Approves or rejects a leave request
-export const approveLeave = api<ApproveLeaveRequest, ApproveLeaveResponse>(
-  { auth: true, expose: true, method: "POST", path: "/staff/leave/approve" },
-  async (req) => {
+// Shared handler for approving leave
+async function approveLeaveHandler(req: ApproveLeaveRequest): Promise<ApproveLeaveResponse> {
     const authData = getAuthData();
     if (!authData) {
       throw APIError.unauthenticated("Authentication required");
@@ -29,7 +29,7 @@ export const approveLeave = api<ApproveLeaveRequest, ApproveLeaveResponse>(
     // Get leave request and check access
     const leaveRequestRow = await staffDB.queryRow`
       SELECT lr.id, lr.org_id, lr.staff_id, lr.status, lr.start_date, lr.end_date, lr.leave_type,
-             s.user_id as staff_user_id, u.display_name as staff_name
+             s.user_id as staff_user_id, s.property_id as staff_property_id, u.display_name as staff_name
       FROM leave_requests lr
       JOIN staff s ON lr.staff_id = s.id
       JOIN users u ON s.user_id = u.id
@@ -84,11 +84,47 @@ export const approveLeave = api<ApproveLeaveRequest, ApproveLeaveResponse>(
       )
     `;
 
+    // Publish leave_approved/leave_rejected event
+    try {
+      await staffEvents.publish({
+        eventId: uuidv4(),
+        eventVersion: 'v1',
+        eventType: newStatus === 'approved' ? 'leave_approved' : 'leave_rejected',
+        orgId: authData.orgId,
+        propertyId: leaveRequestRow.staff_property_id ?? null,
+        userId: parseInt(authData.userID),
+        timestamp: new Date(),
+        entityId: leaveRequestRow.id,
+        entityType: 'leave',
+        metadata: {
+          staffId: leaveRequestRow.staff_id,
+          staffName: leaveRequestRow.staff_name,
+          leaveType: leaveRequestRow.leave_type,
+          startDate: leaveRequestRow.start_date,
+          endDate: leaveRequestRow.end_date,
+          status: newStatus,
+        },
+      });
+    } catch (e) {
+      console.warn("[Staff Events] Failed to publish leave approval event", e);
+    }
+
     return {
       success: true,
       leaveRequestId: id,
       status: newStatus,
     };
-  }
+}
+
+// LEGACY: Approves leave (keep for backward compatibility)
+export const approveLeave = api<ApproveLeaveRequest, ApproveLeaveResponse>(
+  { auth: true, expose: true, method: "PUT", path: "/staff/leave/:id/approve" },
+  approveLeaveHandler
+);
+
+// V1: Approves leave
+export const approveLeaveV1 = api<ApproveLeaveRequest, ApproveLeaveResponse>(
+  { auth: true, expose: true, method: "PUT", path: "/v1/staff/leave/:id/approve" },
+  approveLeaveHandler
 );
 

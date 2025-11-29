@@ -3,7 +3,10 @@ import { getAuthData } from "~encore/auth";
 import { requireRole } from "../auth/middleware";
 import { tasksDB } from "./db";
 import { TaskType, TaskPriority } from "./types";
+import { v1Path } from "../shared/http";
 import log from "encore.dev/log";
+import { taskEvents } from "./events";
+import { v4 as uuidv4 } from "uuid";
 
 export interface CreateTaskRequest {
   propertyId: number;
@@ -38,10 +41,8 @@ export interface CreateTaskResponse {
   attachmentCount: number;
 }
 
-// Creates a new task
-export const create = api<CreateTaskRequest, CreateTaskResponse>(
-  { auth: true, expose: true, method: "POST", path: "/tasks" },
-  async (req) => {
+// Handler function for creating a task
+async function createTaskHandler(req: CreateTaskRequest): Promise<CreateTaskResponse> {
     const authData = getAuthData();
     if (!authData) {
       throw APIError.unauthenticated("Authentication required");
@@ -152,6 +153,44 @@ export const create = api<CreateTaskRequest, CreateTaskResponse>(
         orgId: authData.orgId 
       });
 
+      // Publish task_created (and task_assigned if applicable)
+      try {
+        await taskEvents.publish({
+          eventId: uuidv4(),
+          eventVersion: 'v1',
+          eventType: 'task_created',
+          orgId: authData.orgId,
+          propertyId: propertyId,
+          userId: parseInt(authData.userID),
+          timestamp: new Date(),
+          entityId: taskRow.id,
+          entityType: 'task',
+          metadata: {
+            title,
+            priority,
+            status: taskRow.status,
+          },
+        });
+        if (assigneeStaffId) {
+          await taskEvents.publish({
+            eventId: uuidv4(),
+            eventVersion: 'v1',
+            eventType: 'task_assigned',
+            orgId: authData.orgId,
+            propertyId: propertyId,
+            userId: parseInt(authData.userID),
+            timestamp: new Date(),
+            entityId: taskRow.id,
+            entityType: 'task',
+            metadata: {
+              assigneeStaffId,
+            },
+          });
+        }
+      } catch (e) {
+        log.warn("Task event publish failed (create/assign)", { error: e instanceof Error ? e.message : String(e) });
+      }
+
       return {
         id: taskRow.id,
         propertyId: taskRow.property_id,
@@ -189,6 +228,17 @@ export const create = api<CreateTaskRequest, CreateTaskResponse>(
       
       throw APIError.internal("Failed to create task");
     }
-  }
+}
+
+// Legacy path
+export const create = api<CreateTaskRequest, CreateTaskResponse>(
+  { auth: true, expose: true, method: "POST", path: "/tasks" },
+  createTaskHandler
+);
+
+// Versioned path
+export const createV1 = api<CreateTaskRequest, CreateTaskResponse>(
+  { auth: true, expose: true, method: "POST", path: "/v1/tasks" },
+  createTaskHandler
 );
 

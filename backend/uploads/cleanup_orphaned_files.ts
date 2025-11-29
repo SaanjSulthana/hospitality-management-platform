@@ -13,10 +13,8 @@ export interface CleanupOrphanedFilesResponse {
   message: string;
 }
 
-// Clean up orphaned files (files not referenced by any transactions)
-export const cleanupOrphanedFiles = api<{}, CleanupOrphanedFilesResponse>(
-  { auth: true, expose: true, method: "POST", path: "/uploads/cleanup-orphaned" },
-  async () => {
+// Shared handler for cleaning up orphaned files (files not referenced by any transactions)
+async function cleanupOrphanedFilesHandler(): Promise<CleanupOrphanedFilesResponse> {
     const authData = getAuthData();
     if (!authData) {
       throw APIError.unauthenticated("Authentication required");
@@ -73,15 +71,26 @@ export const cleanupOrphanedFiles = api<{}, CleanupOrphanedFilesResponse>(
         }
       }
 
-      return {
-        filesDeleted,
-        filesChecked,
-        errors,
-        message: `Cleanup completed. Deleted ${filesDeleted} orphaned files out of ${filesChecked} checked.`
-      };
-    } catch (error: any) {
-      console.error('Cleanup orphaned files error:', error);
-      throw APIError.internal(`Failed to cleanup orphaned files: ${error.message}`);
-    }
+    return {
+      filesDeleted,
+      filesChecked,
+      errors,
+      message: `Cleanup completed. Deleted ${filesDeleted} orphaned files out of ${filesChecked} checked.`
+    };
+  } catch (error: any) {
+    console.error('Cleanup orphaned files error:', error);
+    throw APIError.internal(`Failed to cleanup orphaned files: ${error.message}`);
   }
+}
+
+// LEGACY: Clean up orphaned files (keep for backward compatibility)
+export const cleanupOrphanedFiles = api<{}, CleanupOrphanedFilesResponse>(
+  { auth: true, expose: true, method: "POST", path: "/uploads/cleanup-orphaned" },
+  cleanupOrphanedFilesHandler
+);
+
+// V1: Clean up orphaned files
+export const cleanupOrphanedFilesV1 = api<{}, CleanupOrphanedFilesResponse>(
+  { auth: true, expose: true, method: "POST", path: "/v1/uploads/cleanup-orphaned" },
+  cleanupOrphanedFilesHandler
 );

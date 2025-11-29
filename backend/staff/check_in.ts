@@ -2,6 +2,8 @@ import { api, APIError } from "encore.dev/api";
 import { getAuthData } from "~encore/auth";
 import { requireRole } from "../auth/middleware";
 import { staffDB } from "./db";
+import { staffEvents } from "./events";
+import { v4 as uuidv4 } from "uuid";
 
 export interface CheckInRequest {
   staffId: number;
@@ -21,10 +23,8 @@ export interface CheckInResponse {
   message: string;
 }
 
-// Staff check-in endpoint with validation
-export const checkIn = api<CheckInRequest, CheckInResponse>(
-  { auth: true, expose: true, method: "POST", path: "/staff/:staffId/check-in" },
-  async (req) => {
+// Shared handler for staff check-in
+async function checkInHandler(req: CheckInRequest): Promise<CheckInResponse> {
     const authData = getAuthData();
     if (!authData) {
       throw APIError.unauthenticated("Authentication required");
@@ -60,7 +60,7 @@ export const checkIn = api<CheckInRequest, CheckInResponse>(
     try {
       // Verify staff record exists and belongs to organization
       const staff = await tx.queryRow`
-        SELECT s.id, s.user_id, u.display_name
+        SELECT s.id, s.user_id, s.property_id, u.display_name
         FROM staff s
         JOIN users u ON s.user_id = u.id
         WHERE s.id = ${staffId} AND s.org_id = ${authData.orgId}
@@ -150,6 +150,29 @@ export const checkIn = api<CheckInRequest, CheckInResponse>(
 
       await tx.commit();
 
+      // Publish attendance_checked_in event
+      try {
+        await staffEvents.publish({
+          eventId: uuidv4(),
+          eventVersion: 'v1',
+          eventType: 'attendance_checked_in',
+          orgId: authData.orgId,
+          propertyId: staff.property_id ?? null,
+          userId: parseInt(authData.userID),
+          timestamp: new Date(),
+          entityId: attendanceId,
+          entityType: 'attendance',
+          metadata: {
+            staffId,
+            staffName: staff.display_name,
+            attendanceDate: new Date().toISOString().split('T')[0],
+            status,
+          },
+        });
+      } catch (e) {
+        console.warn("[Staff Events] Failed to publish attendance_checked_in", e);
+      }
+
       return {
         success: true,
         attendanceId,
@@ -168,5 +191,16 @@ export const checkIn = api<CheckInRequest, CheckInResponse>(
       }
       throw APIError.internal("Failed to check in staff member");
     }
-  }
+}
+
+// LEGACY: Staff check-in (keep for backward compatibility)
+export const checkIn = api<CheckInRequest, CheckInResponse>(
+  { auth: true, expose: true, method: "POST", path: "/staff/:staffId/check-in" },
+  checkInHandler
+);
+
+// V1: Staff check-in
+export const checkInV1 = api<CheckInRequest, CheckInResponse>(
+  { auth: true, expose: true, method: "POST", path: "/v1/staff/:staffId/check-in" },
+  checkInHandler
 );

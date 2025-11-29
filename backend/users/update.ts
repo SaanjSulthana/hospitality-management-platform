@@ -3,7 +3,10 @@ import { getAuthData } from "~encore/auth";
 import { requireRole } from "../auth/middleware";
 import { usersDB } from "./db";
 import { hashPassword } from "../auth/utils";
+import { v1Path } from "../shared/http";
 import log from "encore.dev/log";
+import { usersEvents } from "./events";
+import { v4 as uuidv4 } from "uuid";
 
 export interface UpdateUserRequest {
   id: number;
@@ -19,9 +22,7 @@ export interface UpdateUserResponse {
 }
 
 // Updates a user's details (Admin only).
-export const update = api<UpdateUserRequest, UpdateUserResponse>(
-  { auth: true, expose: true, method: "PATCH", path: "/users/:id" },
-  async (req) => {
+async function updateUserHandler(req: UpdateUserRequest): Promise<UpdateUserResponse> {
     const authData = getAuthData();
     if (!authData) {
       throw APIError.unauthenticated("Authentication required");
@@ -150,6 +151,26 @@ export const update = api<UpdateUserRequest, UpdateUserResponse>(
         orgId: authData.orgId 
       });
 
+      // Publish user_updated event
+      try {
+        await usersEvents.publish({
+          eventId: uuidv4(),
+          eventVersion: 'v1',
+          eventType: 'user_updated',
+          orgId: authData.orgId,
+          propertyId: null,
+          userId: parseInt(authData.userID),
+          timestamp: new Date(),
+          entityId: userIdNum,
+          entityType: 'user',
+          metadata: {
+            updatedFields: updates,
+          },
+        });
+      } catch (e) {
+        log.warn("Users event publish failed (user_updated)", { error: e instanceof Error ? e.message : String(e) });
+      }
+
       return { success: true, id: userIdNum };
     } catch (error) {
       await tx.rollback();
@@ -166,6 +187,15 @@ export const update = api<UpdateUserRequest, UpdateUserResponse>(
       
       throw APIError.internal("Failed to update user");
     }
-  }
+}
+
+export const update = api<UpdateUserRequest, UpdateUserResponse>(
+  { auth: true, expose: true, method: "PATCH", path: "/users/:id" },
+  updateUserHandler
+);
+
+export const updateV1 = api<UpdateUserRequest, UpdateUserResponse>(
+  { auth: true, expose: true, method: "PATCH", path: "/v1/users/:id" },
+  updateUserHandler
 );
 

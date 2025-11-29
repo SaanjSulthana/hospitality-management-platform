@@ -3,7 +3,7 @@ import { getAuthData } from "~encore/auth";
 import { requireRole } from "../auth/middleware";
 import { staffDB } from "./db";
 
-export interface CreateScheduleChangeRequest {
+export interface CreateScheduleChangeRequestRequest {
   staffId: number;
   originalScheduleId: number;
   requestedStartTime: Date;
@@ -40,10 +40,8 @@ export interface CreateScheduleChangeRequestResponse {
   message: string;
 }
 
-// Creates a schedule change request
-export const createScheduleChangeRequest = api<CreateScheduleChangeRequest, CreateScheduleChangeRequestResponse>(
-  { auth: true, expose: true, method: "POST", path: "/staff/schedule-change-requests" },
-  async (req) => {
+// Shared handler for creating schedule change request
+async function createScheduleChangeRequestHandler(req: CreateScheduleChangeRequestRequest): Promise<CreateScheduleChangeRequestResponse> {
     const authData = getAuthData();
     if (!authData) {
       throw APIError.unauthenticated("Authentication required");
@@ -184,5 +182,16 @@ export const createScheduleChangeRequest = api<CreateScheduleChangeRequest, Crea
       }
       throw APIError.internal("Failed to create schedule change request");
     }
-  }
+}
+
+// LEGACY: Creates schedule change request (keep for backward compatibility)
+export const createScheduleChangeRequest = api<CreateScheduleChangeRequestRequest, CreateScheduleChangeRequestResponse>(
+  { auth: true, expose: true, method: "POST", path: "/staff/schedule-change-requests" },
+  createScheduleChangeRequestHandler
+);
+
+// V1: Creates schedule change request
+export const createScheduleChangeRequestV1 = api<CreateScheduleChangeRequestRequest, CreateScheduleChangeRequestResponse>(
+  { auth: true, expose: true, method: "POST", path: "/v1/staff/schedule-change-requests" },
+  createScheduleChangeRequestHandler
 );

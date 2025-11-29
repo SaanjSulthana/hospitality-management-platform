@@ -2,7 +2,10 @@ import { api, APIError } from "encore.dev/api";
 import { getAuthData } from "~encore/auth";
 import { requireRole } from "../auth/middleware";
 import { usersDB } from "./db";
+import { v1Path } from "../shared/http";
 import log from "encore.dev/log";
+import { usersEvents } from "./events";
+import { v4 as uuidv4 } from "uuid";
 
 export interface DeleteUserRequest {
   id: number;
@@ -28,9 +31,7 @@ export interface DeleteUserResponse {
 }
 
 // Deletes a user and all related data (Admin only)
-export const deleteUser = api<DeleteUserRequest, DeleteUserResponse>(
-  { auth: true, expose: true, method: "DELETE", path: "/users/:id" },
-  async (req) => {
+async function deleteUserHandler(req: DeleteUserRequest): Promise<DeleteUserResponse> {
     const authData = getAuthData();
     if (!authData) {
       throw APIError.unauthenticated("Authentication required");
@@ -154,6 +155,28 @@ export const deleteUser = api<DeleteUserRequest, DeleteUserResponse>(
         deletedBy: authData.userID 
       });
 
+      // Publish user_deleted event
+      try {
+        await usersEvents.publish({
+          eventId: uuidv4(),
+          eventVersion: 'v1',
+          eventType: 'user_deleted',
+          orgId: authData.orgId,
+          propertyId: null,
+          userId: parseInt(authData.userID),
+          timestamp: new Date(),
+          entityId: userIdNum,
+          entityType: 'user',
+          metadata: {
+            email: userRow.email,
+            displayName: userRow.display_name,
+            role: userRow.role,
+          },
+        });
+      } catch (e) {
+        log.warn("Users event publish failed (user_deleted)", { error: e instanceof Error ? e.message : String(e) });
+      }
+
       return {
         success: true,
         message: `User ${userRow.display_name} (${userRow.email}) and all related data have been successfully deleted`,
@@ -180,6 +203,15 @@ export const deleteUser = api<DeleteUserRequest, DeleteUserResponse>(
       }
       throw APIError.internal("Failed to delete user");
     }
-  }
+}
+
+export const deleteUser = api<DeleteUserRequest, DeleteUserResponse>(
+  { auth: true, expose: true, method: "DELETE", path: "/users/:id" },
+  deleteUserHandler
+);
+
+export const deleteUserV1 = api<DeleteUserRequest, DeleteUserResponse>(
+  { auth: true, expose: true, method: "DELETE", path: "/v1/users/:id" },
+  deleteUserHandler
 );
 

@@ -12,6 +12,7 @@ import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { useToast } from '@/components/ui/use-toast';
 import { formatUserActivityDateTime } from '../lib/datetime';
+import { getFlagBool } from '../lib/feature-flags';
 import { Users, Plus, Search, Mail, Calendar, UserPlus, Pencil, RefreshCw, Shield, User, AlertCircle, Trash2 } from 'lucide-react';
 
 type ListUsersResponse = {
@@ -81,11 +82,11 @@ export default function UsersPage() {
       return backend.users.list({});
     },
     enabled: user?.role === 'ADMIN',
-    refetchInterval: 3000, // Refresh every 3 seconds for real-time activity updates (increased frequency)
-    staleTime: 0, // Consider data immediately stale for fresh user activity
-    gcTime: 0, // Don't cache results
+    refetchInterval: false,
+    staleTime: 25000,
+    gcTime: 300000,
     refetchOnMount: true,
-    refetchOnWindowFocus: true,
+    refetchOnWindowFocus: false,
     retry: (failureCount, error) => {
       console.error('Users query failed:', error);
       return failureCount < 2;
@@ -99,12 +100,85 @@ export default function UsersPage() {
       return backend.properties.list({});
     },
     enabled: user?.role === 'ADMIN',
-    refetchInterval: 5000, // Refresh every 5 seconds for real-time updates
-    staleTime: 0, // Always consider data stale for fresh updates
-    gcTime: 0, // Don't cache results
-    refetchOnWindowFocus: true, // Refetch when window gains focus
+    refetchInterval: false,
+    staleTime: 25000,
+    gcTime: 300000,
+    refetchOnWindowFocus: false, // Trust realtime; avoid focus storms
     refetchOnMount: true, // Refetch when component mounts
   });
+
+  // Realtime: Users events
+  const [usersLive, setUsersLive] = useState<boolean | null>(null);
+  const invalidateTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pendingScopesRef = React.useRef<Set<string>>(new Set());
+
+  useEffect(() => {
+    const enabled = getFlagBool('USERS_REALTIME_V1', true);
+    if (!enabled) return;
+
+    const onEvents = (e: any) => {
+      const events = e?.detail?.events || [];
+      if (!Array.isArray(events) || events.length === 0) return;
+
+      let needsUsersRefetch = false;
+      let needsPropertiesRefetch = false;
+
+      for (const ev of events) {
+        const t = String(ev?.eventType || '');
+        const id = ev?.entityId as number | undefined;
+        const metadata = ev?.metadata || {};
+
+        if (!t.startsWith('user_')) continue;
+
+        if (t === 'user_deleted' && id != null) {
+          // Row-level delete from users list
+          queryClient.setQueryData<ListUsersResponse>(['users'], (old) => {
+            if (!old?.users) return old;
+            return { ...old, users: old.users.filter((u) => u.id !== id) };
+          });
+          continue;
+        }
+
+        if (t === 'user_created') {
+          // Other tabs don't have full user shape -> single refetch
+          needsUsersRefetch = true;
+          continue;
+        }
+
+        if (t === 'user_updated') {
+          // Metadata contains updatedFields; safer to refetch once
+          needsUsersRefetch = true;
+          continue;
+        }
+
+        if (t === 'user_properties_assigned') {
+          needsUsersRefetch = true;
+          needsPropertiesRefetch = true;
+          continue;
+        }
+      }
+
+      if (needsUsersRefetch) {
+        queryClient.invalidateQueries({ queryKey: ['users'] });
+      }
+      if (needsPropertiesRefetch) {
+        queryClient.invalidateQueries({ queryKey: ['properties'] });
+      }
+    };
+
+    const onHealth = (e: any) => {
+      setUsersLive(!!e?.detail?.isLive);
+    };
+
+    window.addEventListener('users-stream-events', onEvents);
+    window.addEventListener('users-stream-health', onHealth);
+    return () => {
+      window.removeEventListener('users-stream-events', onEvents);
+      window.removeEventListener('users-stream-health', onHealth);
+      if (invalidateTimerRef.current) clearTimeout(invalidateTimerRef.current);
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [queryClient]);
 
   const createUserMutation = useMutation({
     mutationFn: async (userData: typeof newUser) => {

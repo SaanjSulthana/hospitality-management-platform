@@ -2,6 +2,8 @@ import { api, APIError } from "encore.dev/api";
 import { getAuthData } from "~encore/auth";
 import { requireRole } from "../auth/middleware";
 import { staffDB } from "./db";
+import { staffEvents } from "./events";
+import { v4 as uuidv4 } from "uuid";
 
 export interface CheckOutRequest {
   staffId: number;
@@ -24,10 +26,8 @@ export interface CheckOutResponse {
   message: string;
 }
 
-// Staff check-out endpoint with hours calculation
-export const checkOut = api<CheckOutRequest, CheckOutResponse>(
-  { auth: true, expose: true, method: "POST", path: "/staff/:staffId/check-out" },
-  async (req) => {
+// Shared handler for staff check-out
+async function checkOutHandler(req: CheckOutRequest): Promise<CheckOutResponse> {
     const authData = getAuthData();
     if (!authData) {
       throw APIError.unauthenticated("Authentication required");
@@ -41,7 +41,7 @@ export const checkOut = api<CheckOutRequest, CheckOutResponse>(
     try {
       // Verify staff record exists and belongs to organization
       const staff = await tx.queryRow`
-        SELECT s.id, s.user_id, s.hourly_rate_cents, u.display_name
+        SELECT s.id, s.user_id, s.property_id, s.hourly_rate_cents, u.display_name
         FROM staff s
         JOIN users u ON s.user_id = u.id
         WHERE s.id = ${staffId} AND s.org_id = ${authData.orgId}
@@ -146,6 +146,31 @@ export const checkOut = api<CheckOutRequest, CheckOutResponse>(
 
       await tx.commit();
 
+      // Publish attendance_checked_out event
+      try {
+        await staffEvents.publish({
+          eventId: uuidv4(),
+          eventVersion: 'v1',
+          eventType: 'attendance_checked_out',
+          orgId: authData.orgId,
+          propertyId: staff.property_id ?? null,
+          userId: parseInt(authData.userID),
+          timestamp: new Date(),
+          entityId: updatedAttendance.id,
+          entityType: 'attendance',
+          metadata: {
+            staffId,
+            staffName: staff.display_name,
+            attendanceDate: new Date().toISOString().split('T')[0],
+            totalHours,
+            overtimeHours,
+            status: updatedAttendance.status,
+          },
+        });
+      } catch (e) {
+        console.warn("[Staff Events] Failed to publish attendance_checked_out", e);
+      }
+
       return {
         success: true,
         attendanceId: updatedAttendance.id,
@@ -165,5 +190,16 @@ export const checkOut = api<CheckOutRequest, CheckOutResponse>(
       }
       throw APIError.internal("Failed to check out staff member");
     }
-  }
+}
+
+// LEGACY: Staff check-out (keep for backward compatibility)
+export const checkOut = api<CheckOutRequest, CheckOutResponse>(
+  { auth: true, expose: true, method: "POST", path: "/staff/:staffId/check-out" },
+  checkOutHandler
+);
+
+// V1: Staff check-out
+export const checkOutV1 = api<CheckOutRequest, CheckOutResponse>(
+  { auth: true, expose: true, method: "POST", path: "/v1/staff/:staffId/check-out" },
+  checkOutHandler
 );

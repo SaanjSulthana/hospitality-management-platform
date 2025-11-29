@@ -7,9 +7,11 @@ import { getAuthData } from "~encore/auth";
 import { guestCheckinDB } from "./db";
 import type { AuditActionType, AuditResourceType, CreateAuditLogRequest } from "./audit-types";
 import log from "encore.dev/log";
+import { auditEvents } from "./audit-events";
+import { bufferAuditEvent } from "./subscribe-audit-events-v2";
 
 /**
- * Create an audit log entry
+ * Create an audit log entry and publish real-time event
  */
 export async function createAuditLog(request: CreateAuditLogRequest): Promise<void> {
   try {
@@ -65,6 +67,34 @@ export async function createAuditLog(request: CreateAuditLogRequest): Promise<vo
       resourceId: request.resourceId,
       userId: authData.userID,
     });
+
+    // 🔥 BUFFER EVENT FOR REAL-TIME DELIVERY (Instant, no async delays!)
+    // This notifies all connected clients in <100ms
+    try {
+      const eventPayload = {
+        orgId: authData.orgId,
+        eventType: 'audit_log_created' as const,
+        eventId: `${authData.orgId}-${Date.now()}-${Math.random()}`,
+        timestamp: new Date(),
+        metadata: {
+          actionType: request.actionType,
+          userId: parseInt(authData.userID),
+          guestCheckInId: request.guestCheckInId || undefined,
+        },
+      };
+      
+      // Buffer directly for instant delivery
+      bufferAuditEvent(eventPayload);
+      
+      // ALSO publish to Pub/Sub for analytics/background processing
+      auditEvents.publish(eventPayload).catch((pubsubError) => {
+        // Don't block on Pub/Sub failures
+        log.warn("Failed to publish audit event to Pub/Sub", { error: pubsubError });
+      });
+    } catch (bufferError) {
+      // Don't fail audit log if buffering fails (graceful degradation)
+      log.warn("Failed to buffer audit event", { error: bufferError });
+    }
   } catch (error: any) {
     // Don't fail the main operation if audit logging fails
     log.error("Failed to create audit log", { error: error.message, request });

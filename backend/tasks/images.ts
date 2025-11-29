@@ -3,6 +3,7 @@ import { getAuthData } from "~encore/auth";
 import { requireRole } from "../auth/middleware";
 import { tasksDB } from "./db";
 import { uploadsDB } from "../uploads/db";
+import { taskImagesBucket } from "../storage/buckets";
 import * as fs from "fs";
 import * as path from "path";
 import { randomUUID } from "crypto";
@@ -47,10 +48,8 @@ export interface SetPrimaryImageResponse {
   message: string;
 }
 
-// Upload reference image for a task
-export const uploadTaskImage = api<UploadTaskImageRequest, UploadTaskImageResponse>(
-  { auth: true, expose: true, method: "POST", path: "/tasks/:taskId/images" },
-  async (req) => {
+// Shared handler for uploading task image
+async function uploadTaskImageHandler(req: UploadTaskImageRequest): Promise<UploadTaskImageResponse> {
     const authData = getAuthData();
     if (!authData) {
       throw APIError.unauthenticated("Authentication required");
@@ -107,15 +106,20 @@ export const uploadTaskImage = api<UploadTaskImageRequest, UploadTaskImageRespon
       const fileExtension = path.extname(filename) || getExtensionFromMimeType(mimeType);
       const uniqueFilename = `task_${taskId}_${randomUUID()}${fileExtension}`;
       
-      // Create task images directory if it doesn't exist
-      const taskImagesDir = path.join(process.cwd(), 'uploads', authData.orgId.toString(), 'tasks');
-      if (!fs.existsSync(taskImagesDir)) {
-        fs.mkdirSync(taskImagesDir, { recursive: true });
+      // Upload to Encore Cloud bucket (public)
+      const bucketKey = `${authData.orgId}/task_${taskId}/${uniqueFilename}`;
+      
+      try {
+        await taskImagesBucket.upload(bucketKey, fileBuffer, {
+          contentType: mimeType
+        });
+      } catch (error) {
+        log.error('Failed to upload to bucket:', error);
+        throw APIError.internal("Failed to upload image to cloud storage");
       }
 
-      // Save file to disk
-      const filePath = path.join(taskImagesDir, uniqueFilename);
-      fs.writeFileSync(filePath, fileBuffer);
+      // Get public URL since bucket is public (CDN-backed)
+      const publicUrl = taskImagesBucket.publicUrl(bucketKey);
 
       // Check if this is the first image for this task (will be primary)
       const existingImages = await tx.queryAll`
@@ -125,19 +129,19 @@ export const uploadTaskImage = api<UploadTaskImageRequest, UploadTaskImageRespon
       
       const isPrimary = existingImages.length === 0;
 
-      // Save image info to task_attachments table
+      // Save image info to task_attachments table with cloud storage marker
       const imageRow = await tx.queryRow`
-        INSERT INTO task_attachments (org_id, task_id, file_name, file_url, file_size, mime_type, uploaded_by_user_id)
-        VALUES (${authData.orgId}, ${taskId}, ${uniqueFilename}, ${`/uploads/tasks/${uniqueFilename}`}, ${fileBuffer.length}, ${mimeType}, ${parseInt(authData.userID)})
+        INSERT INTO task_attachments (org_id, task_id, file_name, file_url, file_size, mime_type, uploaded_by_user_id, storage_location, bucket_key)
+        VALUES (${authData.orgId}, ${taskId}, ${uniqueFilename}, ${publicUrl}, ${fileBuffer.length}, ${mimeType}, ${parseInt(authData.userID)}, 'cloud', ${bucketKey})
         RETURNING id, org_id, task_id, file_name, file_url, file_size, mime_type, uploaded_by_user_id, created_at
       `;
 
       if (!imageRow) {
-        // Clean up file if database insert failed
+        // Clean up file from bucket if database insert failed
         try {
-          fs.unlinkSync(filePath);
+          await taskImagesBucket.remove(bucketKey);
         } catch (error) {
-          log.error('Failed to clean up file:', error);
+          log.error('Failed to clean up file from bucket:', error);
         }
         throw APIError.internal("Failed to save image record");
       }
@@ -181,13 +185,22 @@ export const uploadTaskImage = api<UploadTaskImageRequest, UploadTaskImageRespon
       
       throw APIError.internal("Failed to upload task image");
     }
-  }
+}
+
+// LEGACY: Upload reference image for a task (keep for backward compatibility)
+export const uploadTaskImage = api<UploadTaskImageRequest, UploadTaskImageResponse>(
+  { auth: true, expose: true, method: "POST", path: "/tasks/:taskId/images" },
+  uploadTaskImageHandler
 );
 
-// Get all images for a task
-export const getTaskImages = api<{ taskId: number }, GetTaskImagesResponse>(
-  { auth: true, expose: true, method: "GET", path: "/tasks/:taskId/images" },
-  async (req) => {
+// V1: Upload reference image for a task
+export const uploadTaskImageV1 = api<UploadTaskImageRequest, UploadTaskImageResponse>(
+  { auth: true, expose: true, method: "POST", path: "/v1/tasks/:taskId/images" },
+  uploadTaskImageHandler
+);
+
+// Shared handler for getting all images for a task
+async function getTaskImagesHandler(req: { taskId: number }): Promise<GetTaskImagesResponse> {
     const authData = getAuthData();
     if (!authData) {
       throw APIError.unauthenticated("Authentication required");
@@ -243,13 +256,22 @@ export const getTaskImages = api<{ taskId: number }, GetTaskImagesResponse>(
       success: true,
       images: taskImages,
     };
-  }
+}
+
+// LEGACY: Get all images for a task (keep for backward compatibility)
+export const getTaskImages = api<{ taskId: number }, GetTaskImagesResponse>(
+  { auth: true, expose: true, method: "GET", path: "/tasks/:taskId/images" },
+  getTaskImagesHandler
 );
 
-// Delete a task image
-export const deleteTaskImage = api<{ taskId: number; imageId: number }, DeleteTaskImageResponse>(
-  { auth: true, expose: true, method: "DELETE", path: "/tasks/:taskId/images/:imageId" },
-  async (req) => {
+// V1: Get all images for a task
+export const getTaskImagesV1 = api<{ taskId: number }, GetTaskImagesResponse>(
+  { auth: true, expose: true, method: "GET", path: "/v1/tasks/:taskId/images" },
+  getTaskImagesHandler
+);
+
+// Shared handler for deleting a task image
+async function deleteTaskImageHandler(req: { taskId: number; imageId: number }): Promise<DeleteTaskImageResponse> {
     const authData = getAuthData();
     if (!authData) {
       throw APIError.unauthenticated("Authentication required");
@@ -283,7 +305,7 @@ export const deleteTaskImage = api<{ taskId: number; imageId: number }, DeleteTa
 
       // Get image info before deletion
       const imageRow = await tx.queryRow`
-        SELECT file_name, file_url
+        SELECT file_name, file_url, storage_location, bucket_key
         FROM task_attachments 
         WHERE id = ${imageId} AND task_id = ${taskId} AND org_id = ${authData.orgId}
       `;
@@ -298,14 +320,20 @@ export const deleteTaskImage = api<{ taskId: number; imageId: number }, DeleteTa
         WHERE id = ${imageId} AND task_id = ${taskId} AND org_id = ${authData.orgId}
       `;
 
-      // Delete file from disk
+      // Delete file from cloud or local storage
       try {
-        const filePath = path.join(process.cwd(), 'uploads', authData.orgId.toString(), 'tasks', imageRow.file_name);
-        if (fs.existsSync(filePath)) {
-          fs.unlinkSync(filePath);
+        if (imageRow.storage_location === 'cloud' && imageRow.bucket_key) {
+          // Delete from Encore bucket
+          await taskImagesBucket.remove(imageRow.bucket_key);
+        } else {
+          // Delete from local disk
+          const filePath = path.join(process.cwd(), 'uploads', authData.orgId.toString(), 'tasks', imageRow.file_name);
+          if (fs.existsSync(filePath)) {
+            fs.unlinkSync(filePath);
+          }
         }
       } catch (error) {
-        log.error('Failed to delete file from disk:', error);
+        log.error('Failed to delete file:', error);
         // Don't fail the request if file deletion fails
       }
 
@@ -338,13 +366,22 @@ export const deleteTaskImage = api<{ taskId: number; imageId: number }, DeleteTa
       
       throw APIError.internal("Failed to delete task image");
     }
-  }
+}
+
+// LEGACY: Delete a task image (keep for backward compatibility)
+export const deleteTaskImage = api<{ taskId: number; imageId: number }, DeleteTaskImageResponse>(
+  { auth: true, expose: true, method: "DELETE", path: "/tasks/:taskId/images/:imageId" },
+  deleteTaskImageHandler
 );
 
-// Set an image as primary (for future enhancement)
-export const setPrimaryImage = api<{ taskId: number; imageId: number }, SetPrimaryImageResponse>(
-  { auth: true, expose: true, method: "PUT", path: "/tasks/:taskId/images/:imageId/primary" },
-  async (req) => {
+// V1: Delete a task image
+export const deleteTaskImageV1 = api<{ taskId: number; imageId: number }, DeleteTaskImageResponse>(
+  { auth: true, expose: true, method: "DELETE", path: "/v1/tasks/:taskId/images/:imageId" },
+  deleteTaskImageHandler
+);
+
+// Shared handler for setting an image as primary
+async function setPrimaryImageHandler(req: { taskId: number; imageId: number }): Promise<SetPrimaryImageResponse> {
     const authData = getAuthData();
     if (!authData) {
       throw APIError.unauthenticated("Authentication required");
@@ -398,7 +435,18 @@ export const setPrimaryImage = api<{ taskId: number; imageId: number }, SetPrima
       success: true,
       message: "Primary image updated"
     };
-  }
+}
+
+// LEGACY: Set an image as primary (keep for backward compatibility)
+export const setPrimaryImage = api<{ taskId: number; imageId: number }, SetPrimaryImageResponse>(
+  { auth: true, expose: true, method: "PUT", path: "/tasks/:taskId/images/:imageId/primary" },
+  setPrimaryImageHandler
+);
+
+// V1: Set an image as primary
+export const setPrimaryImageV1 = api<{ taskId: number; imageId: number }, SetPrimaryImageResponse>(
+  { auth: true, expose: true, method: "PUT", path: "/v1/tasks/:taskId/images/:imageId/primary" },
+  setPrimaryImageHandler
 );
 
 function getExtensionFromMimeType(mimeType: string): string {

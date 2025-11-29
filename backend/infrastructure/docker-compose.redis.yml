@@ -1,0 +1,74 @@
+version: '3.8'
+
+services:
+  redis:
+    image: redis:7.2-alpine
+    container_name: hospitality-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+      - ./redis.conf:/usr/local/etc/redis/redis.conf:ro
+    command: redis-server /usr/local/etc/redis/redis.conf
+    environment:
+      - REDIS_REPLICATION_MODE=master
+    networks:
+      - hospitality-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  redis-replica:
+    image: redis:7.2-alpine
+    container_name: hospitality-redis-replica
+    restart: unless-stopped
+    ports:
+      - "6380:6379"
+    volumes:
+      - redis-replica-data:/data
+    command: >
+      redis-server
+      --replicaof redis 6379
+      --requirepass redis-password
+      --masterauth redis-password
+    depends_on:
+      - redis
+    networks:
+      - hospitality-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis-sentinel:
+    image: redis:7.2-alpine
+    container_name: hospitality-redis-sentinel
+    restart: unless-stopped
+    ports:
+      - "26379:26379"
+    command: >
+      redis-sentinel
+      /usr/local/etc/redis/sentinel.conf
+    volumes:
+      - ./sentinel.conf:/usr/local/etc/redis/sentinel.conf:ro
+    depends_on:
+      - redis
+      - redis-replica
+    networks:
+      - hospitality-network
+
+volumes:
+  redis-data:
+    driver: local
+  redis-replica-data:
+    driver: local
+
+networks:
+  hospitality-network:
+    driver: bridge
+

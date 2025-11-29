@@ -3,6 +3,11 @@ import { getAuthData } from "~encore/auth";
 import { requireRole } from "../auth/middleware";
 import { financeDB } from "./db";
 import { checkDailyApproval } from "./check_daily_approval";
+import { financeEvents } from "./events";
+import { v1Path } from "../shared/http";
+import { v4 as uuidv4 } from 'uuid';
+import { distributedCache } from "../cache/distributed_cache_manager";
+import { toISTDateString } from "../shared/date_utils";
 
 export interface DeleteRevenueRequest {
   id: number;
@@ -14,9 +19,7 @@ export interface DeleteRevenueResponse {
 }
 
 // Deletes a revenue record
-export const deleteRevenue = api<DeleteRevenueRequest, DeleteRevenueResponse>(
-  { auth: true, expose: true, method: "DELETE", path: "/finance/revenues/:id" },
-  async (req) => {
+async function deleteRevenueHandler(req: DeleteRevenueRequest): Promise<DeleteRevenueResponse> {
     const { id } = req;
     const authData = getAuthData();
     if (!authData) {
@@ -50,18 +53,18 @@ export const deleteRevenue = api<DeleteRevenueRequest, DeleteRevenueResponse>(
 
     const tx = await financeDB.begin();
     try {
-      // Get existing revenue and check access with org scoping
+      // Get existing revenue and check access with org scoping - get full data for event
       let revenueRow;
       if (hasStatusColumns) {
         revenueRow = await tx.queryRow`
-          SELECT r.id, r.org_id, r.status, r.created_by_user_id, r.property_id, r.amount_cents, r.source
+          SELECT r.id, r.org_id, r.status, r.created_by_user_id, r.property_id, r.amount_cents, r.source, r.occurred_at
           FROM revenues r
           WHERE r.id = ${id} AND r.org_id = ${authData.orgId}
         `;
       } else {
         // Fallback: select without status column
         revenueRow = await tx.queryRow`
-          SELECT r.id, r.org_id, r.created_by_user_id, r.property_id, r.amount_cents, r.source
+          SELECT r.id, r.org_id, r.created_by_user_id, r.property_id, r.amount_cents, r.source, r.occurred_at
           FROM revenues r
           WHERE r.id = ${id} AND r.org_id = ${authData.orgId}
         `;
@@ -131,6 +134,34 @@ export const deleteRevenue = api<DeleteRevenueRequest, DeleteRevenueResponse>(
           deleted: false, // Not actually deleted, just requested
         };
       } else {
+        // Publish event BEFORE delete (for safety - we have full row data)
+        try {
+          const revenueDate = toISTDateString(revenueRow.occurred_at || new Date());
+          await financeEvents.publish({
+            eventId: uuidv4(),
+            eventVersion: 'v1',
+            eventType: 'revenue_deleted',
+            orgId: authData.orgId,
+            propertyId: revenueRow.property_id,
+            userId: parseInt(authData.userID),
+            timestamp: new Date(),
+            entityId: id,
+            entityType: 'revenue',
+            metadata: {
+              amountCents: revenueRow.amount_cents,
+              currency: revenueRow.currency || 'INR',
+              paymentMode: revenueRow.payment_mode,
+              source: revenueRow.source,
+              transactionDate: revenueDate,
+              affectedReportDates: [revenueDate]
+            }
+          });
+          console.log(`[Finance] Published revenue_deleted event for revenue ID: ${id}`);
+        } catch (eventError) {
+          console.error('[Finance] Failed to publish revenue_deleted event:', eventError);
+          // Don't fail the transaction if event publishing fails
+        }
+
         // Get receipt file ID before deleting
         const receiptFileId = revenueRow.receipt_file_id;
 
@@ -146,11 +177,11 @@ export const deleteRevenue = api<DeleteRevenueRequest, DeleteRevenueResponse>(
         if (receiptFileId) {
           try {
             // Check if file is referenced by other transactions
-            const otherRevenueRefs = await tx.queryRow`
+            const otherRevenueRefs = await financeDB.queryRow`
               SELECT COUNT(*) as count FROM revenues WHERE receipt_file_id = ${receiptFileId} AND org_id = ${authData.orgId}
             `;
             
-            const expenseRefs = await tx.queryRow`
+            const expenseRefs = await financeDB.queryRow`
               SELECT COUNT(*) as count FROM expenses WHERE receipt_file_id = ${receiptFileId} AND org_id = ${authData.orgId}
             `;
 
@@ -168,6 +199,15 @@ export const deleteRevenue = api<DeleteRevenueRequest, DeleteRevenueResponse>(
           }
         }
 
+        // Clear related cache after delete
+        try {
+          const revenueDate = revenueRow.occurred_at ? (typeof revenueRow.occurred_at === 'string' ? revenueRow.occurred_at.split('T')[0] : revenueRow.occurred_at.toISOString().split('T')[0]) : new Date().toISOString().split('T')[0];
+          await clearRelatedCache(authData.orgId, revenueRow.property_id, revenueDate);
+        } catch (cacheError) {
+          console.error('[Finance] Failed to clear cache:', cacheError);
+          // Don't fail the transaction if cache clearing fails
+        }
+
         return {
           id,
           deleted: true,
@@ -177,5 +217,27 @@ export const deleteRevenue = api<DeleteRevenueRequest, DeleteRevenueResponse>(
       await tx.rollback();
       throw error;
     }
-  }
+}
+
+export const deleteRevenue = api<DeleteRevenueRequest, DeleteRevenueResponse>(
+  { auth: true, expose: true, method: "DELETE", path: "/finance/revenues/:id" },
+  deleteRevenueHandler
 );
+
+export const deleteRevenueV1 = api<DeleteRevenueRequest, DeleteRevenueResponse>(
+  { auth: true, expose: true, method: "DELETE", path: "/v1/finance/revenues/:id" },
+  deleteRevenueHandler
+);
+
+// Helper function to clear related cache
+async function clearRelatedCache(orgId: number, propertyId: number, date: string): Promise<void> {
+  // Clear Redis cache
+  await distributedCache.invalidateDailyReport(orgId, propertyId, date);
+  await distributedCache.invalidateBalance(orgId, propertyId, date);
+  
+  // Clear database cache
+  await financeDB.exec`
+    DELETE FROM daily_cash_balances 
+    WHERE org_id = ${orgId} AND property_id = ${propertyId} AND balance_date = ${date}
+  `;
+}

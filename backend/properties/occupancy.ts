@@ -2,6 +2,7 @@ import { api, APIError } from "encore.dev/api";
 import { getAuthData } from "~encore/auth";
 import { requireRole } from "../auth/middleware";
 import { propertiesDB } from "./db";
+import { v1Path } from "../shared/http";
 
 export interface GetOccupancyRequest {
   id: number;
@@ -22,10 +23,8 @@ export interface GetOccupancyResponse {
   occupancy: OccupancyInfo;
 }
 
-// Gets occupancy information for a property
-export const getOccupancy = api<GetOccupancyRequest, GetOccupancyResponse>(
-  { auth: true, expose: true, method: "GET", path: "/properties/:id/occupancy" },
-  async (req) => {
+// Handler function for getting occupancy information
+async function getOccupancyHandler(req: GetOccupancyRequest): Promise<GetOccupancyResponse> {
     const authData = getAuthData();
     if (!authData) {
       throw APIError.unauthenticated("Authentication required");
@@ -111,6 +110,16 @@ export const getOccupancy = api<GetOccupancyRequest, GetOccupancyResponse>(
       }
       throw APIError.internal("Failed to fetch occupancy data");
     }
-  }
+}
+
+// Legacy path
+export const getOccupancy = api<GetOccupancyRequest, GetOccupancyResponse>(
+  { auth: true, expose: true, method: "GET", path: "/properties/:id/occupancy" },
+  getOccupancyHandler
 );
 
+// Versioned path
+export const getOccupancyV1 = api<GetOccupancyRequest, GetOccupancyResponse>(
+  { auth: true, expose: true, method: "GET", path: "/v1/properties/:id/occupancy" },
+  getOccupancyHandler
+);

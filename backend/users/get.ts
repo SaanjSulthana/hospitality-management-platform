@@ -2,6 +2,7 @@ import { api, APIError } from "encore.dev/api";
 import { getAuthData } from "~encore/auth";
 import { requireRole } from "../auth/middleware";
 import { usersDB } from "./db";
+import { v1Path } from "../shared/http";
 import type { UserRole } from "../auth/types";
 
 export interface GetUserRequest {
@@ -19,9 +20,7 @@ export interface GetUserResponse {
 }
 
 // Gets user details including assigned property IDs (Admin only)
-export const get = api<GetUserRequest, GetUserResponse>(
-  { auth: true, expose: true, method: "GET", path: "/users/:id" },
-  async (req) => {
+async function getUserHandler(req: GetUserRequest): Promise<GetUserResponse> {
     const authData = getAuthData();
     if (!authData) {
       throw APIError.unauthenticated("Authentication required");
@@ -61,5 +60,14 @@ export const get = api<GetUserRequest, GetUserResponse>(
       }
       throw APIError.internal("Failed to fetch user details");
     }
-  }
+}
+
+export const get = api<GetUserRequest, GetUserResponse>(
+  { auth: true, expose: true, method: "GET", path: "/users/:id" },
+  getUserHandler
+);
+
+export const getV1 = api<GetUserRequest, GetUserResponse>(
+  { auth: true, expose: true, method: "GET", path: "/v1/users/:id" },
+  getUserHandler
 );

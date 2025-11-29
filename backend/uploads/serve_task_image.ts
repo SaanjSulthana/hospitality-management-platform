@@ -7,10 +7,8 @@ import * as fs from "fs";
 import * as path from "path";
 import log from "encore.dev/log";
 
-// Serve task images with proper authentication and access control
-export const serveTaskImage = api<{ imageId: number }, { data: string; mimeType: string }>(
-  { auth: true, expose: true, method: "GET", path: "/uploads/tasks/:imageId" },
-  async (req) => {
+// Shared handler for serving task images with proper authentication and access control
+async function serveTaskImageHandler(req: { imageId: number }): Promise<{ data: string; mimeType: string }> {
     const authData = getAuthData();
     if (!authData) {
       throw APIError.unauthenticated("Authentication required");
@@ -66,18 +64,29 @@ export const serveTaskImage = api<{ imageId: number }, { data: string; mimeType:
         userId: authData.userID 
       });
 
-      return {
-        data: base64Data,
-        mimeType: imageRow.mime_type
-      };
-    } catch (error) {
-      log.error('Error reading task image file', { 
-        error: error instanceof Error ? error.message : String(error),
-        imageId, 
-        filePath,
-        orgId: authData.orgId 
-      });
-      throw APIError.internal("Failed to read image file");
-    }
+    return {
+      data: base64Data,
+      mimeType: imageRow.mime_type
+    };
+  } catch (error) {
+    log.error('Error reading task image file', { 
+      error: error instanceof Error ? error.message : String(error),
+      imageId, 
+      filePath,
+      orgId: authData.orgId 
+    });
+    throw APIError.internal("Failed to read image file");
   }
+}
+
+// LEGACY: Serve task images (keep for backward compatibility)
+export const serveTaskImage = api<{ imageId: number }, { data: string; mimeType: string }>(
+  { auth: true, expose: true, method: "GET", path: "/uploads/tasks/:imageId" },
+  serveTaskImageHandler
+);
+
+// V1: Serve task images
+export const serveTaskImageV1 = api<{ imageId: number }, { data: string; mimeType: string }>(
+  { auth: true, expose: true, method: "GET", path: "/v1/uploads/tasks/:imageId" },
+  serveTaskImageHandler
 );

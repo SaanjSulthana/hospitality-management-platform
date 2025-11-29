@@ -18,17 +18,15 @@ export interface GrantDailyApprovalResponse {
   notes?: string;
 }
 
-// Grant daily approval for a manager (admin only)
-export const grantDailyApproval = api<GrantDailyApprovalRequest, GrantDailyApprovalResponse>(
-  { auth: true, expose: true, method: "POST", path: "/finance/grant-daily-approval" },
-  async (req) => {
-    const authData = getAuthData();
-    if (!authData) {
-      throw APIError.unauthenticated("Authentication required");
-    }
-    requireRole("ADMIN")(authData);
+// Shared handler for granting daily approval (used by both legacy and v1 endpoints)
+async function grantDailyApprovalHandler(req: GrantDailyApprovalRequest): Promise<GrantDailyApprovalResponse> {
+  const authData = getAuthData();
+  if (!authData) {
+    throw APIError.unauthenticated("Authentication required");
+  }
+  requireRole("ADMIN")(authData);
 
-    const { managerUserId, approvalDate, notes } = req;
+  const { managerUserId, approvalDate, notes } = req;
 
     try {
       console.log('=== GRANT DAILY APPROVAL DEBUG ===');
@@ -121,6 +119,17 @@ export const grantDailyApproval = api<GrantDailyApprovalRequest, GrantDailyAppro
       throw new Error('Failed to grant daily approval');
     }
   }
+
+// LEGACY: Grant daily approval for a manager (keep for backward compatibility)
+export const grantDailyApproval = api<GrantDailyApprovalRequest, GrantDailyApprovalResponse>(
+  { auth: true, expose: true, method: "POST", path: "/finance/grant-daily-approval" },
+  grantDailyApprovalHandler
+);
+
+// V1: Grant daily approval for a manager
+export const grantDailyApprovalV1 = api<GrantDailyApprovalRequest, GrantDailyApprovalResponse>(
+  { auth: true, expose: true, method: "POST", path: "/v1/finance/grant-daily-approval" },
+  grantDailyApprovalHandler
 );
 
 export interface ListPendingApprovalsRequest {}

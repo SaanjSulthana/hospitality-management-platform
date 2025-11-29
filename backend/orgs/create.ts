@@ -18,10 +18,8 @@ export interface CreateOrgResponse {
   createdAt: Date;
 }
 
-// Creates a new organization (Admin only)
-export const create = api<CreateOrgRequest, CreateOrgResponse>(
-  { auth: true, expose: true, method: "POST", path: "/orgs" },
-  async (req) => {
+// Shared handler for creating a new organization
+async function createOrgHandler(req: CreateOrgRequest): Promise<CreateOrgResponse> {
     const authData = getAuthData();
     if (!authData) {
       throw APIError.unauthenticated("Authentication required");
@@ -58,6 +56,16 @@ export const create = api<CreateOrgRequest, CreateOrgResponse>(
       themeJson: orgRow.theme_json,
       createdAt: orgRow.created_at,
     };
-  }
+}
+
+// LEGACY: Creates a new organization (keep for backward compatibility)
+export const create = api<CreateOrgRequest, CreateOrgResponse>(
+  { auth: true, expose: true, method: "POST", path: "/orgs" },
+  createOrgHandler
 );
 
+// V1: Creates a new organization
+export const createV1 = api<CreateOrgRequest, CreateOrgResponse>(
+  { auth: true, expose: true, method: "POST", path: "/v1/orgs" },
+  createOrgHandler
+);

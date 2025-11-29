@@ -6,6 +6,7 @@ export interface Property {
   regionId?: number;
   name: string;
   type: PropertyType;
+  mobileNumber: string;
   addressJson: Record<string, any>;
   amenitiesJson: Record<string, any>;
   capacityJson: Record<string, any>;

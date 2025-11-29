@@ -8,10 +8,8 @@ export interface CheckFilesTableResponse {
   tableCreated: boolean;
 }
 
-// API endpoint to check and create files table
-export const checkFilesTable = api<{}, CheckFilesTableResponse>(
-  { auth: false, expose: true, method: "GET", path: "/uploads/check-files-table" },
-  async () => {
+// Shared handler to check and create files table
+async function checkFilesTableHandler(): Promise<CheckFilesTableResponse> {
     try {
       // Check if files table exists
       const tableExists = await uploadsDB.queryRow`
@@ -68,13 +66,24 @@ export const checkFilesTable = api<{}, CheckFilesTableResponse>(
       };
     } catch (error: any) {
       console.error('Check files table error:', error);
-      return {
-        success: false,
-        message: `Error: ${error.message}`,
-        tableExists: false,
-        tableCreated: false
-      };
-    }
+    return {
+      success: false,
+      message: `Error: ${error.message}`,
+      tableExists: false,
+      tableCreated: false
+    };
   }
+}
+
+// LEGACY: API endpoint to check and create files table (keep for backward compatibility)
+export const checkFilesTable = api<{}, CheckFilesTableResponse>(
+  { auth: false, expose: true, method: "GET", path: "/uploads/check-files-table" },
+  checkFilesTableHandler
+);
+
+// V1: API endpoint to check and create files table
+export const checkFilesTableV1 = api<{}, CheckFilesTableResponse>(
+  { auth: false, expose: true, method: "GET", path: "/v1/uploads/check-files-table" },
+  checkFilesTableHandler
 );
 

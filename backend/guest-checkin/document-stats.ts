@@ -19,9 +19,7 @@ interface DocumentStatsRequest {
 /**
  * Get document statistics
  */
-export const getDocumentStats = api(
-  { expose: true, method: "GET", path: "/guest-checkin/documents/stats", auth: true },
-  async (req: DocumentStatsRequest): Promise<DocumentStatsResponse> => {
+async function getDocumentStatsHandler(req: DocumentStatsRequest): Promise<DocumentStatsResponse> {
     const authData = getAuthData()!;
     requireRole("ADMIN", "MANAGER")(authData);
 
@@ -506,5 +504,16 @@ export const getDocumentStats = api(
       throw APIError.internal("Failed to get statistics");
     }
   }
+
+// Legacy endpoint
+export const getDocumentStats = api<DocumentStatsRequest, DocumentStatsResponse>(
+  { expose: true, method: "GET", path: "/guest-checkin/documents/stats", auth: true },
+  getDocumentStatsHandler
+);
+
+// V1 endpoint
+export const getDocumentStatsV1 = api<DocumentStatsRequest, DocumentStatsResponse>(
+  { expose: true, method: "GET", path: "/v1/guest-checkin/documents/stats", auth: true },
+  getDocumentStatsHandler
 );
 

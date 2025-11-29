@@ -1,0 +1,146 @@
+# Encore Core Architecture Rules
+
+---
+alwaysApply: true
+description: "Core Encore patterns for service architecture and bounded contexts"
+priority: 90
+---
+
+## Bounded Context Modeling
+
+Encore's service-based architecture maps to Domain-Driven Design's bounded contexts. Structure around business capabilities:
+
+```
+/project-root
+├── encore.app
+├── identity/          # Identity & Access Context
+│   ├── auth/
+│   ├── users/
+│   └── permissions/
+├── accounts/          # Account Management Context
+├── payments/          # Payment Processing Context
+├── ledger/           # Financial Ledger Context
+├── notifications/    # Notification Context
+└── shared/           # Shared Kernel
+    ├── types/
+    ├── errors/
+    └── events/
+```
+
+## Service Communication Patterns
+
+### Synchronous Request-Response
+Use for immediate consistency requirements:
+- Account validation before transactions
+- Balance checks
+- Authentication/authorization
+
+```typescript
+// Always validate critical preconditions synchronously
+const account = await profiles.GetAccount(ctx, req.AccountID);
+if (account.Status !== "ACTIVE") {
+  throw new Error("account not active");
+}
+```
+
+### Asynchronous Event-Driven
+Use for eventual consistency:
+- Ledger updates after transactions
+- Notification sending
+- Analytics/reporting
+- Cross-service side effects
+
+```typescript
+// Publish events for async processing
+await TransactionCreated.publish(ctx, {
+  transactionId: txn.id,
+  amount: txn.amount,
+  accountId: txn.accountId
+});
+```
+
+### Hybrid Pattern (Sync + Async)
+Use for real-time feedback with background processing:
+- Fraud detection (fast rules sync, ML async)
+- Order processing (validate sync, fulfill async)
+- User registration (create sync, welcome email async)
+
+## Service Boundaries
+
+**Always maintain:**
+- Clear service interfaces using `api()` endpoints
+- One SQLDatabase per bounded context
+- Event-driven cross-service communication
+- No direct service-to-service database access
+- Explicit type definitions for all APIs
+
+## Type Safety Standards
+
+- Export Request/Response interfaces for ALL endpoints
+- Use TypeScript strict mode
+- Leverage Encore's automatic validation
+- Define infrastructure declaratively, not imperatively
+- Use tagged template literals for SQL queries
+
+## Database Pattern
+
+```typescript
+// One database per service
+import { SQLDatabase } from "encore.dev/storage/sqldb";
+
+const DB = new SQLDatabase("service_name", {
+  migrations: "./migrations",
+});
+
+// Type-safe queries
+interface User {
+  id: string;
+  email: string;
+  name: string;
+}
+
+const user = await DB.queryRow<User>`
+  SELECT id, email, name 
+  FROM users 
+  WHERE email = ${email}
+`;
+```
+
+## Error Handling
+
+```typescript
+import { APIError } from "encore.dev/api";
+
+// Use specific error codes
+if (!isValid) {
+  throw APIError.invalidArgument("email format invalid");
+}
+
+if (!hasPermission) {
+  throw APIError.permissionDenied("insufficient privileges");
+}
+
+// Never expose internal errors to clients
+try {
+  await externalService();
+} catch (err) {
+  throw APIError.internal("service unavailable", err);
+}
+```
+
+## Current Project Context
+
+**Hospitality Management Platform Architecture:**
+- identity/ - Authentication, user management, permissions
+- accounts/ - Customer profiles, onboarding, verification  
+- payments/ - Payment processing, transactions, settlements
+- ledger/ - Double-entry bookkeeping, financial reporting
+- notifications/ - Email/SMS delivery
+
+**Naming Conventions:**
+- Services: lowercase-with-dashes
+- API paths: RESTful kebab-case (/guest-profiles)
+- Database tables: snake_case (guest_profiles)
+- TypeScript: camelCase variables, PascalCase types
+
+For detailed implementation: @Docs Encore TypeScript Specific

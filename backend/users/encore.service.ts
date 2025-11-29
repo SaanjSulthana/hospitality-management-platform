@@ -2,6 +2,9 @@ import { Service } from "encore.dev/service";
 
 export default new Service("users");
 
+// Ensure users subscriber is registered
+import "./users_realtime_subscriber";
+
 // Export all user endpoints
 export { create } from "./create";
 export { get } from "./get";
@@ -12,3 +15,4 @@ export { list } from "./list";
 export { assignProperties } from "./assign_properties";
 export { updateActivity } from "./update_activity";
 export { fixSchema } from "./fix_schema";
+export { subscribeUsersRealtime } from "./subscribe_realtime";

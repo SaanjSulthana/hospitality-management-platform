@@ -65,10 +65,8 @@ export interface ListLeaveRequestsResponse {
   };
 }
 
-// Lists leave requests with advanced filtering and pagination
-export const listLeaveRequests = api<ListLeaveRequestsRequest, ListLeaveRequestsResponse>(
-  { auth: true, expose: true, method: "GET", path: "/staff/leave-requests" },
-  async (req) => {
+// Shared handler for listing leave requests
+async function listLeaveRequestsHandler(req: ListLeaveRequestsRequest): Promise<ListLeaveRequestsResponse> {
     const authData = getAuthData();
     if (!authData) {
       throw APIError.unauthenticated("Authentication required");
@@ -358,5 +356,16 @@ export const listLeaveRequests = api<ListLeaveRequestsRequest, ListLeaveRequests
       console.error('List leave requests error:', error);
       throw APIError.internal("Failed to fetch leave requests");
     }
-  }
+}
+
+// LEGACY: Lists leave requests (keep for backward compatibility)
+export const listLeaveRequests = api<ListLeaveRequestsRequest, ListLeaveRequestsResponse>(
+  { auth: true, expose: true, method: "GET", path: "/staff/leave-requests" },
+  listLeaveRequestsHandler
+);
+
+// V1: Lists leave requests
+export const listLeaveRequestsV1 = api<ListLeaveRequestsRequest, ListLeaveRequestsResponse>(
+  { auth: true, expose: true, method: "GET", path: "/v1/staff/leave-requests" },
+  listLeaveRequestsHandler
 );

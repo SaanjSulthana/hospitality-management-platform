@@ -3,6 +3,11 @@ import { getAuthData } from "~encore/auth";
 import { requireRole } from "../auth/middleware";
 import { financeDB } from "./db";
 import { checkDailyApproval } from "./check_daily_approval";
+import { financeEvents } from "./events";
+import { v1Path } from "../shared/http";
+import { v4 as uuidv4 } from 'uuid';
+import { distributedCache } from "../cache/distributed_cache_manager";
+import { toISTDateString } from "../shared/date_utils";
 
 export interface DeleteExpenseRequest {
   id: number;
@@ -14,9 +19,7 @@ export interface DeleteExpenseResponse {
 }
 
 // Deletes an expense record
-export const deleteExpense = api<DeleteExpenseRequest, DeleteExpenseResponse>(
-  { auth: true, expose: true, method: "DELETE", path: "/finance/expenses/:id" },
-  async (req) => {
+async function deleteExpenseHandler(req: DeleteExpenseRequest): Promise<DeleteExpenseResponse> {
     const authData = getAuthData();
     if (!authData) {
       throw APIError.unauthenticated("Authentication required");
@@ -130,6 +133,34 @@ export const deleteExpense = api<DeleteExpenseRequest, DeleteExpenseResponse>(
           deleted: false, // Not actually deleted, just requested
         };
       } else {
+        // Publish event BEFORE delete (for safety - we have full row data)
+        try {
+          const expenseDate = toISTDateString(expenseRow.expense_date || new Date());
+          await financeEvents.publish({
+            eventId: uuidv4(),
+            eventVersion: 'v1',
+            eventType: 'expense_deleted',
+            orgId: authData.orgId,
+            propertyId: expenseRow.property_id,
+            userId: parseInt(authData.userID),
+            timestamp: new Date(),
+            entityId: id,
+            entityType: 'expense',
+            metadata: {
+              amountCents: expenseRow.amount_cents,
+              currency: expenseRow.currency || 'INR',
+              paymentMode: expenseRow.payment_mode,
+              category: expenseRow.category,
+              transactionDate: expenseDate,
+              affectedReportDates: [expenseDate]
+            }
+          });
+          console.log(`[Finance] Published expense_deleted event for expense ID: ${id}`);
+        } catch (eventError) {
+          console.error('[Finance] Failed to publish expense_deleted event:', eventError);
+          // Don't fail the transaction if event publishing fails
+        }
+
         // Get receipt file ID before deleting
         const receiptFileId = expenseRow.receipt_file_id;
 
@@ -145,11 +176,11 @@ export const deleteExpense = api<DeleteExpenseRequest, DeleteExpenseResponse>(
         if (receiptFileId) {
           try {
             // Check if file is referenced by other transactions
-            const revenueRefs = await tx.queryRow`
+            const revenueRefs = await financeDB.queryRow`
               SELECT COUNT(*) as count FROM revenues WHERE receipt_file_id = ${receiptFileId} AND org_id = ${authData.orgId}
             `;
             
-            const otherExpenseRefs = await tx.queryRow`
+            const otherExpenseRefs = await financeDB.queryRow`
               SELECT COUNT(*) as count FROM expenses WHERE receipt_file_id = ${receiptFileId} AND org_id = ${authData.orgId}
             `;
 
@@ -167,6 +198,15 @@ export const deleteExpense = api<DeleteExpenseRequest, DeleteExpenseResponse>(
           }
         }
 
+        // Clear related cache after delete
+        try {
+          const expenseDate = expenseRow.expense_date ? (typeof expenseRow.expense_date === 'string' ? expenseRow.expense_date.split('T')[0] : expenseRow.expense_date.toISOString().split('T')[0]) : new Date().toISOString().split('T')[0];
+          await clearRelatedCache(authData.orgId, expenseRow.property_id, expenseDate);
+        } catch (cacheError) {
+          console.error('[Finance] Failed to clear cache:', cacheError);
+          // Don't fail the transaction if cache clearing fails
+        }
+
         return {
           id,
           deleted: true,
@@ -176,5 +216,27 @@ export const deleteExpense = api<DeleteExpenseRequest, DeleteExpenseResponse>(
       await tx.rollback();
       throw error;
     }
-  }
+}
+
+export const deleteExpense = api<DeleteExpenseRequest, DeleteExpenseResponse>(
+  { auth: true, expose: true, method: "DELETE", path: "/finance/expenses/:id" },
+  deleteExpenseHandler
 );
+
+export const deleteExpenseV1 = api<DeleteExpenseRequest, DeleteExpenseResponse>(
+  { auth: true, expose: true, method: "DELETE", path: "/v1/finance/expenses/:id" },
+  deleteExpenseHandler
+);
+
+// Helper function to clear related cache
+async function clearRelatedCache(orgId: number, propertyId: number, date: string): Promise<void> {
+  // Clear Redis cache
+  await distributedCache.invalidateDailyReport(orgId, propertyId, date);
+  await distributedCache.invalidateBalance(orgId, propertyId, date);
+  
+  // Clear database cache
+  await financeDB.exec`
+    DELETE FROM daily_cash_balances 
+    WHERE org_id = ${orgId} AND property_id = ${propertyId} AND balance_date = ${date}
+  `;
+}

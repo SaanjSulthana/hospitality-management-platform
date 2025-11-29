@@ -2,7 +2,10 @@ import { api, APIError } from "encore.dev/api";
 import { getAuthData } from "~encore/auth";
 import { requireRole } from "../auth/middleware";
 import { propertiesDB } from "./db";
+import { v1Path } from "../shared/http";
 import log from "encore.dev/log";
+import { propertyEvents } from "./events";
+import { v4 as uuidv4 } from "uuid";
 
 export interface DeletePropertyRequest {
   id: number;
@@ -13,10 +16,8 @@ export interface DeletePropertyResponse {
   id: number;
 }
 
-// Deletes a property (Admin only)
-export const deleteProperty = api<DeletePropertyRequest, DeletePropertyResponse>(
-  { auth: true, expose: true, method: "DELETE", path: "/properties/:id" },
-  async (req) => {
+// Handler function for deleting a property
+async function deletePropertyHandler(req: DeletePropertyRequest): Promise<DeletePropertyResponse> {
     const authData = getAuthData();
     if (!authData) {
       throw APIError.unauthenticated("Authentication required");
@@ -149,6 +150,26 @@ export const deleteProperty = api<DeletePropertyRequest, DeletePropertyResponse>
         orgId: authData.orgId 
       });
 
+      // Publish property_deleted event
+      try {
+        await propertyEvents.publish({
+          eventId: uuidv4(),
+          eventVersion: 'v1',
+          eventType: 'property_deleted',
+          orgId: authData.orgId,
+          propertyId: propertyId,
+          userId: parseInt(authData.userID),
+          timestamp: new Date(),
+          entityId: propertyId,
+          entityType: 'property',
+          metadata: {
+            name: propertyRow.name,
+          },
+        });
+      } catch (e) {
+        log.warn("Property event publish failed (property_deleted)", { error: e instanceof Error ? e.message : String(e) });
+      }
+
       return { success: true, id: propertyId };
       
     } catch (error) {
@@ -165,5 +186,16 @@ export const deleteProperty = api<DeletePropertyRequest, DeletePropertyResponse>
       
       throw APIError.internal("Failed to delete property", error as Error);
     }
-  }
+}
+
+// Legacy path
+export const deleteProperty = api<DeletePropertyRequest, DeletePropertyResponse>(
+  { auth: true, expose: true, method: "DELETE", path: "/properties/:id" },
+  deletePropertyHandler
+);
+
+// Versioned path
+export const deletePropertyV1 = api<DeletePropertyRequest, DeletePropertyResponse>(
+  { auth: true, expose: true, method: "DELETE", path: "/v1/properties/:id" },
+  deletePropertyHandler
 );

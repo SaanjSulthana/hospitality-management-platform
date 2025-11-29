@@ -13,10 +13,8 @@ export interface RefreshResponse {
   refreshToken: string;
 }
 
-// Refreshes access token using refresh token
-export const refresh = api<RefreshRequest, RefreshResponse>(
-  { expose: true, method: "POST", path: "/auth/refresh" },
-  async (req) => {
+// Shared handler for token refresh logic
+async function refreshHandler(req: RefreshRequest): Promise<RefreshResponse> {
     const { refreshToken } = req;
 
     const tx = await authDB.begin();
@@ -100,5 +98,16 @@ export const refresh = api<RefreshRequest, RefreshResponse>(
       log.error('Token refresh error', { error: error instanceof Error ? error.message : String(error) });
       throw APIError.unauthenticated("Invalid refresh token");
     }
-  }
+}
+
+// LEGACY: Refreshes access token using refresh token (keep for backward compatibility)
+export const refresh = api<RefreshRequest, RefreshResponse>(
+  { expose: true, method: "POST", path: "/auth/refresh" },
+  refreshHandler
+);
+
+// V1: Refreshes access token using refresh token
+export const refreshV1 = api<RefreshRequest, RefreshResponse>(
+  { expose: true, method: "POST", path: "/v1/auth/refresh" },
+  refreshHandler
 );

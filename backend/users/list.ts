@@ -2,6 +2,7 @@ import { api, APIError } from "encore.dev/api";
 import { getAuthData } from "~encore/auth";
 import { usersDB } from "./db";
 import { requireRole } from "../auth/middleware";
+import { v1Path } from "../shared/http";
 import { UserRole } from "../auth/types";
 
 interface ListUsersRequest {
@@ -38,9 +39,7 @@ export interface ListUsersResponse {
 }
 
 // Lists users in the organization (Admin only)
-export const list = api<ListUsersRequest, ListUsersResponse>(
-  { auth: true, expose: true, method: "GET", path: "/users" },
-  async (req) => {
+async function listUsersHandler(req: ListUsersRequest): Promise<ListUsersResponse> {
     const authData = getAuthData();
     if (!authData) {
       throw APIError.unauthenticated("Authentication required");
@@ -97,6 +96,15 @@ export const list = api<ListUsersRequest, ListUsersResponse>(
       console.error('List users error:', error);
       throw new Error('Failed to fetch users');
     }
-  }
+}
+
+export const list = api<ListUsersRequest, ListUsersResponse>(
+  { auth: true, expose: true, method: "GET", path: "/users" },
+  listUsersHandler
+);
+
+export const listV1 = api<ListUsersRequest, ListUsersResponse>(
+  { auth: true, expose: true, method: "GET", path: "/v1/users" },
+  listUsersHandler
 );
 

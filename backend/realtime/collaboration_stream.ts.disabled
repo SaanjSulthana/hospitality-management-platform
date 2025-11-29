@@ -1,0 +1,470 @@
+/**
+ * Collaborative Features Endpoint (Encore StreamInOut)
+ * 
+ * Bidirectional streaming for real-time collaboration features:
+ * - Live chat (staff coordination)
+ * - Typing indicators
+ * - User presence (online/away/offline)
+ * - Read receipts
+ * 
+ * Features:
+ * - Full-duplex communication (client ↔ server)
+ * - Message persistence (PostgreSQL)
+ * - Broadcast to room members
+ * - Online presence tracking
+ * - Message history on join
+ */
+
+import { api } from "encore.dev/api";
+import { getAuthData } from "~encore/auth";
+import { SQLDatabase } from "encore.dev/storage/sqldb";
+
+/**
+ * Database connection
+ */
+const db = new SQLDatabase("realtime", { migrations: "./migrations" });
+
+/**
+ * Chat handshake (metadata sent when joining room)
+ */
+export interface ChatHandshake {
+  /**
+   * Room ID (e.g., "property-123", "org-456")
+   */
+  roomId: string;
+
+  /**
+   * User ID joining the room
+   */
+  userId: number;
+}
+
+/**
+ * Client message types
+ */
+export type ClientMessage =
+  | {
+      type: "chat";
+      text: string;
+      roomId: string;
+    }
+  | {
+      type: "typing";
+      roomId: string;
+    }
+  | {
+      type: "presence";
+      status: "online" | "away" | "offline";
+    }
+  | {
+      type: "ack";
+      messageId: string;
+    };
+
+/**
+ * Server message types
+ */
+export type ServerMessage =
+  | {
+      type: "chat";
+      id: string;
+      userId: number;
+      userName: string;
+      text: string;
+      timestamp: string;
+      roomId: string;
+    }
+  | {
+      type: "typing";
+      userId: number;
+      userName: string;
+      roomId: string;
+    }
+  | {
+      type: "presence";
+      userId: number;
+      userName: string;
+      status: "online" | "away" | "offline";
+    }
+  | {
+      type: "history";
+      messages: Array<{
+        id: string;
+        userId: number;
+        userName: string;
+        text: string;
+        timestamp: string;
+      }>;
+      roomId: string;
+    }
+  | {
+      type: "ack";
+      messageId: string;
+      userId: number;
+    }
+  | {
+      type: "error";
+      message: string;
+      code?: string;
+    };
+
+/**
+ * Active connections per room (for broadcasting)
+ */
+interface RoomConnection {
+  userId: number;
+  userName: string;
+  send: (message: ServerMessage) => Promise<void>;
+}
+
+const roomConnections = new Map<string, Set<RoomConnection>>();
+
+/**
+ * User presence tracking
+ */
+const userPresence = new Map<string, { status: string; lastSeen: number }>();
+
+/**
+ * Main collaboration streaming endpoint
+ */
+export const chatStream = api.streamInOut<ChatHandshake, ClientMessage, ServerMessage>(
+  {
+    auth: true,
+    expose: true,
+    path: "/v2/collaboration/chat/stream",
+  },
+  async (handshake, inStream, outStream) => {
+    // Get authenticated user context
+    const auth = getAuthData();
+    if (!auth || !auth.userID || !auth.orgId) {
+      throw api.APIError.unauthenticated("Authentication required");
+    }
+
+    const userId = auth.userID;
+    const userName = (auth as any).displayName || `User ${userId}`;
+    const { roomId } = handshake;
+
+    console.log("[ChatStream][joined]", { roomId, userId, userName });
+
+    // Create connection object
+    const connection: RoomConnection = {
+      userId,
+      userName,
+      send: async (message) => {
+        try {
+          await outStream.send(message);
+        } catch (err) {
+          console.error("[ChatStream][send-error]", {
+            roomId,
+            userId,
+            error: err instanceof Error ? err.message : String(err),
+          });
+        }
+      },
+    };
+
+    // Add connection to room
+    let roomConns = roomConnections.get(roomId);
+    if (!roomConns) {
+      roomConns = new Set();
+      roomConnections.set(roomId, roomConns);
+    }
+    roomConns.add(connection);
+
+    // Update presence
+    userPresence.set(`${roomId}-${userId}`, {
+      status: "online",
+      lastSeen: Date.now(),
+    });
+
+    // Send message history
+    try {
+      const messages = await db.query<{
+        id: string;
+        user_id: number;
+        user_name: string;
+        text: string;
+        created_at: Date;
+      }>(
+        `SELECT id, user_id, user_name, text, created_at
+         FROM chat_messages
+         WHERE room_id = $1
+         ORDER BY created_at DESC
+         LIMIT 50`,
+        [roomId]
+      );
+
+      await outStream.send({
+        type: "history",
+        messages: messages.reverse().map((m) => ({
+          id: m.id,
+          userId: m.user_id,
+          userName: m.user_name,
+          text: m.text,
+          timestamp: m.created_at.toISOString(),
+        })),
+        roomId,
+      });
+
+      console.log("[ChatStream][history-sent]", { roomId, userId, count: messages.length });
+    } catch (err) {
+      console.error("[ChatStream][history-error]", {
+        roomId,
+        userId,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+
+    // Broadcast presence to room
+    await broadcastToRoom(roomId, {
+      type: "presence",
+      userId,
+      userName,
+      status: "online",
+    });
+
+    // Cleanup on disconnect
+    const cleanup = async () => {
+      // Remove connection from room
+      roomConns?.delete(connection);
+      if (roomConns && roomConns.size === 0) {
+        roomConnections.delete(roomId);
+      }
+
+      // Update presence
+      userPresence.set(`${roomId}-${userId}`, {
+        status: "offline",
+        lastSeen: Date.now(),
+      });
+
+      // Broadcast offline status
+      await broadcastToRoom(roomId, {
+        type: "presence",
+        userId,
+        userName,
+        status: "offline",
+      });
+
+      console.log("[ChatStream][left]", { roomId, userId, userName });
+    };
+
+    // Process incoming messages
+    try {
+      for await (const message of inStream) {
+        try {
+          switch (message.type) {
+            case "chat": {
+              // Save message to database
+              const result = await db.query<{ id: string }>(
+                `INSERT INTO chat_messages (id, room_id, user_id, user_name, text, created_at, org_id)
+                 VALUES (gen_random_uuid(), $1, $2, $3, $4, NOW(), $5)
+                 RETURNING id`,
+                [roomId, userId, userName, message.text, auth.orgId]
+              );
+
+              const messageId = result[0]?.id;
+
+              // Broadcast to room
+              await broadcastToRoom(roomId, {
+                type: "chat",
+                id: messageId,
+                userId,
+                userName,
+                text: message.text,
+                timestamp: new Date().toISOString(),
+                roomId,
+              });
+
+              console.log("[ChatStream][message-sent]", { roomId, userId, messageId });
+              break;
+            }
+
+            case "typing": {
+              // Broadcast typing indicator (ephemeral)
+              await broadcastToRoom(
+                roomId,
+                {
+                  type: "typing",
+                  userId,
+                  userName,
+                  roomId,
+                },
+                [userId] // Exclude sender
+              );
+
+              console.log("[ChatStream][typing]", { roomId, userId });
+              break;
+            }
+
+            case "presence": {
+              // Update presence
+              userPresence.set(`${roomId}-${userId}`, {
+                status: message.status,
+                lastSeen: Date.now(),
+              });
+
+              // Broadcast to room
+              await broadcastToRoom(roomId, {
+                type: "presence",
+                userId,
+                userName,
+                status: message.status,
+              });
+
+              console.log("[ChatStream][presence-updated]", { roomId, userId, status: message.status });
+              break;
+            }
+
+            case "ack": {
+              // Mark message as read
+              await db.exec(
+                `INSERT INTO chat_message_reads (message_id, user_id, read_at)
+                 VALUES ($1, $2, NOW())
+                 ON CONFLICT (message_id, user_id) DO NOTHING`,
+                [message.messageId, userId]
+              );
+
+              // Broadcast ack
+              await broadcastToRoom(roomId, {
+                type: "ack",
+                messageId: message.messageId,
+                userId,
+              });
+
+              console.log("[ChatStream][ack]", { roomId, userId, messageId: message.messageId });
+              break;
+            }
+
+            default:
+              console.warn("[ChatStream][unknown-message-type]", {
+                roomId,
+                userId,
+                type: (message as any).type,
+              });
+          }
+        } catch (err) {
+          console.error("[ChatStream][message-error]", {
+            roomId,
+            userId,
+            error: err instanceof Error ? err.message : String(err),
+          });
+
+          // Send error to client
+          await outStream.send({
+            type: "error",
+            message: err instanceof Error ? err.message : String(err),
+            code: "MESSAGE_PROCESSING_ERROR",
+          });
+        }
+      }
+    } finally {
+      await cleanup();
+    }
+  }
+);
+
+/**
+ * Broadcast message to all connections in a room
+ */
+async function broadcastToRoom(
+  roomId: string,
+  message: ServerMessage,
+  excludeUserIds: number[] = []
+): Promise<void> {
+  const connections = roomConnections.get(roomId);
+  if (!connections || connections.size === 0) {
+    return;
+  }
+
+  const promises = Array.from(connections)
+    .filter((conn) => !excludeUserIds.includes(conn.userId))
+    .map((conn) => conn.send(message));
+
+  await Promise.allSettled(promises);
+}
+
+/**
+ * Get online users in a room
+ */
+export const getOnlineUsers = api(
+  {
+    auth: true,
+    expose: true,
+    method: "GET",
+    path: "/v2/collaboration/rooms/:roomId/users",
+  },
+  async ({
+    roomId,
+  }: {
+    roomId: string;
+  }): Promise<{
+    users: Array<{
+      userId: number;
+      userName: string;
+      status: string;
+      lastSeen: number;
+    }>;
+  }> => {
+    const connections = roomConnections.get(roomId);
+    const users = Array.from(connections || []).map((conn) => {
+      const presence = userPresence.get(`${roomId}-${conn.userId}`);
+      return {
+        userId: conn.userId,
+        userName: conn.userName,
+        status: presence?.status || "offline",
+        lastSeen: presence?.lastSeen || Date.now(),
+      };
+    });
+
+    return { users };
+  }
+);
+
+/**
+ * Get room statistics
+ */
+export const getRoomStats = api(
+  {
+    auth: true,
+    expose: true,
+    method: "GET",
+    path: "/v2/collaboration/rooms/:roomId/stats",
+  },
+  async ({
+    roomId,
+  }: {
+    roomId: string;
+  }): Promise<{
+    activeConnections: number;
+    totalMessages: number;
+    unreadMessages: number;
+  }> => {
+    const auth = getAuthData();
+    if (!auth || !auth.userID) {
+      throw api.APIError.unauthenticated("Authentication required");
+    }
+
+    const connections = roomConnections.get(roomId);
+
+    const [totalResult, unreadResult] = await Promise.all([
+      db.query<{ count: number }>(
+        `SELECT COUNT(*) as count FROM chat_messages WHERE room_id = $1`,
+        [roomId]
+      ),
+      db.query<{ count: number }>(
+        `SELECT COUNT(*) as count
+         FROM chat_messages cm
+         LEFT JOIN chat_message_reads cmr ON cm.id = cmr.message_id AND cmr.user_id = $2
+         WHERE cm.room_id = $1 AND cmr.message_id IS NULL`,
+        [roomId, auth.userID]
+      ),
+    ]);
+
+    return {
+      activeConnections: connections?.size || 0,
+      totalMessages: totalResult[0]?.count || 0,
+      unreadMessages: unreadResult[0]?.count || 0,
+    };
+  }
+);
+

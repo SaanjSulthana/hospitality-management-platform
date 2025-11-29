@@ -17,10 +17,8 @@ export interface UpdateDepartmentResponse {
   updatedAt: Date;
 }
 
-// Updates staff department assignment
-export const updateDepartment = api<UpdateDepartmentRequest, UpdateDepartmentResponse>(
-  { auth: true, expose: true, method: "PUT", path: "/staff/:staffId/department" },
-  async (req) => {
+// Shared handler for updating staff department
+async function updateDepartmentHandler(req: UpdateDepartmentRequest): Promise<UpdateDepartmentResponse> {
     const authData = getAuthData();
     if (!authData) {
       throw APIError.unauthenticated("Authentication required");
@@ -84,5 +82,16 @@ export const updateDepartment = api<UpdateDepartmentRequest, UpdateDepartmentRes
       }
       throw APIError.internal("Failed to update staff department");
     }
-  }
+}
+
+// LEGACY: Updates staff department (keep for backward compatibility)
+export const updateDepartment = api<UpdateDepartmentRequest, UpdateDepartmentResponse>(
+  { auth: true, expose: true, method: "PUT", path: "/staff/:staffId/department" },
+  updateDepartmentHandler
+);
+
+// V1: Updates staff department
+export const updateDepartmentV1 = api<UpdateDepartmentRequest, UpdateDepartmentResponse>(
+  { auth: true, expose: true, method: "PUT", path: "/v1/staff/:staffId/department" },
+  updateDepartmentHandler
 );

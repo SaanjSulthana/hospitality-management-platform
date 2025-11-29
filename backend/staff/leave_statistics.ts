@@ -83,15 +83,13 @@ export interface LeaveStatisticsResponse {
   };
 }
 
-// Gets comprehensive leave statistics and analytics
-export const getLeaveStatistics = api<LeaveStatisticsRequest, LeaveStatisticsResponse>(
-  { auth: true, expose: true, method: "GET", path: "/staff/leave/statistics" },
-  async (req) => {
-    const authData = getAuthData();
-    if (!authData) {
-      throw APIError.unauthenticated("Authentication required");
-    }
-    requireRole("ADMIN", "MANAGER")(authData);
+// Shared handler for getting comprehensive leave statistics and analytics
+async function getLeaveStatisticsHandler(req: LeaveStatisticsRequest): Promise<LeaveStatisticsResponse> {
+  const authData = getAuthData();
+  if (!authData) {
+    throw APIError.unauthenticated("Authentication required");
+  }
+  requireRole("ADMIN", "MANAGER")(authData);
 
     const { propertyId, startDate, endDate, groupBy = 'day' } = req || {};
 
@@ -381,5 +379,16 @@ export const getLeaveStatistics = api<LeaveStatisticsRequest, LeaveStatisticsRes
       console.error('Get leave statistics error:', error);
       throw APIError.internal("Failed to get leave statistics");
     }
-  }
+}
+
+// LEGACY: Gets comprehensive leave statistics and analytics (keep for backward compatibility)
+export const getLeaveStatistics = api<LeaveStatisticsRequest, LeaveStatisticsResponse>(
+  { auth: true, expose: true, method: "GET", path: "/staff/leave/statistics" },
+  getLeaveStatisticsHandler
+);
+
+// V1: Gets comprehensive leave statistics and analytics
+export const getLeaveStatisticsV1 = api<LeaveStatisticsRequest, LeaveStatisticsResponse>(
+  { auth: true, expose: true, method: "GET", path: "/v1/staff/leave/statistics" },
+  getLeaveStatisticsHandler
 );

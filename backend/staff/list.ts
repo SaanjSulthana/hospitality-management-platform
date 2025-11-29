@@ -46,10 +46,8 @@ export interface ListStaffResponse {
   };
 }
 
-// Lists staff members with enhanced filtering, pagination, and search
-export const list = api<ListStaffRequest, ListStaffResponse>(
-  { auth: true, expose: true, method: "GET", path: "/staff" },
-  async (req) => {
+// Shared handler for listing staff members
+async function listHandler(req: ListStaffRequest): Promise<ListStaffResponse> {
     const authData = getAuthData();
     if (!authData) {
       throw APIError.unauthenticated("Authentication required");
@@ -186,6 +184,17 @@ export const list = api<ListStaffRequest, ListStaffResponse>(
       console.error('List staff error:', error);
       throw APIError.internal("Failed to fetch staff members");
     }
-  }
+}
+
+// LEGACY: Lists staff members (keep for backward compatibility)
+export const list = api<ListStaffRequest, ListStaffResponse>(
+  { auth: true, expose: true, method: "GET", path: "/staff" },
+  listHandler
+);
+
+// V1: Lists staff members
+export const listV1 = api<ListStaffRequest, ListStaffResponse>(
+  { auth: true, expose: true, method: "GET", path: "/v1/staff" },
+  listHandler
 );
 

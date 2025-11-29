@@ -2,6 +2,8 @@ import { api, APIError } from "encore.dev/api";
 import { getAuthData } from "~encore/auth";
 import { requireRole } from "../auth/middleware";
 import { staffDB } from "./db";
+import { staffEvents } from "./events";
+import { v4 as uuidv4 } from "uuid";
 
 export interface RequestLeaveRequest {
   leaveType: 'vacation' | 'sick' | 'personal' | 'emergency';
@@ -21,10 +23,8 @@ export interface RequestLeaveResponse {
   createdAt: Date;
 }
 
-// Creates a leave request for the current user
-export const requestLeave = api<RequestLeaveRequest, RequestLeaveResponse>(
-  { auth: true, expose: true, method: "POST", path: "/staff/leave-requests" },
-  async (req) => {
+// Shared handler for creating leave request
+async function requestLeaveHandler(req: RequestLeaveRequest): Promise<RequestLeaveResponse> {
     const authData = getAuthData();
     if (!authData) {
       throw APIError.unauthenticated("Authentication required");
@@ -44,7 +44,7 @@ export const requestLeave = api<RequestLeaveRequest, RequestLeaveResponse>(
 
     // Find staff record for current user
     const staffRow = await staffDB.queryRow`
-      SELECT id FROM staff 
+      SELECT id, property_id FROM staff 
       WHERE user_id = ${parseInt(authData.userID)} AND org_id = ${authData.orgId} AND status = 'active'
       LIMIT 1
     `;
@@ -104,6 +104,30 @@ export const requestLeave = api<RequestLeaveRequest, RequestLeaveResponse>(
       `;
     }
 
+    // Publish leave_requested event
+    try {
+      await staffEvents.publish({
+        eventId: uuidv4(),
+        eventVersion: 'v1',
+        eventType: 'leave_requested',
+        orgId: authData.orgId,
+        propertyId: staffRow.property_id ?? null,
+        userId: parseInt(authData.userID),
+        timestamp: new Date(),
+        entityId: leaveRequestRow.id,
+        entityType: 'leave',
+        metadata: {
+          staffId: leaveRequestRow.staff_id,
+          leaveType,
+          startDate,
+          endDate,
+          status: 'pending',
+        },
+      });
+    } catch (e) {
+      console.warn("[Staff Events] Failed to publish leave_requested", e);
+    }
+
     return {
       id: leaveRequestRow.id,
       staffId: leaveRequestRow.staff_id,
@@ -114,6 +138,17 @@ export const requestLeave = api<RequestLeaveRequest, RequestLeaveResponse>(
       status: leaveRequestRow.status,
       createdAt: leaveRequestRow.created_at,
     };
-  }
+}
+
+// LEGACY: Creates leave request (keep for backward compatibility)
+export const requestLeave = api<RequestLeaveRequest, RequestLeaveResponse>(
+  { auth: true, expose: true, method: "POST", path: "/staff/leave-requests" },
+  requestLeaveHandler
+);
+
+// V1: Creates leave request
+export const requestLeaveV1 = api<RequestLeaveRequest, RequestLeaveResponse>(
+  { auth: true, expose: true, method: "POST", path: "/v1/staff/leave-requests" },
+  requestLeaveHandler
 );
 

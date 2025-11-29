@@ -6,10 +6,11 @@
 import { api, APIError } from "encore.dev/api";
 import { getAuthData } from "~encore/auth";
 import { guestCheckinDB } from "./db";
+import { guestDocumentsBucket } from "../storage/buckets";
 import { CreateCheckInRequest, CreateCheckInResponse } from "./types";
 import { createAuditLog } from "./audit-middleware";
 import { extractFromDocument } from "./llm-service";
-import { processImage, saveImageToDisk, validateImage, deleteImageFromDisk } from "./image-processor";
+import { processImage, validateImage } from "./image-processor";
 import log from "encore.dev/log";
 
 interface DocumentToUpload {
@@ -38,9 +39,7 @@ interface CreateCheckInWithDocumentsResponse extends CreateCheckInResponse {
  * Create check-in with document uploads in a single transaction
  * If document upload fails, entire check-in is rolled back
  */
-export const createCheckInWithDocuments = api(
-  { expose: true, method: "POST", path: "/guest-checkin/create-with-documents", auth: true },
-  async (req: CreateCheckInWithDocumentsRequest): Promise<CreateCheckInWithDocumentsResponse> => {
+async function createCheckInWithDocumentsHandler(req: CreateCheckInWithDocumentsRequest): Promise<CreateCheckInWithDocumentsResponse> {
     const authData = getAuthData()!;
     const startTime = Date.now();
 
@@ -63,8 +62,12 @@ export const createCheckInWithDocuments = api(
     }
 
     // Validate guest type specific fields
-    if (req.guestType === 'indian' && !req.aadharNumber) {
-      throw APIError.invalidArgument("Aadhar number is required for Indian guests");
+    if (req.guestType === 'indian') {
+      // Require at least ONE Indian ID
+      const hasAnyIndianId = req.aadharNumber || req.panNumber || req.drivingLicenseNumber || req.electionCardNumber;
+      if (!hasAnyIndianId) {
+        throw APIError.invalidArgument("At least one Indian ID required (Aadhaar, PAN, Driving License, or Election Card)");
+      }
     }
     if (req.guestType === 'foreign' && !req.passportNumber) {
       throw APIError.invalidArgument("Passport number is required for foreign guests");
@@ -157,15 +160,21 @@ export const createCheckInWithDocuments = api(
             // Process image
             const processed = await processImage(fileBuffer);
 
-            // Save to disk
-            const storageInfo = await saveImageToDisk(
-              processed.buffer,
-              doc.documentType,
-              doc.filename,
-              authData.orgId,
-              checkInId
-            );
-
+            // Generate unique filename for cloud storage
+            const filename = `${doc.documentType}_${Date.now()}.jpg`;
+            const bucketKey = `${authData.orgId}/${checkInId}/${filename}`;
+            
+            // Upload to Encore Cloud bucket (private)
+            try {
+              await guestDocumentsBucket.upload(bucketKey, processed.buffer, {
+                contentType: doc.mimeType
+              });
+              log.info("Document uploaded to cloud", { bucketKey, checkInId });
+            } catch (error) {
+              log.error('Failed to upload document to bucket:', error);
+              throw APIError.internal("Failed to upload document to cloud storage");
+            }
+            
             // Insert document record
             const documentRecord = await guestCheckinDB.queryRow`
               INSERT INTO guest_documents (
@@ -181,21 +190,25 @@ export const createCheckInWithDocuments = api(
                 image_width,
                 image_height,
                 extraction_status,
-                uploaded_by_user_id
+                uploaded_by_user_id,
+                storage_location,
+                bucket_key
               ) VALUES (
                 ${authData.orgId},
                 ${checkInId},
                 ${doc.documentType},
-                ${storageInfo.filename},
+                ${filename},
                 ${doc.filename},
-                ${storageInfo.filePath},
-                ${storageInfo.fileSize},
+                ${bucketKey},
+                ${processed.buffer.length},
                 ${doc.mimeType},
-                ${storageInfo.thumbnailPath},
-                ${storageInfo.width},
-                ${storageInfo.height},
+                ${bucketKey},
+                ${processed.width},
+                ${processed.height},
                 'processing',
-                ${parseInt(authData.userID)}
+                ${parseInt(authData.userID)},
+                'cloud',
+                ${bucketKey}
               )
               RETURNING id
             `;
@@ -211,11 +224,16 @@ export const createCheckInWithDocuments = api(
                   authData.orgId
                 );
 
+                // Handle null/undefined confidence values - convert to 0 for database
+                const confidenceValue = extractionResult.overallConfidence != null 
+                  ? extractionResult.overallConfidence 
+                  : 0;
+                  
                 await guestCheckinDB.exec`
                   UPDATE guest_documents
                   SET 
                     extracted_data = ${JSON.stringify(extractionResult.fields)}::jsonb,
-                    overall_confidence = ${extractionResult.overallConfidence},
+                    overall_confidence = ${confidenceValue},
                     extraction_status = ${extractionResult.success ? 'completed' : 'failed'},
                     extraction_error = ${extractionResult.error || null},
                     extraction_processed_at = NOW()
@@ -237,7 +255,7 @@ export const createCheckInWithDocuments = api(
               documentType: doc.documentType,
               extractionStatus: 'processing',
               overallConfidence: 0,
-              filename: storageInfo.filename,
+              filename: filename,
             });
 
             log.info("Document uploaded", { documentId, checkInId, documentType: doc.documentType });
@@ -304,5 +322,16 @@ export const createCheckInWithDocuments = api(
       throw APIError.internal("Failed to create check-in with documents");
     }
   }
+
+// Legacy endpoint
+export const createCheckInWithDocuments = api<CreateCheckInWithDocumentsRequest, CreateCheckInWithDocumentsResponse>(
+  { expose: true, method: "POST", path: "/guest-checkin/create-with-documents", auth: true },
+  createCheckInWithDocumentsHandler
+);
+
+// V1 endpoint
+export const createCheckInWithDocumentsV1 = api<CreateCheckInWithDocumentsRequest, CreateCheckInWithDocumentsResponse>(
+  { expose: true, method: "POST", path: "/v1/guest-checkin/create-with-documents", auth: true },
+  createCheckInWithDocumentsHandler
 );
 

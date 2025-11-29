@@ -22,15 +22,13 @@ export interface ValidateAttendanceResponse {
   errors: string[];
 }
 
-// Validates attendance operations and provides guidance
-export const validateAttendance = api<ValidateAttendanceRequest, ValidateAttendanceResponse>(
-  { auth: true, expose: true, method: "POST", path: "/staff/attendance/validate" },
-  async (req) => {
-    const authData = getAuthData();
-    if (!authData) {
-      throw APIError.unauthenticated("Authentication required");
-    }
-    requireRole("ADMIN", "MANAGER")(authData);
+// Shared handler for validating attendance operations and providing guidance
+async function validateAttendanceHandler(req: ValidateAttendanceRequest): Promise<ValidateAttendanceResponse> {
+  const authData = getAuthData();
+  if (!authData) {
+    throw APIError.unauthenticated("Authentication required");
+  }
+  requireRole("ADMIN", "MANAGER")(authData);
 
     const { staffId, attendanceDate } = req;
     const warnings: string[] = [];
@@ -178,9 +176,20 @@ export const validateAttendance = api<ValidateAttendanceRequest, ValidateAttenda
         warnings,
         errors,
       };
-    } catch (error) {
-      console.error('Validate attendance error:', error);
-      throw APIError.internal("Failed to validate attendance");
-    }
+  } catch (error) {
+    console.error('Validate attendance error:', error);
+    throw APIError.internal("Failed to validate attendance");
   }
+}
+
+// LEGACY: Validates attendance operations and provides guidance (keep for backward compatibility)
+export const validateAttendance = api<ValidateAttendanceRequest, ValidateAttendanceResponse>(
+  { auth: true, expose: true, method: "POST", path: "/staff/attendance/validate" },
+  validateAttendanceHandler
+);
+
+// V1: Validate attendance
+export const validateAttendanceV1 = api<ValidateAttendanceRequest, ValidateAttendanceResponse>(
+  { auth: true, expose: true, method: "POST", path: "/v1/staff/attendance/validate" },
+  validateAttendanceHandler
 );

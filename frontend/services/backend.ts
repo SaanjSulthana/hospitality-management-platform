@@ -1,5 +1,6 @@
 import Client, { Local, Environment } from '../src/client';
-import { isDevelopment } from '../src/utils/env';
+import { isDevelopment, getVersionedApiUrl } from '../src/utils/env';
+import { API_CONFIG } from '../src/config/api';
 
 // Test if the import is working
 console.log('=== BACKEND IMPORT TEST ===');
@@ -9,22 +10,12 @@ console.log('Environment function:', Environment);
 console.log('Client type:', typeof Client);
 console.log('Local type:', typeof Local);
 
-// Determine the correct API URL based on environment
-function getApiUrl(): string {
-  if (isDevelopment()) {
-    // Backend is running on port 4000
-    return 'http://localhost:4000';
-  }
-  
-  // For production/staging, use the correct API URL from Encore Cloud
-  // The staging API is at https://api.curat.ai according to the dashboard
-  return 'https://api.curat.ai';
-}
+// Use the versioned API URL from central config
+// This ensures all Encore-generated endpoints use /v1 prefix
+const apiUrl = getVersionedApiUrl();
+console.log('Using Versioned API URL:', apiUrl);
 
-const apiUrl = getApiUrl();
-console.log('Using API URL:', apiUrl);
-
-// Create a client instance with the correct URL
+// Create a client instance with the versioned URL
 const clientInstance = new Client(apiUrl);
 
 console.log('Client instance created:', clientInstance);
@@ -203,37 +194,78 @@ function validateAndCleanToken(token: string | null): string | null {
 // Note: refreshAccessToken function has been moved to AuthContext.tsx to prevent conflicts
 // This function is now handled centrally with proper debouncing
 
-// Custom fetcher that handles automatic token refresh
+// Custom fetcher that handles automatic token refresh + telemetry
 const fetcherWithTokenRefresh = async (url: string, init: RequestInit) => {
-  const response = await fetch(url, init);
-  
-  // If we get a 401 and it's not a refresh request, dispatch an event for token refresh
-  if (response.status === 401 && !url.includes('/auth/refresh')) {
-    console.log('Received 401 response, dispatching token refresh event...');
-    console.log('Request URL:', url);
-    console.log('Request method:', init.method);
-    
-    // Check if this is likely a token expiry issue
-    const responseText = await response.clone().text();
-    console.log('401 Response body:', responseText);
-    
-    // Dispatch a custom event to trigger token refresh in AuthContext
-    const refreshEvent = new CustomEvent('tokenRefreshRequired', { 
-      detail: { 
-        url, 
-        init, 
-        originalResponse: response,
-        responseText,
-        timestamp: Date.now()
-      } 
-    });
-    window.dispatchEvent(refreshEvent);
-    
-    // Return the original response - AuthContext will handle the retry
+  const startedAt = Date.now();
+  const sampleRate = 0.02; // 2%
+  try {
+    const response = await fetch(url, init);
+
+    if ((response.status === 401 || response.status === 403) && !url.includes('/auth/refresh')) {
+      const responseText = await response.clone().text().catch(() => '');
+
+      // Telemetry (sampled)
+      if (Math.random() < sampleRate) {
+        try {
+          await fetch(`${API_CONFIG.BASE_URL}/telemetry/client`, {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${localStorage.getItem('accessToken') || ''}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              sampleRate,
+              events: [{
+                type: 'subscribe_error',
+                errorKind: String(response.status) as any,
+                elapsedMs: Date.now() - startedAt,
+                ts: new Date().toISOString(),
+              }],
+            }),
+          });
+        } catch {}
+      }
+
+      // Trigger centralized refresh flow
+      const refreshEvent = new CustomEvent('tokenRefreshRequired', { 
+        detail: { 
+          url, 
+          init, 
+          originalResponse: response,
+          responseText,
+          timestamp: Date.now()
+        } 
+      });
+      window.dispatchEvent(refreshEvent);
+
+      return response;
+    }
+
     return response;
+  } catch (err) {
+    // Network-level failure (status 0)
+    if (Math.random() < sampleRate) {
+      try {
+        await fetch(`${API_CONFIG.BASE_URL}/telemetry/client`, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${localStorage.getItem('accessToken') || ''}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            sampleRate,
+            events: [{
+              type: 'subscribe_error',
+              errorKind: 'network',
+              elapsedMs: Date.now() - startedAt,
+              ts: new Date().toISOString(),
+            }],
+          }),
+        });
+      } catch {}
+    }
+    throw err;
   }
-  
-  return response;
 };
 
 // Clean existing tokens when module loads

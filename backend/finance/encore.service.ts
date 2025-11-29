@@ -2,11 +2,17 @@ import { Service } from "encore.dev/service";
 
 export default new Service("finance");
 
+// Ensure subscriptions are registered by importing modules for side effects
+import "./finance_events_handler";
+import "./finance_realtime_subscriber";
+
 // Export main finance endpoints
 export { addRevenue } from "./add_revenue";
 export { addExpense } from "./add_expense";
 export { listRevenues } from "./list_revenues";
 export { listExpenses } from "./list_expenses";
+export { getRevenueById } from "./get_revenue_by_id";
+export { getExpenseById } from "./get_expense_by_id";
 export { updateRevenue } from "./update_revenue";
 export { updateExpense } from "./update_expense";
 export { deleteRevenue } from "./delete_revenue";
@@ -88,3 +94,19 @@ export { addMissingColumns } from "./add_missing_columns";
 
 // Export migration fix endpoint
 export { fixMigrationIssues } from "./fix_migration_issues";
+
+// Export comprehensive schema check endpoint
+export { checkSchemaComprehensive } from "./check_schema_comprehensive";
+
+// Export schema check and utility endpoints
+export { checkExpenseSchema } from "./check_expense_schema";
+export { fixDailyApprovalsTable } from "./fix_daily_approvals_table";
+export { checkDailyApprovalsSchema } from "./check_daily_approvals_schema";
+export { performanceTest } from "./performance_test";
+export { addPerformanceIndexes } from "./add_performance_indexes";
+export { dbHealthCheck } from "./db_health_check";
+export { queryPerformanceTest } from "./query_performance_test";
+export { financeEvents, realtimeUpdates } from "./events";
+export { subscribeFinanceEvents } from "./subscribe_events";
+export { getEventHistory, getEventMetrics } from "./event_store";
+export { subscribeFinanceRealtime } from "./subscribe_realtime";

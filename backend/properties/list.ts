@@ -2,6 +2,7 @@ import { api, APIError } from "encore.dev/api";
 import { getAuthData } from "~encore/auth";
 import { propertiesDB } from "./db";
 import { requireRole } from "../auth/middleware";
+import { v1Path } from "../shared/http";
 import { PropertyType } from "./types";
 
 interface ListPropertiesRequest {
@@ -13,6 +14,7 @@ export interface PropertyInfo {
   id: number;
   name: string;
   type: PropertyType;
+  mobileNumber: string;
   regionId?: number;
   addressJson: Record<string, any>;
   amenitiesJson: Record<string, any>;
@@ -25,10 +27,8 @@ export interface ListPropertiesResponse {
   properties: PropertyInfo[];
 }
 
-// Lists properties with role-based filtering
-export const list = api<ListPropertiesRequest, ListPropertiesResponse>(
-  { auth: true, expose: true, method: "GET", path: "/properties" },
-  async (req) => {
+// Handler function for listing properties
+async function listPropertiesHandler(req: ListPropertiesRequest): Promise<ListPropertiesResponse> {
     const authData = getAuthData();
     if (!authData) {
       throw APIError.unauthenticated("Authentication required");
@@ -38,7 +38,7 @@ export const list = api<ListPropertiesRequest, ListPropertiesResponse>(
     const { regionId, type } = req || {};
 
     let query = `
-      SELECT p.id, p.name, p.type, p.region_id, p.address_json, p.amenities_json, p.capacity_json, p.status, p.created_at
+      SELECT p.id, p.name, p.type, p.mobile_number, p.region_id, p.address_json, p.amenities_json, p.capacity_json, p.status, p.created_at
       FROM properties p
       WHERE p.org_id = $1
     `;
@@ -76,6 +76,7 @@ export const list = api<ListPropertiesRequest, ListPropertiesResponse>(
         id: property.id,
         name: property.name,
         type: property.type as PropertyType,
+        mobileNumber: property.mobile_number,
         regionId: property.region_id,
         addressJson: typeof property.address_json === 'string' 
           ? JSON.parse(property.address_json) 
@@ -90,6 +91,17 @@ export const list = api<ListPropertiesRequest, ListPropertiesResponse>(
         createdAt: property.created_at,
       })),
     };
-  }
+}
+
+// Legacy path
+export const list = api<ListPropertiesRequest, ListPropertiesResponse>(
+  { auth: true, expose: true, method: "GET", path: "/properties" },
+  listPropertiesHandler
+);
+
+// Versioned path
+export const listV1 = api<ListPropertiesRequest, ListPropertiesResponse>(
+  { auth: true, expose: true, method: "GET", path: "/v1/properties" },
+  listPropertiesHandler
 );
 

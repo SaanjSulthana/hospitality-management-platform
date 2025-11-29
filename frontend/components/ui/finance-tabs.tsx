@@ -75,11 +75,13 @@ export function FinanceTabsList({
   children, 
   className, 
   theme, 
+  /** Optional className applied to the outer container to control visibility/layout (e.g., hide wrapper on mobile) */
+  containerClassName,
   ...props 
-}: React.ComponentProps<typeof TabsList> & { theme?: Theme }) {
+}: React.ComponentProps<typeof TabsList> & { theme?: Theme; containerClassName?: string }) {
   const themeStyles = getThemeStyles(theme);
   return (
-    <div className="mb-0">
+    <div className={cn("mb-0", containerClassName)}>
       <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-1">
         <TabsList
           className={cn("w-full bg-transparent h-auto p-0 gap-0 flex", className)}

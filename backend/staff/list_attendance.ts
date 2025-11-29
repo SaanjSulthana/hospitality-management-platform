@@ -55,10 +55,8 @@ export interface ListAttendanceResponse {
   };
 }
 
-// Lists attendance records with filtering and pagination
-export const listAttendance = api<ListAttendanceRequest, ListAttendanceResponse>(
-  { auth: true, expose: true, method: "GET", path: "/staff/attendance" },
-  async (req) => {
+// Shared handler for listing attendance
+async function listAttendanceHandler(req: ListAttendanceRequest): Promise<ListAttendanceResponse> {
     const authData = getAuthData();
     if (!authData) {
       throw APIError.unauthenticated("Authentication required");
@@ -288,5 +286,16 @@ export const listAttendance = api<ListAttendanceRequest, ListAttendanceResponse>
       
       throw APIError.internal(`Failed to fetch attendance records: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
-  }
+}
+
+// LEGACY: List attendance records (keep for backward compatibility)
+export const listAttendance = api<ListAttendanceRequest, ListAttendanceResponse>(
+  { auth: true, expose: true, method: "GET", path: "/staff/attendance" },
+  listAttendanceHandler
+);
+
+// V1: List attendance records
+export const listAttendanceV1 = api<ListAttendanceRequest, ListAttendanceResponse>(
+  { auth: true, expose: true, method: "GET", path: "/v1/staff/attendance" },
+  listAttendanceHandler
 );

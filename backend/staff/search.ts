@@ -59,10 +59,8 @@ export interface SearchStaffResponse {
   };
 }
 
-// Advanced staff search with filtering and relevance scoring
-export const search = api<SearchStaffRequest, SearchStaffResponse>(
-  { auth: true, expose: true, method: "POST", path: "/staff/search" },
-  async (req) => {
+// Shared handler for staff search
+async function searchHandler(req: SearchStaffRequest): Promise<SearchStaffResponse> {
     const authData = getAuthData();
     if (!authData) {
       throw APIError.unauthenticated("Authentication required");
@@ -237,5 +235,16 @@ export const search = api<SearchStaffRequest, SearchStaffResponse>(
       console.error('Search staff error:', error);
       throw APIError.internal("Failed to search staff members");
     }
-  }
+}
+
+// LEGACY: Advanced staff search (keep for backward compatibility)
+export const search = api<SearchStaffRequest, SearchStaffResponse>(
+  { auth: true, expose: true, method: "POST", path: "/staff/search" },
+  searchHandler
+);
+
+// V1: Advanced staff search
+export const searchV1 = api<SearchStaffRequest, SearchStaffResponse>(
+  { auth: true, expose: true, method: "POST", path: "/v1/staff/search" },
+  searchHandler
 );

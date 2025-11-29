@@ -241,3 +241,52 @@ docker-compose up -d postgres
 
 check backend errors
 npx tsc --noEmit --skipLibCheck
+
+## 🔎 Staging: Legacy Usage Logging for /v1 Migration
+
+Enable structured logging for legacy (non-/v1) paths in staging:
+
+```
+# keep legacy paths with deprecation headers
+ENABLE_LEGACY_ROUTES=true
+# do not redirect yet (switch to true after ~2 weeks)
+LEGACY_REDIRECT_308=false
+# emit JSON log line for each legacy hit
+LOG_LEGACY_USAGE=true
+```
+
+If using Encore environments:
+
+```
+encore env set staging ENABLE_LEGACY_ROUTES true
+encore env set staging LEGACY_REDIRECT_308 false
+encore env set staging LOG_LEGACY_USAGE true
+```
+
+Example log line emitted by `backend/server.cjs`:
+
+```json
+{
+  "timestamp": "2025-12-01T10:00:00.000Z",
+  "type": "legacy_route_access",
+  "path": "/finance/revenues",
+  "method": "GET",
+  "target": "/v1/finance/revenues",
+  "userAgent": "Mozilla/5.0 ...",
+  "ip": "203.0.113.10"
+}
+```
+
+Quick dashboard ideas:
+- Legacy requests per day: filter `type="legacy_route_access"` and count per day.
+- Top legacy paths: group by `path`.
+- Top user agents: group by `userAgent`.
+
+Cutover:
+```
+# enable redirects after ~2 weeks
+encore env set staging LEGACY_REDIRECT_308 true
+
+# after ~60–90 days remove legacy
+encore env set staging ENABLE_LEGACY_ROUTES false
+```

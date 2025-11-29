@@ -7,6 +7,7 @@ import { api, APIError } from "encore.dev/api";
 import { getAuthData } from "~encore/auth";
 import { requireRole } from "../auth/middleware";
 import { guestCheckinDB } from "./db";
+import { guestDocumentsBucket } from "../storage/buckets";
 import { extractFromDocument, detectDocumentType } from "./llm-service";
 import {
   processImage,
@@ -16,6 +17,10 @@ import {
   deleteImageFromDisk,
   fileExists,
 } from "./image-processor";
+import {
+  enhanceDocumentImage,
+  analyzeImageQuality,
+} from "./image-enhancer";
 import {
   UploadDocumentRequest,
   UploadDocumentResponse,
@@ -34,13 +39,14 @@ import {
 import log from "encore.dev/log";
 import * as path from "path";
 import * as fs from "fs";
+import { guestCheckinEvents, type GuestEventPayload } from "./guest-checkin-events";
+import { recordGuestEventPublished } from "./event-metrics";
+import { v1Path } from "../shared/http";
 
 /**
  * Upload a guest document with automatic LLM text extraction
  */
-export const uploadDocument = api(
-  { expose: true, method: "POST", path: "/guest-checkin/documents/upload", auth: true },
-  async (req: UploadDocumentRequest): Promise<UploadDocumentResponse> => {
+async function uploadDocumentHandler(req: UploadDocumentRequest): Promise<UploadDocumentResponse> {
     const authData = getAuthData()!;
     
     // Only admin and manager can upload documents
@@ -66,43 +72,63 @@ export const uploadDocument = api(
       throw APIError.invalidArgument(validation.error!);
     }
 
-    // If guestCheckInId provided, verify it exists and belongs to org
+    // Analyze and enhance image for better OCR
+    const imageQuality = await analyzeImageQuality(fileBuffer);
+    log.info("Image quality analysis", {
+      needsEnhancement: imageQuality.needsEnhancement,
+      brightness: imageQuality.brightness,
+      contrast: imageQuality.contrast,
+    });
+
+    // Enhance image if needed
+    let enhancedBuffer = fileBuffer;
+    let enhancedBase64 = req.fileData;
+    
+    if (imageQuality.needsEnhancement) {
+      log.info("Enhancing image for better OCR");
+      enhancedBuffer = await enhanceDocumentImage(fileBuffer);
+      enhancedBase64 = enhancedBuffer.toString('base64');
+    }
+
+    let guestPropertyId = 0;
+    let guestNameForMetadata: string | undefined;
+
+    // If guestCheckInId provided, verify it exists and capture metadata
     if (req.guestCheckInId) {
       const checkIn = await guestCheckinDB.queryRow`
-        SELECT id FROM guest_checkins 
+        SELECT id, property_id, full_name FROM guest_checkins 
         WHERE id = ${req.guestCheckInId} AND org_id = ${authData.orgId}
       `;
 
       if (!checkIn) {
         throw APIError.notFound("Guest check-in not found");
       }
+      
+      guestPropertyId = checkIn.property_id || 0;
+      guestNameForMetadata = checkIn.full_name || undefined;
     }
 
     try {
-      // Temporarily disable image processing for testing
-      // const processed = await processImage(fileBuffer);
-      
-      // Simple file save without processing
+      // Generate unique filename
       const guestCheckInId = req.guestCheckInId || 0;
-      const baseDir = path.join(process.cwd(), "uploads", "guest-documents");
-      const orgDir = path.join(baseDir, authData.orgId.toString());
-      const guestDir = path.join(orgDir, guestCheckInId.toString());
-      
-      // Create directories if they don't exist
-      if (!fs.existsSync(guestDir)) {
-        fs.mkdirSync(guestDir, { recursive: true });
-      }
-      
       const filename = `${req.documentType}_${Date.now()}.jpg`;
-      const filePath = path.join(guestDir, filename);
       
-      // Save file directly without processing
-      fs.writeFileSync(filePath, fileBuffer);
+      // Upload to Encore Cloud bucket (private)
+      const bucketKey = `${authData.orgId}/${guestCheckInId}/${filename}`;
+      
+      try {
+        await guestDocumentsBucket.upload(bucketKey, fileBuffer, {
+          contentType: req.mimeType
+        });
+      } catch (error) {
+        log.error('Failed to upload document to bucket:', error);
+        throw APIError.internal("Failed to upload document to cloud storage");
+      }
       
       const storageInfo = {
         filename,
-        filePath,
-        thumbnailPath: filePath, // Use same path for thumbnail temporarily
+        filePath: bucketKey, // Store bucket key instead of file path
+        thumbnailPath: bucketKey, // Use same for thumbnail
         width: 100,
         height: 100,
         fileSize: fileBuffer.length,
@@ -124,7 +150,9 @@ export const uploadDocument = api(
           image_width,
           image_height,
           extraction_status,
-          uploaded_by_user_id
+          uploaded_by_user_id,
+          storage_location,
+          bucket_key
         ) VALUES (
           ${authData.orgId},
           ${req.guestCheckInId || null},
@@ -138,13 +166,42 @@ export const uploadDocument = api(
           ${storageInfo.width},
           ${storageInfo.height},
           ${req.performExtraction !== false ? 'processing' : 'skipped'},
-          ${parseInt(authData.userID)}
+          ${parseInt(authData.userID)},
+          'cloud',
+          ${bucketKey}
         )
         RETURNING id, created_at
       `;
 
       const documentId = documentRecord!.id;
       const thumbnailUrl = `/guest-checkin/documents/${documentId}/thumbnail`;
+
+      if (req.guestCheckInId) {
+        const uploadEvent: GuestEventPayload = {
+          eventId: `${authData.orgId}-${documentId}-doc-upload-${Date.now()}`,
+          eventVersion: "v1",
+          eventType: "guest_document_uploaded",
+          orgId: Number(authData.orgId),
+          propertyId: guestPropertyId,
+          userId: parseInt(authData.userID),
+          timestamp: new Date(),
+          entityType: "guest_document",
+          entityId: req.guestCheckInId,
+          metadata: {
+            action: "add",
+            guestName: guestNameForMetadata,
+            documentId,
+            documentType: req.documentType,
+            filename: storageInfo.filename,
+            thumbnailUrl,
+            status: req.performExtraction !== false ? "processing" : "processing",
+          },
+        };
+        recordGuestEventPublished(uploadEvent);
+        guestCheckinEvents.publish(uploadEvent).catch(() => {
+          log.warn("Failed to publish guest_document_uploaded event");
+        });
+      }
 
       // Perform document type detection and LLM extraction if requested
       let extractionResult;
@@ -155,7 +212,7 @@ export const uploadDocument = api(
         try {
           // First detect document type if it's 'other' or auto-detect is enabled
           if (req.documentType === 'other') {
-            const detectionResult = await detectDocumentType(req.fileData, authData.orgId);
+            const detectionResult = await detectDocumentType(enhancedBase64, authData.orgId);
             detectedDocumentType = detectionResult.documentType;
             documentTypeConfidence = detectionResult.confidence;
             
@@ -172,18 +229,24 @@ export const uploadDocument = api(
           // Use detected or specified document type for extraction
           const extractionDocumentType = detectedDocumentType || req.documentType;
           
+          // Use enhanced image for extraction
           extractionResult = await extractFromDocument(
-            req.fileData,
+            enhancedBase64,
             extractionDocumentType,
             authData.orgId
           );
 
           // Update document with extraction results and detected type
+          // Handle null/undefined confidence values - convert to 0 for database
+          const confidenceValue = extractionResult.overallConfidence != null 
+            ? extractionResult.overallConfidence 
+            : 0;
+            
           await guestCheckinDB.exec`
             UPDATE guest_documents
             SET 
               extracted_data = ${JSON.stringify(extractionResult.fields)}::jsonb,
-              overall_confidence = ${extractionResult.overallConfidence},
+              overall_confidence = ${confidenceValue},
               extraction_status = ${extractionResult.success ? 'completed' : 'failed'},
               extraction_error = ${extractionResult.error || null},
               extraction_processed_at = NOW(),
@@ -196,6 +259,37 @@ export const uploadDocument = api(
             documentId,
             overallConfidence: extractionResult.overallConfidence,
           });
+          
+          // Emit extracted success event if we have a guest id
+          if (req.guestCheckInId) {
+            const fieldsExtracted = Object.keys(extractionResult.fields || {}).length;
+            const successEvent: GuestEventPayload = {
+              eventId: `${authData.orgId}-${req.guestCheckInId}-doc-${Date.now()}`,
+              eventVersion: "v1",
+              eventType: "guest_document_extracted",
+              orgId: Number(authData.orgId),
+              propertyId: guestPropertyId,
+              userId: parseInt(authData.userID),
+              timestamp: new Date(),
+              entityType: "guest_document",
+              entityId: req.guestCheckInId!,
+              metadata: {
+                action: "update",
+                guestName: guestNameForMetadata,
+                documentId,
+                documentType: detectedDocumentType || req.documentType,
+                filename: storageInfo.filename,
+                thumbnailUrl,
+                status: "ready",
+                overallConfidence: extractionResult.overallConfidence ?? 0,
+                fieldsExtracted,
+              },
+            };
+            recordGuestEventPublished(successEvent);
+            guestCheckinEvents.publish(successEvent).catch(() => {
+              log.warn("Failed to publish guest_document_extracted event");
+            });
+          }
         } catch (extractionError: any) {
           log.error("LLM extraction failed", { documentId, error: extractionError.message });
           
@@ -216,6 +310,34 @@ export const uploadDocument = api(
             processingTime: 0,
             error: extractionError.message,
           };
+          
+          if (req.guestCheckInId) {
+            const failureEvent: GuestEventPayload = {
+              eventId: `${authData.orgId}-${req.guestCheckInId}-doc-${Date.now()}`,
+              eventVersion: "v1",
+              eventType: "guest_document_extract_failed",
+              orgId: Number(authData.orgId),
+              propertyId: guestPropertyId,
+              userId: parseInt(authData.userID),
+              timestamp: new Date(),
+              entityType: "guest_document",
+              entityId: req.guestCheckInId!,
+              metadata: {
+                action: "update",
+                guestName: guestNameForMetadata,
+                documentId,
+                documentType: req.documentType,
+                filename: storageInfo.filename,
+                thumbnailUrl,
+                status: "failed",
+                reason: extractionError.message,
+              },
+            };
+            recordGuestEventPublished(failureEvent);
+            guestCheckinEvents.publish(failureEvent).catch(() => {
+              log.warn("Failed to publish guest_document_extract_failed event");
+            });
+          }
         }
       } else {
         extractionResult = {
@@ -253,14 +375,21 @@ export const uploadDocument = api(
       throw APIError.internal("Failed to upload document");
     }
   }
+
+export const uploadDocument = api<UploadDocumentRequest, UploadDocumentResponse>(
+  { expose: true, method: "POST", path: "/guest-checkin/documents/upload", auth: true },
+  uploadDocumentHandler
+);
+
+export const uploadDocumentV1 = api<UploadDocumentRequest, UploadDocumentResponse>(
+  { expose: true, method: "POST", path: "/v1/guest-checkin/documents/upload", auth: true },
+  uploadDocumentHandler
 );
 
 /**
  * List all documents for a guest check-in
  */
-export const listDocuments = api(
-  { expose: true, method: "GET", path: "/guest-checkin/:checkInId/documents", auth: true },
-  async ({ checkInId, includeDeleted, documentType }: ListDocumentsRequest): Promise<ListDocumentsResponse> => {
+async function listDocumentsHandler({ checkInId, includeDeleted, documentType }: ListDocumentsRequest): Promise<ListDocumentsResponse> {
     const authData = getAuthData()!;
     requireRole("ADMIN", "MANAGER")(authData);
 
@@ -343,14 +472,21 @@ export const listDocuments = api(
       throw APIError.internal("Failed to list documents");
     }
   }
+
+export const listDocuments = api<ListDocumentsRequest, ListDocumentsResponse>(
+  { expose: true, method: "GET", path: "/guest-checkin/:checkInId/documents", auth: true },
+  listDocumentsHandler
+);
+
+export const listDocumentsV1 = api<ListDocumentsRequest, ListDocumentsResponse>(
+  { expose: true, method: "GET", path: "/v1/guest-checkin/:checkInId/documents", auth: true },
+  listDocumentsHandler
 );
 
 /**
  * Delete a document (soft delete by default)
  */
-export const deleteDocument = api(
-  { expose: true, method: "DELETE", path: "/guest-checkin/documents/:documentId", auth: true },
-  async ({ documentId, reason, hardDelete }: DeleteDocumentRequest): Promise<DeleteDocumentResponse> => {
+async function deleteDocumentHandler({ documentId, reason, hardDelete }: DeleteDocumentRequest): Promise<DeleteDocumentResponse> {
     const authData = getAuthData()!;
     requireRole("ADMIN", "MANAGER")(authData);
 
@@ -359,7 +495,7 @@ export const deleteDocument = api(
     try {
       // Verify document exists and belongs to org
       const document = await guestCheckinDB.queryRow`
-        SELECT id, uploaded_by_user_id, file_path, thumbnail_path
+        SELECT id, uploaded_by_user_id, file_path, thumbnail_path, storage_location, bucket_key
         FROM guest_documents
         WHERE id = ${documentId} AND org_id = ${authData.orgId}
       `;
@@ -380,13 +516,24 @@ export const deleteDocument = api(
       let deletedAt: string;
 
       if (hardDelete) {
-        // Hard delete - remove from database and disk
+        // Hard delete - remove from database and storage
         await guestCheckinDB.exec`
           DELETE FROM guest_documents WHERE id = ${documentId}
         `;
 
-        // Delete files from disk
-        deleteImageFromDisk(document.file_path, document.thumbnail_path);
+        // Delete files from cloud or local storage
+        try {
+          if (document.storage_location === 'cloud' && document.bucket_key) {
+            // Delete from Encore bucket
+            await guestDocumentsBucket.remove(document.bucket_key);
+          } else {
+            // Delete from local disk
+            deleteImageFromDisk(document.file_path, document.thumbnail_path);
+          }
+        } catch (error) {
+          log.error('Failed to delete document files:', error);
+          // Continue even if file deletion fails
+        }
         
         deletedAt = new Date().toISOString();
 
@@ -422,14 +569,21 @@ export const deleteDocument = api(
       throw APIError.internal("Failed to delete document");
     }
   }
+
+export const deleteDocument = api<DeleteDocumentRequest, DeleteDocumentResponse>(
+  { expose: true, method: "DELETE", path: "/guest-checkin/documents/:documentId", auth: true },
+  deleteDocumentHandler
+);
+
+export const deleteDocumentV1 = api<DeleteDocumentRequest, DeleteDocumentResponse>(
+  { expose: true, method: "DELETE", path: "/v1/guest-checkin/documents/:documentId", auth: true },
+  deleteDocumentHandler
 );
 
 /**
  * Verify extracted document data
  */
-export const verifyDocument = api(
-  { expose: true, method: "POST", path: "/guest-checkin/documents/:documentId/verify", auth: true },
-  async ({ documentId, correctedData, notes }: VerifyDocumentRequest): Promise<VerifyDocumentResponse> => {
+async function verifyDocumentHandler({ documentId, correctedData, notes }: VerifyDocumentRequest): Promise<VerifyDocumentResponse> {
     const authData = getAuthData()!;
     requireRole("ADMIN", "MANAGER")(authData);
 
@@ -492,14 +646,21 @@ export const verifyDocument = api(
       throw APIError.internal("Failed to verify document");
     }
   }
+
+export const verifyDocument = api<VerifyDocumentRequest, VerifyDocumentResponse>(
+  { expose: true, method: "POST", path: "/guest-checkin/documents/:documentId/verify", auth: true },
+  verifyDocumentHandler
+);
+
+export const verifyDocumentV1 = api<VerifyDocumentRequest, VerifyDocumentResponse>(
+  { expose: true, method: "POST", path: "/v1/guest-checkin/documents/:documentId/verify", auth: true },
+  verifyDocumentHandler
 );
 
 /**
  * Retry failed extraction
  */
-export const retryDocumentExtraction = api(
-  { expose: true, method: "POST", path: "/guest-checkin/documents/:documentId/retry-extraction", auth: true },
-  async ({ documentId }: RetryExtractionRequest): Promise<RetryExtractionResponse> => {
+async function retryDocumentExtractionHandler({ documentId }: RetryExtractionRequest): Promise<RetryExtractionResponse> {
     const authData = getAuthData()!;
     requireRole("ADMIN", "MANAGER")(authData);
 
@@ -540,11 +701,16 @@ export const retryDocumentExtraction = api(
       );
 
       // Update with results
+      // Handle null/undefined confidence values - convert to 0 for database
+      const confidenceValue = extractionResult.overallConfidence != null 
+        ? extractionResult.overallConfidence 
+        : 0;
+        
       await guestCheckinDB.exec`
         UPDATE guest_documents
         SET 
           extracted_data = ${JSON.stringify(extractionResult.fields)}::jsonb,
-          overall_confidence = ${extractionResult.overallConfidence},
+          overall_confidence = ${confidenceValue},
           extraction_status = ${extractionResult.success ? 'completed' : 'failed'},
           extraction_error = ${extractionResult.error || null},
           extraction_processed_at = NOW()
@@ -567,5 +733,14 @@ export const retryDocumentExtraction = api(
       throw APIError.internal("Failed to retry extraction");
     }
   }
+
+export const retryDocumentExtraction = api<RetryExtractionRequest, RetryExtractionResponse>(
+  { expose: true, method: "POST", path: "/guest-checkin/documents/:documentId/retry-extraction", auth: true },
+  retryDocumentExtractionHandler
+);
+
+export const retryDocumentExtractionV1 = api<RetryExtractionRequest, RetryExtractionResponse>(
+  { expose: true, method: "POST", path: "/v1/guest-checkin/documents/:documentId/retry-extraction", auth: true },
+  retryDocumentExtractionHandler
 );
 

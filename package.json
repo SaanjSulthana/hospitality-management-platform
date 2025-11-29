@@ -12,6 +12,7 @@
     "dev:backend": "bun run --cwd backend dev",
     "dev:frontend": "bun run --cwd frontend dev",
     "build": "bun run --cwd backend build && bun run --cwd frontend build",
+    "ci:check-versioned-paths": "bash scripts/check-versioned-paths.sh",
     "install:all": "bun install && bun run --cwd backend install && bun run --cwd frontend install",
     "db:migrate": "bun run --cwd backend db:migrate",
     "db:reset": "bun run --cwd backend db:reset",

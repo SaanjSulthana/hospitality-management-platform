@@ -11,10 +11,8 @@ export interface ForgotPasswordResponse {
   message: string;
 }
 
-// Initiates password reset process
-export const forgotPassword = api<ForgotPasswordRequest, ForgotPasswordResponse>(
-  { expose: true, method: "POST", path: "/auth/forgot-password" },
-  async (req) => {
+// Shared handler for forgot password logic
+async function forgotPasswordHandler(req: ForgotPasswordRequest): Promise<ForgotPasswordResponse> {
     const { email } = req;
 
     try {
@@ -60,5 +58,16 @@ export const forgotPassword = api<ForgotPasswordRequest, ForgotPasswordResponse>
       console.error('Forgot password error:', error);
       throw APIError.internal("Failed to process password reset request");
     }
-  }
+}
+
+// LEGACY: Initiates password reset process (keep for backward compatibility)
+export const forgotPassword = api<ForgotPasswordRequest, ForgotPasswordResponse>(
+  { expose: true, method: "POST", path: "/auth/forgot-password" },
+  forgotPasswordHandler
+);
+
+// V1: Initiates password reset process
+export const forgotPasswordV1 = api<ForgotPasswordRequest, ForgotPasswordResponse>(
+  { expose: true, method: "POST", path: "/v1/auth/forgot-password" },
+  forgotPasswordHandler
 );

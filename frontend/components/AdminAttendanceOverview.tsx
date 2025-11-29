@@ -177,7 +177,6 @@ export default function AdminAttendanceOverview() {
     refetchInterval: 3000, // Real-time updates every 3 seconds
     staleTime: 0,
     gcTime: 0,
-    refetchOnWindowFocus: true,
     refetchOnMount: true,
   });
 
@@ -191,7 +190,6 @@ export default function AdminAttendanceOverview() {
     refetchInterval: 5000, // Update stats every 5 seconds
     staleTime: 0,
     gcTime: 0,
-    refetchOnWindowFocus: true,
     refetchOnMount: true,
   });
 
@@ -205,7 +203,6 @@ export default function AdminAttendanceOverview() {
     refetchInterval: 10000,
     staleTime: 0,
     gcTime: 0,
-    refetchOnWindowFocus: true,
     refetchOnMount: true,
   });
 

@@ -2,9 +2,11 @@ import { api, APIError } from "encore.dev/api";
 import { getAuthData } from "~encore/auth";
 import { brandingDB } from "./db";
 import { requireRole } from "../auth/middleware";
+import { logosBucket } from "../storage/buckets";
+import { brandingEvents } from "./events";
+import { randomUUID } from "crypto";
 import * as fs from "fs";
 import * as path from "path";
-import { randomUUID } from "crypto";
 
 export interface UploadLogoRequest {
   fileData: string; // base64 encoded file data
@@ -17,10 +19,8 @@ export interface UploadLogoResponse {
   filename: string;
 }
 
-// Upload organization logo
-export const uploadLogo = api<UploadLogoRequest, UploadLogoResponse>(
-  { auth: true, expose: true, method: "POST", path: "/branding/logo" },
-  async (req) => {
+// Shared handler for uploading organization logo
+async function uploadLogoHandler(req: UploadLogoRequest): Promise<UploadLogoResponse> {
     const authData = getAuthData();
     if (!authData) {
       throw APIError.unauthenticated("Authentication required");
@@ -56,18 +56,20 @@ export const uploadLogo = api<UploadLogoRequest, UploadLogoResponse>(
     const fileExtension = path.extname(req.filename) || getExtensionFromMimeType(req.mimeType);
     const uniqueFilename = `logo_${randomUUID()}${fileExtension}`;
     
-    // Create logos directory if it doesn't exist
-    const logosDir = path.join(process.cwd(), 'uploads', 'logos', authData.orgId.toString());
-    if (!fs.existsSync(logosDir)) {
-      fs.mkdirSync(logosDir, { recursive: true });
+    // Upload to Encore Cloud bucket (public with CDN)
+    const bucketKey = `${authData.orgId}/${uniqueFilename}`;
+    
+    try {
+      await logosBucket.upload(bucketKey, fileBuffer, {
+        contentType: req.mimeType
+      });
+    } catch (error) {
+      console.error('Failed to upload logo to bucket:', error);
+      throw APIError.internal("Failed to upload logo to cloud storage");
     }
 
-    // Save file to disk
-    const filePath = path.join(logosDir, uniqueFilename);
-    fs.writeFileSync(filePath, fileBuffer);
-
-    // Generate the URL that will be used to access the logo
-    const logoUrl = `/uploads/logos/${authData.orgId}/${uniqueFilename}`;
+    // Get public CDN URL
+    const logoUrl = logosBucket.publicUrl(bucketKey);
 
     console.log('Logo uploaded successfully:', {
       orgId: authData.orgId,
@@ -76,11 +78,47 @@ export const uploadLogo = api<UploadLogoRequest, UploadLogoResponse>(
       fileSize: fileBuffer.length
     });
 
-    return {
+    const result = {
       logoUrl: logoUrl,
       filename: uniqueFilename,
     };
-  }
+
+    // Publish event
+    try {
+      await brandingEvents.publish({
+        eventId: uuidv4(),
+        eventVersion: "v1",
+        eventType: "logo_uploaded",
+        orgId: authData.orgId,
+        userId: Number(authData.userID) || null,
+        propertyId: null,
+        timestamp: new Date(),
+        entityId: authData.orgId,
+        entityType: "branding",
+        metadata: {
+          filename: uniqueFilename,
+          logoUrl,
+          mimeType: req.mimeType,
+          sizeBytes: fileBuffer.length,
+        },
+      });
+    } catch (pubErr) {
+      console.warn("[BrandingRealtime] Failed to publish logo_uploaded event:", pubErr);
+    }
+
+    return result;
+}
+
+// LEGACY: Upload organization logo (keep for backward compatibility)
+export const uploadLogo = api<UploadLogoRequest, UploadLogoResponse>(
+  { auth: true, expose: true, method: "POST", path: "/branding/logo" },
+  uploadLogoHandler
+);
+
+// V1: Upload organization logo
+export const uploadLogoV1 = api<UploadLogoRequest, UploadLogoResponse>(
+  { auth: true, expose: true, method: "POST", path: "/v1/branding/logo" },
+  uploadLogoHandler
 );
 
 function getExtensionFromMimeType(mimeType: string): string {

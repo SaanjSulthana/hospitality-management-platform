@@ -63,14 +63,13 @@ export interface ListSchedulesResponse {
 }
 
 // Lists schedules with advanced filtering and pagination
-export const listSchedules = api<ListSchedulesRequest, ListSchedulesResponse>(
-  { auth: true, expose: true, method: "GET", path: "/staff/schedules" },
-  async (req) => {
-    const authData = getAuthData();
-    if (!authData) {
-      throw APIError.unauthenticated("Authentication required");
-    }
-    requireRole("ADMIN", "MANAGER")(authData);
+// Shared handler for listing schedules
+async function listSchedulesHandler(req: ListSchedulesRequest): Promise<ListSchedulesResponse> {
+  const authData = getAuthData();
+  if (!authData) {
+    throw APIError.unauthenticated("Authentication required");
+  }
+  requireRole("ADMIN", "MANAGER")(authData);
 
     const { 
       staffId, 
@@ -305,5 +304,16 @@ export const listSchedules = api<ListSchedulesRequest, ListSchedulesResponse>(
       console.error('List schedules error:', error);
       throw APIError.internal("Failed to fetch schedules");
     }
-  }
+}
+
+// LEGACY: Lists schedules (keep for backward compatibility)
+export const listSchedules = api<ListSchedulesRequest, ListSchedulesResponse>(
+  { auth: true, expose: true, method: "GET", path: "/staff/schedules" },
+  listSchedulesHandler
+);
+
+// V1: Lists schedules
+export const listSchedulesV1 = api<ListSchedulesRequest, ListSchedulesResponse>(
+  { auth: true, expose: true, method: "GET", path: "/v1/staff/schedules" },
+  listSchedulesHandler
 );

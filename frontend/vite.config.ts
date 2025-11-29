@@ -18,7 +18,8 @@ export default defineConfig({
   ],
   mode: "development",
   build: {
-    minify: false,
+    // Enable minification for production builds
+    minify: true,
   },
   define: {
     // Define environment variables for browser compatibility
@@ -30,5 +31,32 @@ export default defineConfig({
     // Increase request size limit for development server
     // Note: Vite doesn't support bodySizeLimit directly
     // This is handled by the backend
+    proxy: {
+          // Telemetry endpoints → backend (avoid 404 on Vite dev server)
+          '/telemetry': {
+            target: 'http://127.0.0.1:4000',
+            changeOrigin: true,
+            followRedirects: true,
+          },
+          '/v1/system/telemetry': {
+            target: 'http://127.0.0.1:4000',
+            changeOrigin: true,
+            followRedirects: true,
+          },
+      // Same-origin the finance realtime endpoints to reduce CORS preflights in dev
+      '/finance/realtime': {
+        target: 'http://localhost:4000',
+        changeOrigin: true,
+      },
+      // WebSocket streaming endpoint (Encore realtime v2)
+      '/v2/realtime/stream': {
+        // Match Encore dev server bind address exactly to avoid ECONNRESET during proxy upgrade
+        target: 'http://127.0.0.1:4000',
+        ws: true,
+        changeOrigin: true,
+        secure: false,
+        followRedirects: true,
+      },
+    },
   },
 })

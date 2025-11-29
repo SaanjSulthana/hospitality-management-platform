@@ -1,0 +1,332 @@
+# Encore API Endpoint Patterns
+
+---
+patterns: ["**/api.ts", "**/*_api.ts", "**/endpoints.ts", "**/service.ts"]
+description: "Encore API endpoint design, authentication, and error handling patterns"
+priority: 85
+---
+
+## API Endpoint Standards
+
+### Endpoint Definition Template
+
+```typescript
+import { api } from "encore.dev/api";
+
+interface CreateUserRequest {
+  email: string;
+  name: string;
+}
+
+interface CreateUserResponse {
+  id: string;
+  email: string;
+  createdAt: Date;
+}
+
+export const createUser = api(
+  { 
+    method: "POST", 
+    path: "/users", 
+    auth: true,
+    expose: true 
+  },
+  async (req: CreateUserRequest): Promise<CreateUserResponse> => {
+    // Validation
+    if (!isValidEmail(req.email)) {
+      throw APIError.invalidArgument("invalid email format");
+    }
+
+    // Business logic
+    const user = await DB.insert(req);
+
+    // Publish domain event
+    await UserCreated.publish(ctx, { userId: user.id });
+
+    return {
+      id: user.id,
+      email: user.email,
+      createdAt: user.createdAt
+    };
+  }
+);
+```
+
+## Authentication Patterns
+
+### Authenticated Endpoints
+
+```typescript
+import { api, APIError } from "encore.dev/api";
+import { authHandler } from "encore.dev/auth";
+
+// Define auth handler
+export const auth = authHandler(async (token: string) => {
+  const user = await validateToken(token);
+  if (!user) {
+    throw APIError.unauthenticated("invalid token");
+  }
+  return { userID: user.id, role: user.role };
+});
+
+// Use in protected endpoints
+export const getProfile = api(
+  { method: "GET", path: "/profile", auth: true },
+  async (): Promise<ProfileResponse> => {
+    const { userID } = getAuthData()!;
+    return await fetchProfile(userID);
+  }
+);
+```
+
+### Permission Checking
+
+```typescript
+export const deleteUser = api(
+  { method: "DELETE", path: "/users/:id", auth: true },
+  async ({ id }: { id: string }): Promise<void> => {
+    const { userID, role } = getAuthData()!;
+    
+    // Check permissions
+    if (role !== "ADMIN" && userID !== id) {
+      throw APIError.permissionDenied("cannot delete other users");
+    }
+
+    await DB.delete(id);
+  }
+);
+```
+
+## API Versioning
+
+### Version in Path
+
+```typescript
+// v1/api.ts
+export const getUserV1 = api(
+  { method: "GET", path: "/v1/users/:id" },
+  async ({ id }: { id: string }): Promise<UserV1> => {
+    return await fetchUserV1(id);
+  }
+);
+
+// v2/api.ts
+export const getUserV2 = api(
+  { method: "GET", path: "/v2/users/:id" },
+  async ({ id }: { id: string }): Promise<UserV2> => {
+    return await fetchUserV2(id);
+  }
+);
+```
+
+### Breaking Changes Migration
+
+```typescript
+// Gradual migration pattern
+export const createOrder = api(
+  { method: "POST", path: "/orders" },
+  async (req: CreateOrderRequest): Promise<CreateOrderResponse> => {
+    // Support both old and new field formats
+    const amount = req.amount ?? req.price; // 'price' deprecated
+    const currency = req.currency ?? "USD"; // New required field
+    
+    if (!amount) {
+      throw APIError.invalidArgument("amount required");
+    }
+
+    return await processOrder({ amount, currency });
+  }
+);
+```
+
+## Error Handling Best Practices
+
+### Specific Error Codes
+
+```typescript
+import { APIError } from "encore.dev/api";
+
+// Use appropriate error codes
+if (!user) {
+  throw APIError.notFound("user not found", { userId: req.id });
+}
+
+if (balance < amount) {
+  throw APIError.failedPrecondition("insufficient funds");
+}
+
+if (rateLimitExceeded) {
+  throw APIError.resourceExhausted("rate limit exceeded");
+}
+
+if (invalidInput) {
+  throw APIError.invalidArgument("email format invalid");
+}
+
+// Wrap external errors
+try {
+  await externalAPI();
+} catch (err) {
+  throw APIError.unavailable("external service down", err);
+}
+```
+
+### Error Context
+
+```typescript
+// Include helpful context in errors
+throw APIError.invalidArgument("invalid date range", {
+  startDate: req.startDate,
+  endDate: req.endDate,
+  maxRange: "90 days"
+});
+```
+
+## Request Validation
+
+```typescript
+// Validate at API boundary
+export const createPayment = api(
+  { method: "POST", path: "/payments", auth: true },
+  async (req: CreatePaymentRequest): Promise<PaymentResponse> => {
+    // Input validation
+    if (req.amount <= 0) {
+      throw APIError.invalidArgument("amount must be positive");
+    }
+
+    if (!["USD", "EUR", "GBP"].includes(req.currency)) {
+      throw APIError.invalidArgument("unsupported currency");
+    }
+
+    if (!isValidAccountId(req.accountId)) {
+      throw APIError.invalidArgument("invalid account ID format");
+    }
+
+    // Business logic
+    return await processPayment(req);
+  }
+);
+```
+
+## Pagination Patterns
+
+```typescript
+interface ListRequest {
+  cursor?: string;
+  limit?: number;
+}
+
+interface ListResponse<T> {
+  items: T[];
+  nextCursor?: string;
+}
+
+export const listOrders = api(
+  { method: "GET", path: "/orders" },
+  async ({ cursor, limit = 20 }: ListRequest): Promise<ListResponse<Order>> => {
+    const maxLimit = 100;
+    const actualLimit = Math.min(limit, maxLimit);
+
+    const results = await DB.query<Order>`
+      SELECT * FROM orders
+      WHERE ${cursor ? `id > ${cursor}` : "TRUE"}
+      ORDER BY id ASC
+      LIMIT ${actualLimit + 1}
+    `;
+
+    const hasMore = results.length > actualLimit;
+    const items = hasMore ? results.slice(0, -1) : results;
+    const nextCursor = hasMore ? items[items.length - 1].id : undefined;
+
+    return { items, nextCursor };
+  }
+);
+```
+
+## Idempotency
+
+```typescript
+export const createPayment = api(
+  { method: "POST", path: "/payments", auth: true },
+  async (req: CreatePaymentRequest): Promise<PaymentResponse> => {
+    const idempotencyKey = req.idempotencyKey;
+
+    // Check if already processed
+    const existing = await DB.queryRow<Payment>`
+      SELECT * FROM payments WHERE idempotency_key = ${idempotencyKey}
+    `;
+
+    if (existing) {
+      return { id: existing.id, status: existing.status };
+    }
+
+    // Process payment
+    const payment = await processNewPayment(req);
+
+    // Store with idempotency key
+    await DB.exec`
+      INSERT INTO payments (id, idempotency_key, amount, status)
+      VALUES (${payment.id}, ${idempotencyKey}, ${payment.amount}, ${payment.status})
+    `;
+
+    return { id: payment.id, status: payment.status };
+  }
+);
+```
+
+## Rate Limiting
+
+```typescript
+import { RateLimiter } from "~/shared/resilience/rate_limiter";
+
+const apiLimiter = new RateLimiter(100, "1m"); // 100 requests per minute
+
+export const expensiveOperation = api(
+  { method: "POST", path: "/analyze", auth: true },
+  async (req: AnalyzeRequest): Promise<AnalyzeResponse> => {
+    const { userID } = getAuthData()!;
+
+    // Check rate limit
+    const allowed = await apiLimiter.check(userID);
+    if (!allowed) {
+      throw APIError.resourceExhausted("rate limit exceeded");
+    }
+
+    return await performAnalysis(req);
+  }
+);
+```
+
+## Batch Operations
+
+```typescript
+interface BatchRequest<T> {
+  items: T[];
+}
+
+interface BatchResponse<T> {
+  results: T[];
+  errors: Array<{ index: number; error: string }>;
+}
+
+export const batchCreateUsers = api(
+  { method: "POST", path: "/users/batch", auth: true },
+  async (req: BatchRequest<CreateUserRequest>): Promise<BatchResponse<User>> => {
+    const results: User[] = [];
+    const errors: Array<{ index: number; error: string }> = [];
+
+    for (let i = 0; i < req.items.length; i++) {
+      try {
+        const user = await createUser(req.items[i]);
+        results.push(user);
+      } catch (err) {
+        errors.push({ index: i, error: err.message });
+      }
+    }
+
+    return { results, errors };
+  }
+);
+```
+
+Reference: @Docs Encore for complete API documentation

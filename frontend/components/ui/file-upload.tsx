@@ -19,10 +19,10 @@ export interface FileUploadProps {
 export function FileUpload({
   onFileUpload,
   accept = "image/*,.pdf",
-  maxSize = 50 * 1024 * 1024, // 50MB default
+  maxSize = 100 * 1024 * 1024, // 100MB default
   className,
   label = "Upload File",
-  description = "Upload images (JPG, PNG, GIF, WebP) or PDF files. Max size: 50MB",
+  description = "Upload images (JPG, PNG, GIF, WebP) or PDF files. Max size: 100MB",
   value,
   onClear,
 }: FileUploadProps) {

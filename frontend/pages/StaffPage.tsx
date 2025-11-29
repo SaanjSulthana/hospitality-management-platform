@@ -15,6 +15,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { FinanceTabs, FinanceTabsList, FinanceTabsTrigger } from '@/components/ui/finance-tabs';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { useToast } from '@/components/ui/use-toast';
+import { getFlagBool } from '../lib/feature-flags';
 import { 
   UserCheck, 
   UserPlus,
@@ -137,10 +138,10 @@ export default function StaffPage() {
       const backend = getAuthenticatedBackend();
       return backend.staff.list({});
     },
-    refetchInterval: 3000, // Refresh every 3 seconds for real-time updates
-    staleTime: 0, // Always consider data stale for fresh updates
-    gcTime: 0, // Don't cache results
-    refetchOnWindowFocus: true, // Refetch when window gains focus
+    refetchInterval: false,
+    staleTime: 25000,
+    gcTime: 300000,
+    refetchOnWindowFocus: false, // Trust realtime; avoid focus storms
     refetchOnMount: true, // Refetch when component mounts
   });
 
@@ -150,10 +151,10 @@ export default function StaffPage() {
       const backend = getAuthenticatedBackend();
       return backend.staff.listSchedules({});
     },
-    refetchInterval: 3000, // Refresh every 3 seconds for real-time updates
-    staleTime: 0, // Always consider data stale for fresh updates
-    gcTime: 0, // Don't cache results
-    refetchOnWindowFocus: true, // Refetch when window gains focus
+    refetchInterval: false,
+    staleTime: 25000,
+    gcTime: 300000,
+    refetchOnWindowFocus: false, // Trust realtime; avoid focus storms
     refetchOnMount: true, // Refetch when component mounts
   });
 
@@ -163,10 +164,10 @@ export default function StaffPage() {
       const backend = getAuthenticatedBackend();
       return backend.staff.listLeaveRequests({});
     },
-    refetchInterval: 3000, // Refresh every 3 seconds for real-time updates
-    staleTime: 0, // Always consider data stale for fresh updates
-    gcTime: 0, // Don't cache results
-    refetchOnWindowFocus: true, // Refetch when window gains focus
+    refetchInterval: false,
+    staleTime: 25000,
+    gcTime: 300000,
+    refetchOnWindowFocus: false, // Trust realtime; avoid focus storms
     refetchOnMount: true, // Refetch when component mounts
   });
 
@@ -177,10 +178,10 @@ export default function StaffPage() {
       return backend.users.list({});
     },
     enabled: user?.role === 'ADMIN',
-    refetchInterval: 5000, // Refresh every 5 seconds for real-time updates
-    staleTime: 0, // Always consider data stale for fresh updates
-    gcTime: 0, // Don't cache results
-    refetchOnWindowFocus: true, // Refetch when window gains focus
+    refetchInterval: false,
+    staleTime: 25000,
+    gcTime: 300000,
+    refetchOnWindowFocus: false, // Trust realtime; avoid focus storms
     refetchOnMount: true, // Refetch when component mounts
   });
 
@@ -190,10 +191,10 @@ export default function StaffPage() {
       const backend = getAuthenticatedBackend();
       return backend.properties.list({});
     },
-    refetchInterval: 5000, // Refresh every 5 seconds for real-time updates
-    staleTime: 0, // Always consider data stale for fresh updates
-    gcTime: 0, // Don't cache results
-    refetchOnWindowFocus: true, // Refetch when window gains focus
+    refetchInterval: false,
+    staleTime: 25000,
+    gcTime: 300000,
+    refetchOnWindowFocus: false, // Trust realtime; avoid focus storms
     refetchOnMount: true, // Refetch when component mounts
   });
 
@@ -204,10 +205,10 @@ export default function StaffPage() {
       const backend = getAuthenticatedBackend();
       return backend.staff.listAttendance({});
     },
-    refetchInterval: 3000,
-    staleTime: 0,
-    gcTime: 0,
-    refetchOnWindowFocus: true,
+    refetchInterval: false,
+    staleTime: 25000,
+    gcTime: 300000,
+    refetchOnWindowFocus: false,
     refetchOnMount: true,
   });
 
@@ -217,10 +218,10 @@ export default function StaffPage() {
       const backend = getAuthenticatedBackend();
       return backend.staff.salaryComponents({});
     },
-    refetchInterval: 5000,
-    staleTime: 0,
-    gcTime: 0,
-    refetchOnWindowFocus: true,
+    refetchInterval: false,
+    staleTime: 25000,
+    gcTime: 300000,
+    refetchOnWindowFocus: false,
     refetchOnMount: true,
   });
 
@@ -230,10 +231,10 @@ export default function StaffPage() {
       const backend = getAuthenticatedBackend();
       return backend.staff.payslips({});
     },
-    refetchInterval: 5000,
-    staleTime: 0,
-    gcTime: 0,
-    refetchOnWindowFocus: true,
+    refetchInterval: false,
+    staleTime: 25000,
+    gcTime: 300000,
+    refetchOnWindowFocus: false,
     refetchOnMount: true,
   });
 
@@ -243,12 +244,107 @@ export default function StaffPage() {
       const backend = getAuthenticatedBackend();
       return backend.staff.statistics({});
     },
-    refetchInterval: 10000,
-    staleTime: 0,
-    gcTime: 0,
-    refetchOnWindowFocus: true,
+    refetchInterval: false,
+    staleTime: 25000,
+    gcTime: 300000,
+    refetchOnWindowFocus: false,
     refetchOnMount: true,
   });
+
+  // Realtime: Staff events listener and health badge
+  const [staffLive, setStaffLive] = useState<boolean | null>(null);
+  const lastInvalidateAtRef = React.useRef<number>(0);
+  const invalidateTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pendingInvalidationsRef = React.useRef<Set<string>>(new Set());
+
+  useEffect(() => {
+    // Expose property filter (no page-level filter yet → 'all')
+    try { (window as any).__staffSelectedPropertyId = 'all'; } catch {}
+
+    const enabled = getFlagBool('STAFF_REALTIME_V1', true);
+    if (!enabled) return;
+
+    const onEvents = (e: any) => {
+      const events = e?.detail?.events || [];
+      if (!Array.isArray(events) || events.length === 0) return;
+
+      const scopes = pendingInvalidationsRef.current;
+      for (const ev of events) {
+        const t = String(ev?.eventType || '');
+        // Map event type → query scopes
+        if (t.startsWith('staff_')) scopes.add('staff');
+        if (t.startsWith('schedule_')) scopes.add('schedules');
+        if (t.startsWith('leave_')) scopes.add('leave-requests');
+        if (t.startsWith('attendance_')) scopes.add('attendance');
+        if (t.startsWith('salary_component_')) scopes.add('salary-components');
+        if (t.startsWith('payslip_')) scopes.add('payslips');
+        // Always update stats with debounce
+        scopes.add('staff-statistics');
+      }
+
+      // Debounce invalidations (500–1000ms)
+      if (invalidateTimerRef.current) clearTimeout(invalidateTimerRef.current);
+      invalidateTimerRef.current = setTimeout(() => {
+        const tsStart = performance.now();
+        const toInvalidate = Array.from(scopes);
+        scopes.clear();
+        for (const key of toInvalidate) {
+          queryClient.invalidateQueries({ queryKey: [key] });
+        }
+        lastInvalidateAtRef.current = Date.now();
+
+        // 2% telemetry
+        if (Math.random() < 0.02) {
+          try {
+            fetch(`/telemetry/client`, {
+              method: 'POST',
+              headers: { 'Authorization': `Bearer ${localStorage.getItem('accessToken') || ''}`, 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                sampleRate: 0.02,
+                events: [{
+                  type: 'staff_realtime_invalidation',
+                  counts: Object.fromEntries(toInvalidate.map(k => [k, 1])),
+                  ts: new Date().toISOString(),
+                }]
+              })
+            }).catch(() => {});
+          } catch {}
+        }
+
+        // Measure refetch latency when queries complete would need hooks; best-effort timing
+        if (Math.random() < 0.02) {
+          try {
+            fetch(`/telemetry/client`, {
+              method: 'POST',
+              headers: { 'Authorization': `Bearer ${localStorage.getItem('accessToken') || ''}`, 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                sampleRate: 0.02,
+                events: [{
+                  type: 'staff_refetch_ms',
+                  durationMs: Math.round(performance.now() - tsStart),
+                  ts: new Date().toISOString(),
+                }]
+              })
+            }).catch(() => {});
+          } catch {}
+        }
+      }, Math.floor(500 + Math.random() * 500));
+    };
+
+    const onHealth = (e: any) => {
+      const isLive = !!e?.detail?.isLive;
+      setStaffLive(isLive);
+    };
+
+    window.addEventListener('staff-stream-events', onEvents);
+    window.addEventListener('staff-stream-health', onHealth);
+    return () => {
+      window.removeEventListener('staff-stream-events', onEvents);
+      window.removeEventListener('staff-stream-health', onHealth);
+      if (invalidateTimerRef.current) clearTimeout(invalidateTimerRef.current);
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [queryClient]);
 
   const createStaffMutation = useMutation({
     mutationFn: async (data: any) => {

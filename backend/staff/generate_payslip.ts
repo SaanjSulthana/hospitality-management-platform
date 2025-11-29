@@ -2,6 +2,8 @@ import { api, APIError } from "encore.dev/api";
 import { getAuthData } from "~encore/auth";
 import { requireRole } from "../auth/middleware";
 import { staffDB } from "./db";
+import { staffEvents } from "./events";
+import { v4 as uuidv4 } from "uuid";
 
 export interface GeneratePayslipRequest {
   staffId: number;
@@ -49,14 +51,13 @@ export interface GeneratePayslipResponse {
 }
 
 // Generates payslip for a staff member
-export const generatePayslip = api<GeneratePayslipRequest, GeneratePayslipResponse>(
-  { auth: true, expose: true, method: "POST", path: "/staff/generate-payslip" },
-  async (req) => {
-    const authData = getAuthData();
-    if (!authData) {
-      throw APIError.unauthenticated("Authentication required");
-    }
-    requireRole("ADMIN")(authData);
+// Shared handler for generating payslip
+async function generatePayslipHandler(req: GeneratePayslipRequest): Promise<GeneratePayslipResponse> {
+  const authData = getAuthData();
+  if (!authData) {
+    throw APIError.unauthenticated("Authentication required");
+  }
+  requireRole("ADMIN")(authData);
 
     const { staffId, payPeriodStart, payPeriodEnd, generatePDF = false } = req;
 
@@ -195,6 +196,30 @@ export const generatePayslip = api<GeneratePayslipRequest, GeneratePayslipRespon
 
       await tx.commit();
 
+      // Publish payslip_generated event
+      try {
+        await staffEvents.publish({
+          eventId: uuidv4(),
+          eventVersion: 'v1',
+          eventType: 'payslip_generated',
+          orgId: authData.orgId,
+          propertyId: staff.property_id ?? null,
+          userId: parseInt(authData.userID),
+          timestamp: new Date(),
+          entityId: payslip.id,
+          entityType: 'payslip',
+          metadata: {
+            staffId,
+            staffName: staff.display_name,
+            payPeriodStart,
+            payPeriodEnd,
+            netPayCents: netPayCents,
+          },
+        });
+      } catch (e) {
+        console.warn("[Staff Events] Failed to publish payslip_generated", e);
+      }
+
       const payslipResponse: Payslip = {
         id: payslip.id,
         staffId: payslip.staff_id,
@@ -240,5 +265,16 @@ export const generatePayslip = api<GeneratePayslipRequest, GeneratePayslipRespon
       }
       throw APIError.internal("Failed to generate payslip");
     }
-  }
+}
+
+// LEGACY: Generates payslip (keep for backward compatibility)
+export const generatePayslip = api<GeneratePayslipRequest, GeneratePayslipResponse>(
+  { auth: true, expose: true, method: "POST", path: "/staff/:staffId/generate-payslip" },
+  generatePayslipHandler
+);
+
+// V1: Generates payslip
+export const generatePayslipV1 = api<GeneratePayslipRequest, GeneratePayslipResponse>(
+  { auth: true, expose: true, method: "POST", path: "/v1/staff/:staffId/generate-payslip" },
+  generatePayslipHandler
 );

@@ -24,7 +24,8 @@ export const formatDateForAPI = (dateString: string): string => {
   }
   
   try {
-    // Create date in IST timezone to avoid timezone shift issues
+    // Create UTC date directly to avoid timezone conversion issues
+    // This ensures the date stays as intended (e.g., 2025-10-14 stays 2025-10-14)
     const [year, month, day] = dateString.split('-').map(Number);
     
     // Validate the parsed numbers
@@ -33,16 +34,17 @@ export const formatDateForAPI = (dateString: string): string => {
       return new Date().toISOString();
     }
     
-    // Create date in IST (Asia/Kolkata timezone)
-    const istDate = new Date(year, month - 1, day, 0, 0, 0, 0);
+    // Create UTC date at start of day (00:00:00) to avoid timezone shifts
+    const utcDate = new Date(Date.UTC(year, month - 1, day, 0, 0, 0, 0));
     
     // Validate the resulting date
-    if (isNaN(istDate.getTime())) {
-      console.error('formatDateForAPI created invalid date:', istDate);
+    if (isNaN(utcDate.getTime())) {
+      console.error('formatDateForAPI created invalid date:', utcDate);
       return new Date().toISOString();
     }
     
-    return istDate.toISOString();
+    // Return the UTC date as ISO string - this will represent the correct date
+    return utcDate.toISOString();
   } catch (error) {
     console.error('formatDateForAPI error:', error, 'Input:', dateString);
     return new Date().toISOString();
@@ -60,11 +62,15 @@ export const formatDateTimeForAPI = (dateTimeString: string): string => {
 };
 
 /**
- * Get current date in YYYY-MM-DD format
- * @returns Current date string
+ * Get current date in YYYY-MM-DD format (local timezone)
+ * @returns Current date string in local timezone
  */
 export const getCurrentDateString = (): string => {
-  return new Date().toISOString().split('T')[0];
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, '0');
+  const day = String(now.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
 };
 
 /**

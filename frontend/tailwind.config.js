@@ -11,6 +11,10 @@ export default {
   ],
   theme: {
     extend: {
+      screens: {
+        // Additional tiny breakpoint for very small devices (e.g., 360px wide)
+        xs: '360px',
+      },
       width: {
         '50': '200px',
         '60': '240px',

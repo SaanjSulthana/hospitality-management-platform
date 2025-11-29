@@ -49,10 +49,8 @@ export interface UpdateLeaveBalanceResponse {
   message: string;
 }
 
-// Gets leave balance for a staff member
-export const getLeaveBalance = api<GetLeaveBalanceRequest, GetLeaveBalanceResponse>(
-  { auth: true, expose: true, method: "GET", path: "/staff/:staffId/leave-balance" },
-  async (req) => {
+// Shared handler for getting leave balance
+async function getLeaveBalanceHandler(req: GetLeaveBalanceRequest): Promise<GetLeaveBalanceResponse> {
     const authData = getAuthData();
     if (!authData) {
       throw APIError.unauthenticated("Authentication required");
@@ -174,13 +172,22 @@ export const getLeaveBalance = api<GetLeaveBalanceRequest, GetLeaveBalanceRespon
       }
       throw APIError.internal("Failed to get leave balance");
     }
-  }
+}
+
+// LEGACY: Gets leave balance (keep for backward compatibility)
+export const getLeaveBalance = api<GetLeaveBalanceRequest, GetLeaveBalanceResponse>(
+  { auth: true, expose: true, method: "GET", path: "/staff/:staffId/leave-balance" },
+  getLeaveBalanceHandler
 );
 
-// Updates leave balance for a staff member (Admin only)
-export const updateLeaveBalance = api<UpdateLeaveBalanceRequest, UpdateLeaveBalanceResponse>(
-  { auth: true, expose: true, method: "PUT", path: "/staff/:staffId/leave-balance" },
-  async (req) => {
+// V1: Gets leave balance
+export const getLeaveBalanceV1 = api<GetLeaveBalanceRequest, GetLeaveBalanceResponse>(
+  { auth: true, expose: true, method: "GET", path: "/v1/staff/:staffId/leave-balance" },
+  getLeaveBalanceHandler
+);
+
+// Shared handler for updating leave balance
+async function updateLeaveBalanceHandler(req: UpdateLeaveBalanceRequest): Promise<UpdateLeaveBalanceResponse> {
     const authData = getAuthData();
     if (!authData) {
       throw APIError.unauthenticated("Authentication required");
@@ -237,5 +244,16 @@ export const updateLeaveBalance = api<UpdateLeaveBalanceRequest, UpdateLeaveBala
       }
       throw APIError.internal("Failed to update leave balance");
     }
-  }
+}
+
+// LEGACY: Updates leave balance (keep for backward compatibility)
+export const updateLeaveBalance = api<UpdateLeaveBalanceRequest, UpdateLeaveBalanceResponse>(
+  { auth: true, expose: true, method: "PUT", path: "/staff/:staffId/leave-balance" },
+  updateLeaveBalanceHandler
+);
+
+// V1: Updates leave balance
+export const updateLeaveBalanceV1 = api<UpdateLeaveBalanceRequest, UpdateLeaveBalanceResponse>(
+  { auth: true, expose: true, method: "PUT", path: "/v1/staff/:staffId/leave-balance" },
+  updateLeaveBalanceHandler
 );

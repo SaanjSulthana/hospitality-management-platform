@@ -2,7 +2,10 @@ import { api, APIError } from "encore.dev/api";
 import { getAuthData } from "~encore/auth";
 import { requireRole } from "../auth/middleware";
 import { tasksDB } from "./db";
+import { v1Path } from "../shared/http";
 import log from "encore.dev/log";
+import { taskEvents } from "./events";
+import { v4 as uuidv4 } from "uuid";
 
 export interface UpdateTaskRequest {
   id: number;
@@ -41,10 +44,8 @@ export interface UpdateTaskResponse {
   };
 }
 
-// Updates an existing task
-export const update = api<UpdateTaskRequest, UpdateTaskResponse>(
-  { auth: true, expose: true, method: "PATCH", path: "/tasks/:id" },
-  async (req) => {
+// Handler function for updating a task
+async function updateTaskHandler(req: UpdateTaskRequest): Promise<UpdateTaskResponse> {
     const authData = getAuthData();
     if (!authData) {
       throw APIError.unauthenticated("Authentication required");
@@ -212,6 +213,29 @@ export const update = api<UpdateTaskRequest, UpdateTaskResponse>(
       await tx.commit();
       log.info("Task updated successfully", { taskId: id });
 
+      // Publish task_updated event
+      try {
+        await taskEvents.publish({
+          eventId: uuidv4(),
+          eventVersion: 'v1',
+          eventType: 'task_updated',
+          orgId: authData.orgId,
+          propertyId: updatedTaskRow.property_id,
+          userId: parseInt(authData.userID),
+          timestamp: new Date(),
+          entityId: id,
+          entityType: 'task',
+          metadata: {
+            title: updatedTaskRow.title,
+            priority: updatedTaskRow.priority,
+            assigneeStaffId: updatedTaskRow.assignee_staff_id,
+            dueAt: updatedTaskRow.due_at,
+          },
+        });
+      } catch (e) {
+        log.warn("Task event publish failed (task_updated)", { error: e instanceof Error ? e.message : String(e) });
+      }
+
       return {
         success: true,
         task: {
@@ -241,5 +265,16 @@ export const update = api<UpdateTaskRequest, UpdateTaskResponse>(
       log.error("Failed to update task", { error, taskId: id });
       throw error;
     }
-  }
+}
+
+// Legacy path
+export const update = api<UpdateTaskRequest, UpdateTaskResponse>(
+  { auth: true, expose: true, method: "PATCH", path: "/tasks/:id" },
+  updateTaskHandler
+);
+
+// Versioned path
+export const updateV1 = api<UpdateTaskRequest, UpdateTaskResponse>(
+  { auth: true, expose: true, method: "PATCH", path: "/v1/tasks/:id" },
+  updateTaskHandler
 );

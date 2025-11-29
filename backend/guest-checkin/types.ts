@@ -16,6 +16,8 @@ export interface GuestCheckIn {
   // Indian Guest ID Fields
   aadharNumber?: string;
   panNumber?: string;
+  drivingLicenseNumber?: string;
+  electionCardNumber?: string;
   
   // Foreign Guest ID Fields
   passportNumber?: string;
@@ -55,6 +57,8 @@ export interface CreateCheckInRequest {
   // Indian guests
   aadharNumber?: string;
   panNumber?: string;
+  drivingLicenseNumber?: string;
+  electionCardNumber?: string;
   
   // Foreign guests
   passportNumber?: string;
@@ -97,6 +101,10 @@ export interface UpdateCheckInRequest {
   email?: string;
   phone?: string;
   address?: string;
+  aadharNumber?: string;
+  panNumber?: string;
+  drivingLicenseNumber?: string;
+  electionCardNumber?: string;
   roomNumber?: string;
   numberOfGuests?: number;
   expectedCheckoutDate?: string;

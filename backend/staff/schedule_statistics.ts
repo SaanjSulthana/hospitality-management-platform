@@ -80,15 +80,13 @@ export interface ScheduleStatisticsResponse {
   };
 }
 
-// Gets comprehensive schedule statistics and analytics
-export const getScheduleStatistics = api<ScheduleStatisticsRequest, ScheduleStatisticsResponse>(
-  { auth: true, expose: true, method: "GET", path: "/staff/schedules/statistics" },
-  async (req) => {
-    const authData = getAuthData();
-    if (!authData) {
-      throw APIError.unauthenticated("Authentication required");
-    }
-    requireRole("ADMIN", "MANAGER")(authData);
+// Shared handler for getting comprehensive schedule statistics and analytics
+async function getScheduleStatisticsHandler(req: ScheduleStatisticsRequest): Promise<ScheduleStatisticsResponse> {
+  const authData = getAuthData();
+  if (!authData) {
+    throw APIError.unauthenticated("Authentication required");
+  }
+  requireRole("ADMIN", "MANAGER")(authData);
 
     const { propertyId, startDate, endDate, groupBy = 'day' } = req || {};
 
@@ -381,5 +379,16 @@ export const getScheduleStatistics = api<ScheduleStatisticsRequest, ScheduleStat
       console.error('Get schedule statistics error:', error);
       throw APIError.internal("Failed to get schedule statistics");
     }
-  }
+}
+
+// LEGACY: Gets comprehensive schedule statistics and analytics (keep for backward compatibility)
+export const getScheduleStatistics = api<ScheduleStatisticsRequest, ScheduleStatisticsResponse>(
+  { auth: true, expose: true, method: "GET", path: "/staff/schedules/statistics" },
+  getScheduleStatisticsHandler
+);
+
+// V1: Gets comprehensive schedule statistics and analytics
+export const getScheduleStatisticsV1 = api<ScheduleStatisticsRequest, ScheduleStatisticsResponse>(
+  { auth: true, expose: true, method: "GET", path: "/v1/staff/schedules/statistics" },
+  getScheduleStatisticsHandler
 );

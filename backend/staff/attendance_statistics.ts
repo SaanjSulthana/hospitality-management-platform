@@ -78,15 +78,13 @@ export interface AttendanceStatisticsResponse {
   }[];
 }
 
-// Gets comprehensive attendance statistics and analytics
-export const getAttendanceStatistics = api<AttendanceStatisticsRequest, AttendanceStatisticsResponse>(
-  { auth: true, expose: true, method: "GET", path: "/staff/attendance/statistics" },
-  async (req) => {
-    const authData = getAuthData();
-    if (!authData) {
-      throw APIError.unauthenticated("Authentication required");
-    }
-    requireRole("ADMIN", "MANAGER")(authData);
+// Shared handler for getting comprehensive attendance statistics and analytics
+async function getAttendanceStatisticsHandler(req: AttendanceStatisticsRequest): Promise<AttendanceStatisticsResponse> {
+  const authData = getAuthData();
+  if (!authData) {
+    throw APIError.unauthenticated("Authentication required");
+  }
+  requireRole("ADMIN", "MANAGER")(authData);
 
     const { staffId, propertyId, startDate, endDate, groupBy = 'day' } = req || {};
 
@@ -375,5 +373,16 @@ export const getAttendanceStatistics = api<AttendanceStatisticsRequest, Attendan
       console.error('Get attendance statistics error:', error);
       throw APIError.internal("Failed to get attendance statistics");
     }
-  }
+}
+
+// LEGACY: Gets comprehensive attendance statistics and analytics (keep for backward compatibility)
+export const getAttendanceStatistics = api<AttendanceStatisticsRequest, AttendanceStatisticsResponse>(
+  { auth: true, expose: true, method: "GET", path: "/staff/attendance/statistics" },
+  getAttendanceStatisticsHandler
+);
+
+// V1: Gets comprehensive attendance statistics and analytics
+export const getAttendanceStatisticsV1 = api<AttendanceStatisticsRequest, AttendanceStatisticsResponse>(
+  { auth: true, expose: true, method: "GET", path: "/v1/staff/attendance/statistics" },
+  getAttendanceStatisticsHandler
 );

@@ -1,8 +1,13 @@
-import { getApiUrl, isDevelopment } from '../utils/env';
+import { getApiUrl, getVersionedApiUrl, isDevelopment, API_VERSION } from '../utils/env';
 
 // API Configuration
 export const API_CONFIG = {
+  // IMPORTANT: Use UNVERSIONED base URL here because all endpoints in API_ENDPOINTS
+  // already include the '/v1' prefix. Using a versioned base would cause '/v1/v1/...'
+  // and lead to 404s.
   BASE_URL: getApiUrl(),
+  BASE_URL_UNVERSIONED: getApiUrl(), // Kept for compatibility
+  API_VERSION: API_VERSION, // /v1
   TIMEOUT: 30000, // 30 seconds
   RETRY_ATTEMPTS: 3,
   RETRY_DELAY: 1000, // 1 second

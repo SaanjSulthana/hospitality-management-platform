@@ -21,10 +21,8 @@ export interface LoginResponse {
   };
 }
 
-// Authenticates user and returns JWT tokens
-export const login = api<LoginRequest, LoginResponse>(
-  { expose: true, method: "POST", path: "/auth/login" },
-  async (req) => {
+// Shared handler for authentication logic
+async function loginHandler(req: LoginRequest): Promise<LoginResponse> {
     const { email, password } = req;
 
     const tx = await authDB.begin();
@@ -108,5 +106,16 @@ export const login = api<LoginRequest, LoginResponse>(
       log.error('Login error', { error: error instanceof Error ? error.message : String(error), email });
       throw APIError.internal("Login failed. Please try again.");
     }
-  }
+}
+
+// LEGACY: Authenticates user and returns JWT tokens (keep for backward compatibility)
+export const login = api<LoginRequest, LoginResponse>(
+  { expose: true, method: "POST", path: "/auth/login" },
+  loginHandler
+);
+
+// V1: Authenticates user and returns JWT tokens
+export const loginV1 = api<LoginRequest, LoginResponse>(
+  { expose: true, method: "POST", path: "/v1/auth/login" },
+  loginHandler
 );

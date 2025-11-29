@@ -21,3 +21,5 @@ export { runCompleteMigration } from "./run_complete_migration";
 export { checkSchema } from "./check_schema";
 export { debugDailyReport } from "./debug_daily_report";
 export { debugAllTransactions } from "./debug_all_transactions";
+export { pollRealtimeUpdates } from "./realtime_sse";
+export { getCacheMetrics, clearCache } from "./cache_metrics";

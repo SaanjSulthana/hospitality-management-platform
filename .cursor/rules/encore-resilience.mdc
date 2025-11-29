@@ -1,0 +1,447 @@
+# Encore Resilience & Production Patterns
+
+---
+patterns: ["**/resilience/**", "**/middleware/**", "**/monitoring/**"]
+description: "Circuit breakers, retries, rate limiting, caching, and observability"
+priority: 75
+---
+
+## Circuit Breaker Pattern
+
+```typescript
+// Simple circuit breaker implementation
+class CircuitBreaker {
+  private state: "CLOSED" | "OPEN" | "HALF_OPEN" = "CLOSED";
+  private failures = 0;
+  private lastFailureTime?: Date;
+
+  constructor(
+    private maxFailures: number = 5,
+    private resetTimeout: number = 30000 // 30 seconds
+  ) {}
+
+  async execute<T>(fn: () => Promise<T>): Promise<T> {
+    if (this.state === "OPEN") {
+      if (Date.now() - this.lastFailureTime!.getTime() > this.resetTimeout) {
+        this.state = "HALF_OPEN";
+      } else {
+        throw APIError.unavailable("circuit breaker open");
+      }
+    }
+
+    try {
+      const result = await fn();
+      this.onSuccess();
+      return result;
+    } catch (err) {
+      this.onFailure();
+      throw err;
+    }
+  }
+
+  private onSuccess() {
+    this.failures = 0;
+    this.state = "CLOSED";
+  }
+
+  private onFailure() {
+    this.failures++;
+    this.lastFailureTime = new Date();
+
+    if (this.failures >= this.maxFailures) {
+      this.state = "OPEN";
+    }
+  }
+}
+
+// Usage
+const externalServiceBreaker = new CircuitBreaker(5, 30000);
+
+export async function callExternalAPI(data: any) {
+  return await externalServiceBreaker.execute(async () => {
+    return await fetch("https://external-api.com", {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  });
+}
+```
+
+## Retry with Exponential Backoff
+
+```typescript
+async function retryWithBackoff<T>(
+  fn: () => Promise<T>,
+  maxRetries: number = 3,
+  initialDelay: number = 1000
+): Promise<T> {
+  let lastError: Error;
+
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    try {
+      return await fn();
+    } catch (err) {
+      lastError = err as Error;
+
+      // Don't retry on client errors
+      if (err instanceof APIError && err.code === "invalid_argument") {
+        throw err;
+      }
+
+      if (attempt < maxRetries - 1) {
+        const delay = initialDelay * Math.pow(2, attempt);
+        await sleep(delay);
+      }
+    }
+  }
+
+  throw lastError!;
+}
+
+// Usage
+const result = await retryWithBackoff(
+  async () => await callUnreliableService(),
+  3,
+  1000
+);
+```
+
+## Rate Limiting
+
+```typescript
+import { CacheKeyspace } from "encore.dev/storage/cache";
+
+// Token bucket rate limiter
+class RateLimiter {
+  private cache: CacheKeyspace<string, number>;
+
+  constructor(
+    private maxTokens: number,
+    private refillRate: number // tokens per second
+  ) {
+    this.cache = new CacheKeyspace("rate-limits");
+  }
+
+  async checkLimit(key: string): Promise<boolean> {
+    const now = Date.now();
+    const tokenKey = `tokens:${key}`;
+    const timestampKey = `timestamp:${key}`;
+
+    const tokens = (await this.cache.get(tokenKey)) ?? this.maxTokens;
+    const lastRefill = (await this.cache.get(timestampKey)) ?? now;
+
+    // Calculate tokens to add
+    const elapsed = (now - lastRefill) / 1000;
+    const tokensToAdd = elapsed * this.refillRate;
+    const newTokens = Math.min(this.maxTokens, tokens + tokensToAdd);
+
+    if (newTokens >= 1) {
+      // Allow request
+      await this.cache.set(tokenKey, newTokens - 1, { ttl: 3600 });
+      await this.cache.set(timestampKey, now, { ttl: 3600 });
+      return true;
+    }
+
+    return false;
+  }
+}
+
+// Middleware for rate limiting
+export async function rateLimitMiddleware(
+  req: Request,
+  next: () => Promise<Response>
+): Promise<Response> {
+  const userId = getUserId(req);
+  const limiter = new RateLimiter(100, 1); // 100 requests, refill 1/sec
+
+  const allowed = await limiter.checkLimit(userId);
+  if (!allowed) {
+    throw APIError.resourceExhausted("rate limit exceeded");
+  }
+
+  return next();
+}
+```
+
+## Caching Strategies
+
+```typescript
+import { CacheKeyspace } from "encore.dev/storage/cache";
+
+const userCache = new CacheKeyspace<string, User>("users");
+
+// Cache-aside pattern
+export async function getUser(id: string): Promise<User> {
+  // Try cache first
+  const cached = await userCache.get(id);
+  if (cached) {
+    return cached;
+  }
+
+  // Cache miss - fetch from database
+  const user = await DB.queryRow<User>`
+    SELECT * FROM users WHERE id = ${id}
+  `;
+
+  // Store in cache
+  await userCache.set(id, user, { ttl: 300 }); // 5 minutes
+
+  return user;
+}
+
+// Write-through cache
+export async function updateUser(id: string, updates: Partial<User>): Promise<User> {
+  // Update database
+  const user = await DB.queryRow<User>`
+    UPDATE users
+    SET name = ${updates.name}, email = ${updates.email}
+    WHERE id = ${id}
+    RETURNING *
+  `;
+
+  // Update cache
+  await userCache.set(id, user, { ttl: 300 });
+
+  return user;
+}
+
+// Cache invalidation on events
+new Subscription(UserUpdated, "invalidate-cache", {
+  handler: async (event) => {
+    await userCache.delete(event.userId);
+  },
+});
+```
+
+## Observability & Logging
+
+```typescript
+// Structured logging
+import { log } from "encore.dev/internal/logger";
+
+export const processPayment = api(
+  { method: "POST", path: "/payments" },
+  async (req: PaymentRequest): Promise<PaymentResponse> => {
+    log.info("processing payment", {
+      paymentId: req.id,
+      amount: req.amount,
+      currency: req.currency,
+    });
+
+    try {
+      const result = await chargeCard(req);
+      
+      log.info("payment successful", {
+        paymentId: req.id,
+        transactionId: result.transactionId,
+      });
+
+      return result;
+    } catch (err) {
+      log.error("payment failed", {
+        paymentId: req.id,
+        error: err.message,
+        stack: err.stack,
+      });
+      throw err;
+    }
+  }
+);
+```
+
+## Metrics & Monitoring
+
+```typescript
+import { Metric } from "encore.dev/metrics";
+
+// Define metrics
+const requestDuration = new Metric("request_duration_ms");
+const paymentErrors = new Metric("payment_errors_total");
+const activeUsers = new Metric("active_users_gauge");
+
+export const processOrder = api(
+  { method: "POST", path: "/orders" },
+  async (req: OrderRequest): Promise<OrderResponse> => {
+    const startTime = Date.now();
+
+    try {
+      const result = await processOrderLogic(req);
+      
+      // Record success metric
+      requestDuration.record(Date.now() - startTime, {
+        endpoint: "processOrder",
+        status: "success",
+      });
+
+      return result;
+    } catch (err) {
+      // Record error metric
+      paymentErrors.increment(1, {
+        errorType: err.code,
+      });
+
+      requestDuration.record(Date.now() - startTime, {
+        endpoint: "processOrder",
+        status: "error",
+      });
+
+      throw err;
+    }
+  }
+);
+```
+
+## Health Checks
+
+```typescript
+import { api } from "encore.dev/api";
+
+export const healthCheck = api(
+  { method: "GET", path: "/health", expose: true },
+  async (): Promise<HealthResponse> => {
+    const checks = await Promise.allSettled([
+      checkDatabase(),
+      checkRedis(),
+      checkExternalAPI(),
+    ]);
+
+    const allHealthy = checks.every(c => c.status === "fulfilled");
+
+    return {
+      status: allHealthy ? "healthy" : "degraded",
+      checks: {
+        database: checks[0].status === "fulfilled",
+        redis: checks[1].status === "fulfilled",
+        externalAPI: checks[2].status === "fulfilled",
+      },
+      timestamp: new Date(),
+    };
+  }
+);
+
+async function checkDatabase(): Promise<void> {
+  await DB.queryRow`SELECT 1`;
+}
+```
+
+## Graceful Shutdown
+
+```typescript
+// Handle shutdown signals
+process.on("SIGTERM", async () => {
+  console.log("SIGTERM received, starting graceful shutdown");
+
+  // Stop accepting new requests
+  server.close();
+
+  // Wait for ongoing requests to complete
+  await waitForInflightRequests();
+
+  // Close database connections
+  await DB.close();
+
+  // Close other resources
+  await cache.close();
+
+  console.log("Graceful shutdown complete");
+  process.exit(0);
+});
+
+async function waitForInflightRequests() {
+  // Wait up to 30 seconds for requests to complete
+  const timeout = 30000;
+  const start = Date.now();
+
+  while (inflightRequests.size > 0 && Date.now() - start < timeout) {
+    await sleep(100);
+  }
+}
+```
+
+## Performance Optimization
+
+```typescript
+// Parallel execution with Promise.all
+export async function getUserDashboard(userId: string) {
+  const [user, orders, notifications, stats] = await Promise.all([
+    getUser(userId),
+    getRecentOrders(userId),
+    getNotifications(userId),
+    getUserStats(userId),
+  ]);
+
+  return { user, orders, notifications, stats };
+}
+
+// Batch database queries
+export async function getUsersByIds(ids: string[]): Promise<User[]> {
+  return await DB.query<User>`
+    SELECT * FROM users
+    WHERE id = ANY(${ids})
+  `;
+}
+
+// Use database transactions for consistency
+export async function transferBalance(
+  fromId: string,
+  toId: string,
+  amount: number
+) {
+  const tx = await DB.begin();
+
+  try {
+    await tx.exec`
+      UPDATE accounts
+      SET balance = balance - ${amount}
+      WHERE id = ${fromId} AND balance >= ${amount}
+    `;
+
+    await tx.exec`
+      UPDATE accounts
+      SET balance = balance + ${amount}
+      WHERE id = ${toId}
+    `;
+
+    await tx.commit();
+  } catch (err) {
+    await tx.rollback();
+    throw err;
+  }
+}
+```
+
+## Error Tracking
+
+```typescript
+// Centralized error handler
+export async function handleError(err: Error, context: any) {
+  // Log error
+  log.error("error occurred", {
+    error: err.message,
+    stack: err.stack,
+    context,
+  });
+
+  // Send to error tracking service (e.g., Sentry)
+  await errorTracker.captureException(err, {
+    tags: {
+      service: context.service,
+      endpoint: context.endpoint,
+    },
+    user: {
+      id: context.userId,
+    },
+  });
+
+  // Alert for critical errors
+  if (err instanceof CriticalError) {
+    await alertOps({
+      severity: "critical",
+      message: err.message,
+      service: context.service,
+    });
+  }
+}
+```
+
+Reference: @Docs Encore for production deployment patterns

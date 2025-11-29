@@ -293,7 +293,7 @@ function MonthlyReportSpreadsheet({ year, month, propertyId, orgId }: MonthlyRep
   
 
   // Monthly report data query with real-time updates
-  const { data: monthlyReportData, isLoading: isLoadingMonthlyData, error: monthlyDataError, dataUpdatedAt } = useQuery({
+  const { data: monthlyReportData, isLoading: isLoadingMonthlyData, error: monthlyDataError, dataUpdatedAt } = useQuery<any>({
     queryKey: ['monthly-report', propertyId, year, month, orgId],
     queryFn: async () => {
       const backend = getAuthenticatedBackend();
@@ -314,40 +314,42 @@ function MonthlyReportSpreadsheet({ year, month, propertyId, orgId }: MonthlyRep
     refetchInterval: false, // Rely on realtime events from RealtimeProvider
     refetchOnMount: true, // Refresh when component mounts
     refetchOnReconnect: true, // Refresh when network reconnects
-    onSuccess: () => {
-      try {
-        const last = (window as any).__reportsLastInvalidateAt;
-        if (!last) return;
-        const key = `monthly|${propertyId}|${year}-${month}`;
-        const started = last[key];
-        if (started) {
-          const ms = Date.now() - started;
-          if (process.env.NODE_ENV !== 'production') {
-            console.log('[ReportsTelemetry] monthly refetch duration ms:', ms, { propertyId, year, month });
-          }
-          if (Math.random() < 0.02) {
-            fetch(`${API_CONFIG.BASE_URL}/telemetry/client`, {
-              method: 'POST',
-              headers: {
-                'Authorization': `Bearer ${localStorage.getItem('accessToken') || ''}`,
-                'Content-Type': 'application/json',
-              },
-              body: JSON.stringify({
-                sampleRate: 0.02,
-                events: [{
-                  type: 'reports_refetch_ms',
-                  ts: new Date().toISOString(),
-                  scope: 'monthly',
-                  ms,
-                  propertyId, year, month,
-                }],
-              }),
-            }).catch(() => {});
-          }
-        }
-      } catch {}
-    }
   });
+
+  // Monthly telemetry (v5 no onSuccess)
+  useEffect(() => {
+    if (!monthlyReportData) return;
+    try {
+      const last = (window as any).__reportsLastInvalidateAt;
+      if (!last) return;
+      const key = `monthly|${propertyId}|${year}-${month}`;
+      const started = last[key];
+      if (!started) return;
+      const ms = Date.now() - started;
+      if (process.env.NODE_ENV !== 'production') {
+        console.log('[ReportsTelemetry] monthly refetch duration ms:', ms, { propertyId, year, month });
+      }
+      if (Math.random() < 0.02) {
+        fetch(`${API_CONFIG.BASE_URL}/telemetry/client`, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${localStorage.getItem('accessToken') || ''}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            sampleRate: 0.02,
+            events: [{
+              type: 'reports_refetch_ms',
+              ts: new Date().toISOString(),
+              scope: 'monthly',
+              ms,
+              propertyId, year, month,
+            }],
+          }),
+        }).catch(() => {});
+      }
+    } catch {}
+  }, [monthlyReportData, propertyId, year, month]);
 
 
   // Calculate values from monthly data

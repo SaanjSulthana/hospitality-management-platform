@@ -7,7 +7,7 @@ import React, { useState } from 'react';
 import { Button } from './button';
 import { Download, Loader2, CheckCircle, AlertCircle } from 'lucide-react';
 import { handleExport, ExportResponse, ExportStatus, formatFileSize } from '../../lib/export-utils';
-import { toast } from 'sonner';
+import { toast } from './use-toast';
 
 interface ExportButtonProps {
   label?: string;

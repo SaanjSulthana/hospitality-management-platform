@@ -146,7 +146,7 @@ export function StreamingDocumentUpload({
   onError,
   autoStart = false,
   showUI = true,
-}: StreamingDocumentUploadProps): JSX.Element {
+}: StreamingDocumentUploadProps) {
   // State
   const [uploadState, setUploadState] = useState<UploadState>('idle');
   const [progress, setProgress] = useState<number>(0);

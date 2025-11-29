@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useRealtimeUpdates } from '@/hooks/useRealtimeUpdates';
 import { CacheStatus } from '@/components/CacheStatus';
-import { backend } from '@/services/backend';
+import { API_CONFIG } from '@/src/config/api';
 
 export function ReportsPageExample() {
   const [reports, setReports] = useState([]);
@@ -23,8 +23,12 @@ export function ReportsPageExample() {
   const fetchReports = async () => {
     try {
       setLoading(true);
-      const data = await backend.get('/reports/daily-report?propertyId=1&date=2025-01-22');
-      setReports(data);
+      const resp = await fetch(`${API_CONFIG.BASE_URL}/reports/daily-report?propertyId=1&date=2025-01-22`, {
+        headers: { 'Authorization': `Bearer ${localStorage.getItem('accessToken') || ''}` },
+      });
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      const data = await resp.json();
+      setReports(Array.isArray(data) ? data : [data]);
     } catch (error) {
       console.error('Failed to fetch reports:', error);
     } finally {

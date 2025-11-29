@@ -98,7 +98,7 @@ export function CollaborativeChat({
   onMessageReceived,
   autoScroll = true,
   showOnlineUsers = true,
-}: CollaborativeChatProps): JSX.Element {
+}: CollaborativeChatProps) {
   const { user } = useAuth();
 
   // State

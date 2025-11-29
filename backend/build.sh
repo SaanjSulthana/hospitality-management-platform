@@ -3,23 +3,14 @@ set -e
 
 # Install dependencies
 echo "Installing backend dependencies..."
-if command -v bun &> /dev/null; then
-    bun install || npm install
-else
-    npm install
-fi
+npm install
 
 # Build frontend first
 if [ -d "../frontend" ]; then
     echo "Building frontend..."
     cd ../frontend
-    if command -v bun &> /dev/null; then
-        bun install || npm install
-        bun run build || npm run build
-    else
-        npm install
-        npm run build
-    fi
+    npm install
+    npm run build
     cd ../backend
 fi
 

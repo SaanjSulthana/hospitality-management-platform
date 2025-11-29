@@ -8,7 +8,7 @@ interface Metrics {
   errorCount: number;
 }
 
-export default function RealtimeHealthBadge(): JSX.Element | null {
+export default function RealtimeHealthBadge() {
   const [connected, setConnected] = useState<boolean>(false);
   const [metrics, setMetrics] = useState<Metrics | null>(null);
 

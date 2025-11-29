@@ -49,6 +49,11 @@
     "src/types/**/*.d.ts"
   ],
   "exclude": [
-    "node_modules"
+    "node_modules",
+    "**/__tests__/**",
+    "**/*.test.ts",
+    "**/*.test.tsx",
+    "**/tests/**",
+    "frontend/components/ReportsPageExample.tsx"
   ]
 }

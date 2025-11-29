@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { backend } from '@/services/backend';
+import { API_CONFIG } from '@/src/config/api';
 
 export function CacheStatus() {
   const [metrics, setMetrics] = useState<any>(null);
@@ -7,8 +7,12 @@ export function CacheStatus() {
   useEffect(() => {
     const fetchMetrics = async () => {
       try {
-        const data = await backend.get('/reports/cache/metrics');
-        setMetrics(data);
+        const resp = await fetch(`${API_CONFIG.BASE_URL}/reports/cache/metrics`, {
+          headers: { 'Authorization': `Bearer ${localStorage.getItem('accessToken') || ''}` },
+        });
+        if (!resp.ok) throw new Error(`metrics ${resp.status}`);
+        const json = await resp.json();
+        setMetrics(json);
       } catch (error) {
         console.error('Failed to fetch cache metrics:', error);
       }

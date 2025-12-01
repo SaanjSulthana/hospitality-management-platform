@@ -16,6 +16,8 @@ import { FinanceTabs, FinanceTabsList, FinanceTabsTrigger } from '@/components/u
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { useToast } from '@/components/ui/use-toast';
 import { getFlagBool } from '../lib/feature-flags';
+import { useRealtimeService } from '../hooks/useRealtimeService';
+import { setRealtimePropertyFilter } from '../lib/realtime-helpers';
 import { 
   UserCheck, 
   UserPlus,
@@ -336,15 +338,40 @@ export default function StaffPage() {
       setStaffLive(isLive);
     };
 
-    window.addEventListener('staff-stream-events', onEvents);
     window.addEventListener('staff-stream-health', onHealth);
     return () => {
-      window.removeEventListener('staff-stream-events', onEvents);
       window.removeEventListener('staff-stream-health', onHealth);
       if (invalidateTimerRef.current) clearTimeout(invalidateTimerRef.current);
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [queryClient]);
+
+  // Realtime: Staff events via shared hook (debounced invalidations)
+  useRealtimeService('staff', (events) => {
+    if (!Array.isArray(events) || events.length === 0) return;
+    const scopes = pendingInvalidationsRef.current;
+    for (const ev of events) {
+      const t = String(ev?.eventType || '');
+      if (t.startsWith('staff_')) scopes.add('staff');
+      if (t.startsWith('schedule_')) scopes.add('schedules');
+      if (t.startsWith('leave_')) scopes.add('leave-requests');
+      if (t.startsWith('attendance_')) scopes.add('attendance');
+      if (t.startsWith('salary_component_')) scopes.add('salary-components');
+      if (t.startsWith('payslip_')) scopes.add('payslips');
+      scopes.add('staff-statistics');
+    }
+    if (invalidateTimerRef.current) clearTimeout(invalidateTimerRef.current);
+    invalidateTimerRef.current = setTimeout(() => {
+      const toInvalidate = Array.from(scopes);
+      scopes.clear();
+      for (const key of toInvalidate) {
+        queryClient.invalidateQueries({ queryKey: [key] });
+      }
+      lastInvalidateAtRef.current = Date.now();
+    }, Math.floor(500 + Math.random() * 500));
+  }, getFlagBool('STAFF_REALTIME_V1', true));
+  // Standardize property filter (none here → null)
+  useEffect(() => { try { setRealtimePropertyFilter(null); } catch {} }, []);
 
   const createStaffMutation = useMutation({
     mutationFn: async (data: any) => {

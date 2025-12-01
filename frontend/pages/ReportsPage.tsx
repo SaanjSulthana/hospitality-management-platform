@@ -16,6 +16,8 @@ import { FinanceTabs, FinanceTabsList, FinanceTabsTrigger } from '@/components/u
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { useToast } from '@/components/ui/use-toast';
 import { API_CONFIG } from '../src/config/api';
+import { useRealtimeService } from '../hooks/useRealtimeService';
+import { setRealtimePropertyFilter } from '../lib/realtime-helpers';
 import {
   Calendar,
   TrendingUp,
@@ -1211,142 +1213,115 @@ export default function ReportsPage() {
     return formatCurrencyUtil(amountCents, theme.currency);
   };
 
-  // Reports realtime invalidation (server refetch, debounced)
-  useEffect(() => {
-    const reportsRealtimeEnabled = getFlagBool('REPORTS_REALTIME_V1', true);
-    if (!reportsRealtimeEnabled) return;
+  // Reports realtime invalidation via shared hook with debounced invalidations
+  const dailyKeysRef = useRef<Set<string>>(new Set());
+  const monthlyKeysRef = useRef<Set<string>>(new Set());
+  const quarterlyKeysRef = useRef<Set<string>>(new Set());
+  const yearlyKeysRef = useRef<Set<string>>(new Set());
+  const seenEventIdsRef = useRef<Set<string>>(new Set());
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastInvalidateAtRef = useRef<Record<string, number>>({});
+  useEffect(() => { (window as any).__reportsLastInvalidateAt = lastInvalidateAtRef.current; }, []);
 
-    // Track keys to invalidate per batch
-    const dailyKeys = new Set<string>();
-    const monthlyKeys = new Set<string>();
-    const quarterlyKeys = new Set<string>();
-    const yearlyKeys = new Set<string>();
-    const seenEventIds = new Set<string>();
-    let timer: ReturnType<typeof setTimeout> | null = null;
-    let batches = 0;
+  const toISTDate = (iso: string | Date | undefined): string | null => {
+    if (!iso) return null;
+    try {
+      const d = new Date(iso);
+      const y = d.toLocaleString('en-CA', { year: 'numeric', timeZone: 'Asia/Kolkata' });
+      const m = d.toLocaleString('en-CA', { month: '2-digit', timeZone: 'Asia/Kolkata' });
+      const day = d.toLocaleString('en-CA', { day: '2-digit', timeZone: 'Asia/Kolkata' });
+      return `${y}-${m}-${day}`;
+    } catch {
+      return null;
+    }
+  };
+  const monthFromDate = (dateStr: string) => {
+    const [y, m] = dateStr.split('-');
+    return { year: parseInt(y, 10), month: parseInt(m, 10) };
+  };
+  const quarterFromMonth = (year: number, month: number): { q: 'Q1' | 'Q2' | 'Q3' | 'Q4'; year: number } => {
+    if (month >= 4 && month <= 6) return { q: 'Q1', year };
+    if (month >= 7 && month <= 9) return { q: 'Q2', year };
+    if (month >= 10 && month <= 12) return { q: 'Q3', year };
+    return { q: 'Q4', year };
+  };
 
-    // Expose last-invalidation timestamps for telemetry in child queries
-    const lastInvalidateAt: Record<string, number> = {};
-    (window as any).__reportsLastInvalidateAt = lastInvalidateAt;
+  useRealtimeService('finance', (events) => {
+    if (!getFlagBool('REPORTS_REALTIME_V1', true)) return;
+    const dailyKeys = dailyKeysRef.current;
+    const monthlyKeys = monthlyKeysRef.current;
+    const quarterlyKeys = quarterlyKeysRef.current;
+    const yearlyKeys = yearlyKeysRef.current;
+    const seenEventIds = seenEventIdsRef.current;
 
-    const toISTDate = (iso: string | Date | undefined): string | null => {
-      if (!iso) return null;
-      try {
-        const d = new Date(iso);
-        const y = d.toLocaleString('en-CA', { year: 'numeric', timeZone: 'Asia/Kolkata' });
-        const m = d.toLocaleString('en-CA', { month: '2-digit', timeZone: 'Asia/Kolkata' });
-        const day = d.toLocaleString('en-CA', { day: '2-digit', timeZone: 'Asia/Kolkata' });
-        return `${y}-${m}-${day}`;
-      } catch {
-        return null;
+    for (const ev of events) {
+      const id = ev?.eventId;
+      if (!id || seenEventIds.has(id)) continue;
+      seenEventIds.add(id);
+      const propertyId: number | undefined = ev?.propertyId;
+      const txDateIso: string | undefined = ev?.metadata?.transactionDate || ev?.timestamp;
+      const dates: string[] = Array.isArray(ev?.metadata?.affectedReportDates) ? ev.metadata.affectedReportDates : [];
+      const candidates = new Set<string>();
+      const d = toISTDate(txDateIso);
+      if (d) candidates.add(d);
+      dates.forEach((raw) => {
+        const dd = toISTDate(raw);
+        if (dd) candidates.add(dd);
+      });
+      for (const dateStr of candidates) {
+        if (!propertyId) continue;
+        dailyKeys.add(['daily', String(propertyId), dateStr].join('|'));
+        const { year, month } = monthFromDate(dateStr);
+        monthlyKeys.add(['monthly', String(propertyId), String(year), String(month)].join('|'));
+        const q = quarterFromMonth(year, month);
+        quarterlyKeys.add(['quarterly', String(q.year), q.q, String(propertyId)].join('|'));
+        yearlyKeys.add(['yearly', String(year), String(propertyId)].join('|'));
       }
-    };
+    }
 
-    const monthFromDate = (dateStr: string) => {
-      const [y, m] = dateStr.split('-');
-      return { year: parseInt(y, 10), month: parseInt(m, 10) };
-    };
-
-    const quarterFromMonth = (year: number, month: number): { q: 'Q1' | 'Q2' | 'Q3' | 'Q4'; year: number } => {
-      if (month >= 4 && month <= 6) return { q: 'Q1', year };
-      if (month >= 7 && month <= 9) return { q: 'Q2', year };
-      if (month >= 10 && month <= 12) return { q: 'Q3', year };
-      return { q: 'Q4', year }; // Jan-Mar
-    };
-
-    const scheduleInvalidate = () => {
-      if (timer) return;
-      timer = setTimeout(() => {
-        const started = Date.now();
-        // Daily
+    if (!timerRef.current) {
+      timerRef.current = setTimeout(() => {
+        const lastInvalidateAt = lastInvalidateAtRef.current;
         dailyKeys.forEach((k) => {
           const [_, propertyIdStr, dateStr] = k.split('|');
-          lastInvalidateAt[`daily|${propertyIdStr}|${dateStr}`] = Date.now();
+        lastInvalidateAt[`daily|${propertyIdStr}|${dateStr}`] = Date.now();
           queryClient.invalidateQueries({ queryKey: ['daily-report', parseInt(propertyIdStr, 10), dateStr], exact: false });
         });
-        // Monthly
         monthlyKeys.forEach((k) => {
           const [_, propertyIdStr, yearStr, monthStr] = k.split('|');
           lastInvalidateAt[`monthly|${propertyIdStr}|${yearStr}-${monthStr}`] = Date.now();
           queryClient.invalidateQueries({ queryKey: ['monthly-report', parseInt(propertyIdStr, 10), parseInt(yearStr, 10), parseInt(monthStr, 10)], exact: false });
         });
-        // Quarterly
         quarterlyKeys.forEach((k) => {
           const [_, yearStr, q, propertyIdStr] = k.split('|');
           lastInvalidateAt[`quarterly|${yearStr}|${q}|${propertyIdStr}`] = Date.now();
           queryClient.invalidateQueries({ queryKey: ['quarterly-report', yearStr, q, propertyIdStr], exact: false });
         });
-        // Yearly
         yearlyKeys.forEach((k) => {
           const [_, yearStr, propertyIdStr] = k.split('|');
           lastInvalidateAt[`yearly|${yearStr}|${propertyIdStr}`] = Date.now();
           queryClient.invalidateQueries({ queryKey: ['yearly-report', yearStr, propertyIdStr], exact: false });
         });
-        batches += 1;
-        if (process.env.NODE_ENV !== 'production') {
-          // Dev-only diagnostics
-          console.log('[ReportsRealtime] invalidation batch', {
-            daily: dailyKeys.size, monthly: monthlyKeys.size,
-            quarterly: quarterlyKeys.size, yearly: yearlyKeys.size,
-            debounceMs: Date.now() - started,
-            batches,
-          });
-        }
+        // telemetry (sampled inside sendClientTelemetry)
         sendClientTelemetry([{
           type: 'reports_realtime_invalidation',
           ts: new Date().toISOString(),
-          daily: dailyKeys.size, monthly: monthlyKeys.size,
-          quarterly: quarterlyKeys.size, yearly: yearlyKeys.size,
-          batches,
         }]);
         dailyKeys.clear();
         monthlyKeys.clear();
         quarterlyKeys.clear();
         yearlyKeys.clear();
-        timer = null;
+        timerRef.current = null;
       }, 1000);
-    };
+    }
+  }, true);
+  useEffect(() => () => { if (timerRef.current) clearTimeout(timerRef.current); }, []);
 
-    const onReportsEvents = (e: any) => {
-      const events = e?.detail?.events || [];
-      if (!Array.isArray(events) || events.length === 0) return;
-      for (const ev of events) {
-        const id = ev?.eventId;
-        if (!id || seenEventIds.has(id)) continue;
-        seenEventIds.add(id);
-        const propertyId: number | undefined = ev?.propertyId;
-        const txDateIso: string | undefined = ev?.metadata?.transactionDate || ev?.timestamp;
-        const dates: string[] = Array.isArray(ev?.metadata?.affectedReportDates) ? ev.metadata.affectedReportDates : [];
-        const candidates = new Set<string>();
-        const d = toISTDate(txDateIso);
-        if (d) candidates.add(d);
-        dates.forEach((raw) => {
-          const dd = toISTDate(raw);
-          if (dd) candidates.add(dd);
-        });
-        // Build keys
-        for (const dateStr of candidates) {
-          if (!propertyId) continue;
-          // Daily key
-          dailyKeys.add(['daily', String(propertyId), dateStr].join('|'));
-          // Monthly key
-          const { year, month } = monthFromDate(dateStr);
-          monthlyKeys.add(['monthly', String(propertyId), String(year), String(month)].join('|'));
-          // Quarterly & yearly
-          const q = quarterFromMonth(year, month);
-          quarterlyKeys.add(['quarterly', String(q.year), q.q, String(propertyId)].join('|'));
-          yearlyKeys.add(['yearly', String(year), String(propertyId)].join('|'));
-        }
-      }
-      scheduleInvalidate();
-    };
-
-    window.addEventListener('finance-stream-events', onReportsEvents as EventListener);
-    return () => {
-      window.removeEventListener('finance-stream-events', onReportsEvents as EventListener);
-      if (timer) clearTimeout(timer);
-    };
-  }, [queryClient]);
+  // Property filter propagation for reports
+  useEffect(() => {
+    const pid = selectedPropertyId ? Number(selectedPropertyId) : null;
+    try { setRealtimePropertyFilter(pid); } catch {}
+  }, [selectedPropertyId]);
 
   return (
     <div className="w-full min-h-screen bg-gray-50">

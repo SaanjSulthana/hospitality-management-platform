@@ -27,6 +27,9 @@ interface Connection {
   queueSize: number;
   maxQueueSize: number;
   slowConsumerWarnings: number;
+  // Quarantine state
+  quarantined?: boolean;
+  quarantineUntil?: number;
 }
 
 /**
@@ -82,6 +85,45 @@ class ConnectionPool {
     });
 
     return connection;
+  }
+
+  /**
+   * Update all active connections for a user to a new service set and property filter.
+   * This supports dynamic subscription updates without reconnects.
+   */
+  updateUserConnections(
+    orgId: number,
+    userId: number,
+    services: Set<ServiceName>,
+    propertyFilter: number | null
+  ): number {
+    const connections = this.orgConnections.get(orgId);
+    if (!connections || connections.size === 0) return 0;
+    let updated = 0;
+    for (const conn of connections) {
+      if (conn.userId !== userId) continue;
+
+      // Update subscription refCounts
+      // Decrement old
+      for (const old of conn.services) {
+        const key = `${orgId}-${old}`;
+        const refCount = (this.activeSubscriptions.get(key) || 1) - 1;
+        if (refCount <= 0) this.activeSubscriptions.delete(key);
+        else this.activeSubscriptions.set(key, refCount);
+      }
+      // Assign new set
+      conn.services = new Set(services);
+      // Increment new
+      for (const s of conn.services) {
+        const key = `${orgId}-${s}`;
+        this.activeSubscriptions.set(key, (this.activeSubscriptions.get(key) || 0) + 1);
+      }
+
+      // Update property filter
+      conn.propertyFilter = propertyFilter;
+      updated++;
+    }
+    return updated;
   }
 
   /**
@@ -144,7 +186,20 @@ class ConnectionPool {
           return false;
         }
       }
-      
+
+      // Quarantine: shed low-priority services for unhealthy connections
+      if (conn.quarantined) {
+        const lowTier: Set<ServiceName> = new Set(["analytics", "dashboard"] as ServiceName[]);
+        if (lowTier.has(service)) {
+          return false;
+        }
+        // Auto expire quarantine
+        if (conn.quarantineUntil && Date.now() > conn.quarantineUntil) {
+          conn.quarantined = false;
+          conn.quarantineUntil = undefined;
+        }
+      }
+
       return true;
     });
 
@@ -174,6 +229,9 @@ class ConnectionPool {
         
         // If too many warnings, consider disconnecting
         if (conn.slowConsumerWarnings > 10) {
+          // Enter quarantine for 30s; shed low-tier services
+          conn.quarantined = true;
+          conn.quarantineUntil = Date.now() + 30_000;
           console.error("[ConnectionPool][slow-consumer-disconnect]", {
             orgId,
             userId: conn.userId,
@@ -193,6 +251,11 @@ class ConnectionPool {
         sentCount++;
         conn.queueSize = Math.max(0, conn.queueSize - 1);
         conn.slowConsumerWarnings = Math.max(0, conn.slowConsumerWarnings - 1);
+        // If recovering, clear quarantine early
+        if (conn.quarantined && conn.slowConsumerWarnings === 0 && conn.queueSize < conn.maxQueueSize / 4) {
+          conn.quarantined = false;
+          conn.quarantineUntil = undefined;
+        }
       } catch (err) {
         conn.queueSize = Math.max(0, conn.queueSize - 1);
         console.error("[ConnectionPool][send-error]", {

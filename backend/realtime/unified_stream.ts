@@ -162,6 +162,7 @@ interface EventBatch {
 }
 
 const eventBatcher = new Map<string, EventBatch>();
+const batchWindowMsMap = new Map<string, number>(); // key: orgId-service → current window
 
 /**
  * Flush a batch of events
@@ -199,6 +200,22 @@ async function flushBatch(key: string): Promise<void> {
   metrics.batchesSent++;
   metrics.eventsByService[service as ServiceName] = 
     (metrics.eventsByService[service as ServiceName] || 0) + batch.events.length;
+
+  // Adaptive batch window tuning
+  const prev = batchWindowMsMap.get(key) ?? CONFIG.BATCH_WINDOW_MS;
+  let next = prev;
+  const n = batch.events.length;
+  if (n >= Math.floor(CONFIG.MAX_BATCH_SIZE * 0.8)) {
+    // Widen window under high load to reduce message count
+    next = Math.min(150, prev + 25);
+  } else if (n <= 3) {
+    // Narrow window when idle for lower latency
+    next = Math.max(30, prev - 10);
+  }
+  batchWindowMsMap.set(key, next);
+  // Track by service (last tuned value)
+  (metrics as any).currentBatchWindowMsByService = (metrics as any).currentBatchWindowMsByService || {};
+  (metrics as any).currentBatchWindowMsByService[service as ServiceName] = next;
 }
 
 /**
@@ -220,7 +237,7 @@ function createHandler(service: ServiceName) {
     if (!eventBatcher.has(key)) {
       eventBatcher.set(key, {
         events: [],
-        timer: setTimeout(() => flushBatch(key), CONFIG.BATCH_WINDOW_MS),
+        timer: setTimeout(() => flushBatch(key), batchWindowMsMap.get(key) ?? CONFIG.BATCH_WINDOW_MS),
       });
     }
 
@@ -231,6 +248,10 @@ function createHandler(service: ServiceName) {
     if (batch.events.length >= CONFIG.MAX_BATCH_SIZE) {
       clearTimeout(batch.timer);
       await flushBatch(key);
+    } else {
+      // Reschedule with current adaptive window (reset timer on activity bursts)
+      clearTimeout(batch.timer);
+      batch.timer = setTimeout(() => flushBatch(key), batchWindowMsMap.get(key) ?? CONFIG.BATCH_WINDOW_MS);
     }
   };
 }
@@ -529,5 +550,32 @@ export const getStreamingMetrics = api(
       missedEventsReplayed: metrics.missedEventsReplayed,
       connectionPoolStats: connectionPool.getStats(),
     };
+  }
+);
+
+/**
+ * Update services/property filter for the caller's active WS connections (dynamic subscription update)
+ */
+export const updateStreamSubscriptions = api(
+  {
+    auth: true,
+    expose: true,
+    method: "POST",
+    path: "/v2/realtime/update-services",
+  },
+  async (req: { services: ServiceName[]; propertyId?: number | null }): Promise<{ updated: number }> => {
+    const authData = getAuthData();
+    if (!authData) {
+      throw APIError.unauthenticated("Authentication required");
+    }
+    const orgId = Number((authData as any).orgId);
+    const userId = Number((authData as any).userID);
+    const services = new Set<ServiceName>((req?.services || []) as ServiceName[]);
+    if (services.size === 0) {
+      throw APIError.invalidArgument("At least one service must be specified");
+    }
+    const propertyId = typeof req?.propertyId === "number" ? req.propertyId : req?.propertyId ?? null;
+    const updated = connectionPool.updateUserConnections(orgId, userId, services, propertyId);
+    return { updated };
   }
 );

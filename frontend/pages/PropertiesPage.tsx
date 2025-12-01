@@ -14,6 +14,8 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { useToast } from '@/components/ui/use-toast';
 import { Building2, MapPin, Users, Bed, Plus, Search, Pencil, Trash2, RefreshCw, Edit, Phone } from 'lucide-react';
 import { API_CONFIG } from '../src/config/api';
+import { setRealtimePropertyFilter } from '../lib/realtime-helpers';
+import { useRealtimeService } from '../hooks/useRealtimeService';
 import { 
   useStandardQuery, 
   useStandardMutation, 
@@ -322,6 +324,8 @@ export default function PropertiesPage() {
   useEffect(() => {
     // Expose property filter if any (none on this page)
     try { (window as any).__propertiesSelectedPropertyId = 'all'; } catch {}
+    // Standardize property filter propagation for provider (no filter here → null)
+    try { setRealtimePropertyFilter(null); } catch {}
 
     const enabled = getFlagBool('PROPERTIES_REALTIME_V1', true);
     if (!enabled) return;
@@ -368,11 +372,46 @@ export default function PropertiesPage() {
       }
     };
 
-    window.addEventListener('properties-stream-events', onEvents);
-    return () => {
-      window.removeEventListener('properties-stream-events', onEvents);
-    };
+    return () => {};
   }, [queryClient]);
+
+  // Realtime: Properties via shared hook
+  useRealtimeService('properties', (events) => {
+    let needsPropertiesRefetch = false;
+    for (const ev of events) {
+      const { eventType, entityId, metadata } = ev || {};
+      if (!eventType) continue;
+      if (
+        eventType === 'property_created' ||
+        eventType === 'property_deleted'
+      ) {
+        needsPropertiesRefetch = true;
+        continue;
+      }
+      if (eventType === 'property_updated') {
+        queryClient.setQueryData(QUERY_KEYS.PROPERTIES, (old: any) => {
+          if (!old?.properties) return old;
+          return {
+            ...old,
+            properties: old.properties.map((prop: any) =>
+              prop.id === entityId
+                ? {
+                    ...prop,
+                    name: metadata?.name ?? prop.name,
+                    status: metadata?.status ?? prop.status,
+                    regionId: metadata?.regionId ?? prop.regionId,
+                  }
+                : prop
+            ),
+          };
+        });
+        continue;
+      }
+    }
+    if (needsPropertiesRefetch) {
+      queryClient.invalidateQueries({ queryKey: QUERY_KEYS.PROPERTIES });
+    }
+  }, getFlagBool('PROPERTIES_REALTIME_V1', true));
 
   if (isLoading) {
     return (

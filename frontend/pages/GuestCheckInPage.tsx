@@ -47,6 +47,8 @@ import { AuditLogDetailModal } from '../components/guest-checkin/AuditLogDetailM
 import { useAuditLogs } from '../hooks/useAuditLogs';
 // import { useGuestCheckinRealtimeV2 } from '../hooks/useGuestCheckinRealtime-v2';
 import { getFlagBool } from '../lib/feature-flags';
+import { useRealtimeService } from '../hooks/useRealtimeService';
+import { setRealtimePropertyFilter } from '../lib/realtime-helpers';
 // import { useAuditLogsRealtimeV2 } from '../hooks/useAuditLogsRealtime-v2';
 import { useDebouncedCallback } from '../hooks/useDebouncedCallback';
 import { useGuestCheckInRealtimeIntegration } from '../hooks/useGuestCheckInRealtimeIntegration';
@@ -1097,11 +1099,9 @@ export default function GuestCheckInPage() {
   // });
 
   // Multi-service provider integration: listen to guest-stream-events
-  React.useEffect(() => {
-    const guestRealtimeEnabled = getFlagBool('GUEST_REALTIME_V1', true);
-    if (!guestRealtimeEnabled) return;
-    const onGuestEvents = async (e: any) => {
-      const events = e?.detail?.events || [];
+  // Realtime: Guest events via shared hook
+  useRealtimeService('guest', async (events) => {
+      const desktopTab = (typeof window !== 'undefined' ? (window as any).__guestDesktopTab : null) || desktopTab;
       if (!events?.length) {
         return;
       }
@@ -1162,10 +1162,10 @@ export default function GuestCheckInPage() {
           fetchLogsRef.current(auditFiltersApi, { replace: true });
         }, 1000);
       }
-    };
-    window.addEventListener('guest-stream-events', onGuestEvents as EventListener);
-    return () => window.removeEventListener('guest-stream-events', onGuestEvents as EventListener);
-  }, [desktopTab, selectedGuestForDocs, auditFiltersApi, fetchCheckIns, fetchGuestDetailsById, refreshSelectedGuestDocuments]);
+  }, getFlagBool('GUEST_REALTIME_V1', true));
+
+  // Standardize property filter (no explicit property scoping here → null)
+  useEffect(() => { try { setRealtimePropertyFilter(null); } catch {} }, []);
 
   useEffect(() => {
     if (viewMode === 'admin-dashboard' && !guestDetailsLoadedRef.current) {

@@ -43,6 +43,7 @@ import {
   Edit,
   Trash2
 } from 'lucide-react';
+import { setRealtimePropertyFilter } from '../lib/realtime-helpers';
 
 // Development flag (use Vite's dev indicator consistently across this module)
 const __DEV__ = import.meta.env.DEV;
@@ -110,7 +111,7 @@ export default function FinancePage() {
   useEffect(() => {
     try {
       const pid = selectedPropertyId === 'all' ? null : Number(selectedPropertyId);
-      window.dispatchEvent(new CustomEvent('realtime:set-property', { detail: { propertyId: pid } }));
+      setRealtimePropertyFilter(pid);
     } catch {}
   }, [selectedPropertyId]);
   const isFinanceEvent = (ev: any): ev is {

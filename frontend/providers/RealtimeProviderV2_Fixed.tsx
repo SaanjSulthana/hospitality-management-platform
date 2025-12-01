@@ -106,6 +106,9 @@ interface HealthMetrics {
   // Per-service counters (lightweight)
   byServiceDelivered?: Record<string, number>;
   byServiceSuppressed?: Record<string, number>;
+  byServiceP95LatencyMs?: Record<string, number>;
+  byServiceLastEventAt?: Record<string, number>;
+  byServiceReconnects?: Record<string, number>;
 }
 
 /**
@@ -156,6 +159,9 @@ export default function RealtimeProviderV2Fixed(): null {
     p95LatencyMs: 0,
     byServiceDelivered: {},
     byServiceSuppressed: {},
+    byServiceP95LatencyMs: {},
+    byServiceLastEventAt: {},
+    byServiceReconnects: {},
   });
 
   // Broadcast channels
@@ -168,6 +174,24 @@ export default function RealtimeProviderV2Fixed(): null {
   const tabId = useRef<string>('');
   // Property filter propagated by pages
   const [subscribedPropertyId, setSubscribedPropertyId] = useState<number | null>(null);
+  // Token refresh cadence
+  const lastTokenRefreshRef = useRef<number>(0);
+
+  const maybeRefreshAuthToken = async (): Promise<void> => {
+    const now = Date.now();
+    // Refresh at most once every 5 minutes
+    if (now - lastTokenRefreshRef.current < 5 * 60 * 1000) return;
+    try {
+      const token = localStorage.getItem('accessToken') || '';
+      if (!token) return;
+      await fetch(`${API_CONFIG.BASE_URL.replace(/\/$/, '')}/auth/refresh`, {
+        method: 'GET',
+        headers: { 'Authorization': `Bearer ${token}` },
+        keepalive: true,
+      }).catch(() => {});
+    } catch {}
+    lastTokenRefreshRef.current = now;
+  };
 
   /**
    * Initialize tab ID
@@ -290,16 +314,33 @@ export default function RealtimeProviderV2Fixed(): null {
       if (nextId === subscribedPropertyId) return;
       setSubscribedPropertyId(nextId);
       if (serviceChangeTimerRef.current) clearTimeout(serviceChangeTimerRef.current);
-      serviceChangeTimerRef.current = setTimeout(() => {
+      serviceChangeTimerRef.current = setTimeout(async () => {
+        // Dynamic update without reconnect
         try {
-          if (wsRef.current) {
-            wsRef.current.close();
-            wsRef.current = null;
-          }
-        } catch {}
-        connectingRef.current = false;
-        reconnectAttemptsRef.current = 0;
-        connect();
+          const token = localStorage.getItem('accessToken') || '';
+          if (!token) return;
+          const baseUrl = API_CONFIG.BASE_URL.replace(/\/$/, '');
+          const services = JSON.parse(lastServicesRef.current || '[]');
+          await fetch(`${baseUrl}/v2/realtime/update-services`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+            body: JSON.stringify({ services, propertyId: nextId }),
+            keepalive: true,
+          }).then(async (r) => {
+            if (!r.ok) throw new Error(`update-services ${r.status}`);
+          }).catch(() => {
+            // Fallback reconnect if server update fails
+            try { if (wsRef.current) { wsRef.current.close(); wsRef.current = null; } } catch {}
+            connectingRef.current = false;
+            reconnectAttemptsRef.current = 0;
+            connect();
+          });
+        } catch {
+          try { if (wsRef.current) { wsRef.current.close(); wsRef.current = null; } } catch {}
+          connectingRef.current = false;
+          reconnectAttemptsRef.current = 0;
+          connect();
+        }
       }, 500);
     };
     window.addEventListener('realtime:set-property', handler as EventListener);
@@ -504,6 +545,28 @@ export default function RealtimeProviderV2Fixed(): null {
     return sorted[index] || 0;
   };
 
+  const recordServiceLatency = (service: ServiceName, latency: number): void => {
+    try {
+      const met = metricsRef.current;
+      const svc = String(service);
+      // We don't keep per-service arrays to minimize memory; use Welford-like running list
+      // Keep a small rolling window per service in a hidden map
+      // For simplicity, reuse metricsRef eventLatencyMs but calculate p95 per service by sampling
+      const key = `__svc_lat_${svc}` as const;
+      // @ts-ignore
+      if (!met[key]) {
+        // @ts-ignore
+        met[key] = [];
+      }
+      // @ts-ignore
+      const arr: number[] = met[key];
+      arr.push(latency);
+      if (arr.length > 50) arr.shift();
+      const p95 = calculateP95(arr);
+      met.byServiceP95LatencyMs![svc] = p95;
+    } catch {}
+  };
+
   /**
    * Handle WebSocket message (Enhanced with latency tracking)
    */
@@ -531,10 +594,17 @@ export default function RealtimeProviderV2Fixed(): null {
             metricsRef.current.avgLatencyMs =
               latencies.reduce((a, b) => a + b, 0) / latencies.length;
             metricsRef.current.p95LatencyMs = calculateP95(latencies);
+            // Per-service p95
+            if (message.service) {
+              recordServiceLatency(message.service, latency);
+            }
           }
 
           metricsRef.current.eventsReceived++;
           metricsRef.current.lastEventAt = Date.now();
+          if (message.service) {
+            metricsRef.current.byServiceLastEventAt![String(message.service)] = Date.now();
+          }
 
           if (message.service && message.events) {
             dispatchEvents(message.service, message.events, message.seq);
@@ -557,10 +627,16 @@ export default function RealtimeProviderV2Fixed(): null {
                 if (metricsRef.current.eventLatencyMs.length > 100) {
                   metricsRef.current.eventLatencyMs.shift();
                 }
+                if (m.service) {
+                  recordServiceLatency(m.service, latency);
+                }
               }
 
               metricsRef.current.eventsReceived++;
               metricsRef.current.lastEventAt = Date.now();
+              if (m.service) {
+                metricsRef.current.byServiceLastEventAt![String(m.service)] = Date.now();
+              }
 
               if (m.service && m.events) {
                 dispatchEvents(m.service, m.events, m.seq);
@@ -673,6 +749,9 @@ export default function RealtimeProviderV2Fixed(): null {
 
     (async () => {
       try {
+        // Best effort token refresh before establishing a long-lived WS
+        await maybeRefreshAuthToken();
+
         const client = new Client(baseUrl, {
           auth: {
             access_token: token,
@@ -708,6 +787,15 @@ export default function RealtimeProviderV2Fixed(): null {
           metricsRef.current.lastConnectedAt = Date.now();
           metricsRef.current.reconnectAttempts = 0;
           connectingRef.current = false;
+          // Count per-service reconnects for currently subscribed services
+          try {
+            const svcList: ServiceName[] = JSON.parse(lastServicesRef.current || '[]');
+            const met = metricsRef.current;
+            for (const s of svcList) {
+              const key = String(s);
+              met.byServiceReconnects![key] = (met.byServiceReconnects?.[key] || 0) + 1;
+            }
+          } catch {}
         });
 
         socket.on('error', (error: any) => {
@@ -786,7 +874,7 @@ export default function RealtimeProviderV2Fixed(): null {
   };
 
   /**
-   * Route-based services refresh: reconnect when required services change
+   * Route-based services refresh: dynamic update without reconnect
    */
   useEffect(() => {
     if (!masterEnabled || !orgId) return;
@@ -795,28 +883,41 @@ export default function RealtimeProviderV2Fixed(): null {
         (typeof window !== 'undefined' ? window.location.pathname : '')
     );
     const next = JSON.stringify(newServices);
-    // If this is the very first evaluation and we haven't connected yet,
-    // initialize lastServicesRef to avoid an immediate redundant reconnect.
     if (!lastServicesRef.current) {
       lastServicesRef.current = next;
       return;
     }
     if (next !== lastServicesRef.current) {
       if (serviceChangeTimerRef.current) clearTimeout(serviceChangeTimerRef.current);
-      serviceChangeTimerRef.current = setTimeout(() => {
-        // Force reconnect to apply new services set
+      serviceChangeTimerRef.current = setTimeout(async () => {
         try {
-          if (wsRef.current) {
-            wsRef.current.close();
-            wsRef.current = null;
-          }
-        } catch {}
-        connectingRef.current = false;
-        reconnectAttemptsRef.current = 0;
-        connect();
+          const token = localStorage.getItem('accessToken') || '';
+          if (!token) return;
+          const baseUrl = API_CONFIG.BASE_URL.replace(/\/$/, '');
+          await fetch(`${baseUrl}/v2/realtime/update-services`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+            body: JSON.stringify({ services: newServices, propertyId: subscribedPropertyId }),
+            keepalive: true,
+          }).then(async (r) => {
+            if (!r.ok) throw new Error(`update-services ${r.status}`);
+            lastServicesRef.current = next;
+          }).catch(() => {
+            // Fallback: reconnect if server update not available
+            try { if (wsRef.current) { wsRef.current.close(); wsRef.current = null; } } catch {}
+            connectingRef.current = false;
+            reconnectAttemptsRef.current = 0;
+            connect();
+          });
+        } catch {
+          try { if (wsRef.current) { wsRef.current.close(); wsRef.current = null; } } catch {}
+          connectingRef.current = false;
+          reconnectAttemptsRef.current = 0;
+          connect();
+        }
       }, 300);
     }
-  }, [location.pathname, masterEnabled, orgId]);
+  }, [location.pathname, masterEnabled, orgId, subscribedPropertyId]);
 
   /**
    * Leader election

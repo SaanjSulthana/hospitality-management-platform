@@ -12,6 +12,8 @@ import { LoadingCard, LoadingPage } from '@/components/ui/loading-spinner';
 import { NoDataCard } from '@/components/ui/no-data';
 import { useApiError } from '@/hooks/use-api-error';
 import { getFlagBool } from '../lib/feature-flags';
+import { setRealtimePropertyFilter } from '../lib/realtime-helpers';
+import { useRealtimeService } from '../hooks/useRealtimeService';
 import { API_CONFIG } from '../src/config/api';
 import { 
   useStandardQuery, 
@@ -162,7 +164,7 @@ export default function DashboardPage() {
   // Realtime: Dashboard events listener (debounced invalidation + telemetry)
   useEffect(() => {
     try { (window as any).__dashboardSelectedPropertyId = 'all'; } catch {}
-    try { window.dispatchEvent(new CustomEvent('realtime:set-property', { detail: { propertyId: null } })); } catch {}
+    try { setRealtimePropertyFilter(null); } catch {}
 
     const enabled = getFlagBool('DASHBOARD_REALTIME_V1', true);
     if (!enabled) return;
@@ -222,15 +224,36 @@ export default function DashboardPage() {
     };
     const onHealth = (_e: any) => {};
 
-    window.addEventListener('dashboard-stream-events', onEvents);
     window.addEventListener('dashboard-stream-health', onHealth);
     return () => {
-      window.removeEventListener('dashboard-stream-events', onEvents);
       window.removeEventListener('dashboard-stream-health', onHealth);
       if (timer) clearTimeout(timer);
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [queryClient]);
+
+  // Realtime: Dashboard via shared hook
+  useRealtimeService('dashboard', (events) => {
+    if (!Array.isArray(events) || events.length === 0) return;
+    // Reuse the same debounce window as before
+    let timer: any;
+    const scheduleInvalidate = (snapshot: any[]) => {
+      const impacted = new Map<string, number>();
+      for (const _ of snapshot) {
+        impacted.set('finance', 1);
+        impacted.set('tasks', 1);
+        impacted.set('users', 1);
+        impacted.set('properties', 1);
+        impacted.set('staff', 1);
+      }
+      for (const key of impacted.keys()) {
+        queryClient.invalidateQueries({ queryKey: [key] });
+      }
+    };
+    if (timer) clearTimeout(timer);
+    const snapshot = events.slice(0, 200);
+    timer = setTimeout(() => scheduleInvalidate(snapshot), 350);
+  }, getFlagBool('DASHBOARD_REALTIME_V1', true));
 
   const getRoleDisplayName = (role: string) => {
     return role.replace('_', ' ').toLowerCase().replace(/\b\w/g, l => l.toUpperCase());

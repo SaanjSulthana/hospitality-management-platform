@@ -13,7 +13,9 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { useToast } from '@/components/ui/use-toast';
 import { formatUserActivityDateTime } from '../lib/datetime';
 import { getFlagBool } from '../lib/feature-flags';
+import { setRealtimePropertyFilter } from '../lib/realtime-helpers';
 import { Users, Plus, Search, Mail, Calendar, UserPlus, Pencil, RefreshCw, Shield, User, AlertCircle, Trash2 } from 'lucide-react';
+import { useRealtimeService } from '../hooks/useRealtimeService';
 
 type ListUsersResponse = {
   users: {
@@ -113,6 +115,9 @@ export default function UsersPage() {
   const pendingScopesRef = React.useRef<Set<string>>(new Set());
 
   useEffect(() => {
+    // Standardize property filter propagation for provider (no filter on this page → null)
+    try { setRealtimePropertyFilter(null); } catch {}
+
     const enabled = getFlagBool('USERS_REALTIME_V1', true);
     if (!enabled) return;
 
@@ -170,15 +175,43 @@ export default function UsersPage() {
       setUsersLive(!!e?.detail?.isLive);
     };
 
-    window.addEventListener('users-stream-events', onEvents);
     window.addEventListener('users-stream-health', onHealth);
     return () => {
-      window.removeEventListener('users-stream-events', onEvents);
       window.removeEventListener('users-stream-health', onHealth);
       if (invalidateTimerRef.current) clearTimeout(invalidateTimerRef.current);
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [queryClient]);
+
+  // Realtime: Users events via shared hook
+  useRealtimeService('users', (events) => {
+    let needsUsersRefetch = false;
+    let needsPropertiesRefetch = false;
+    for (const ev of events) {
+      const t = ev?.eventType;
+      const metadata = ev?.metadata;
+      if (!t) continue;
+      if (t === 'user_created' || t === 'user_deleted') {
+        needsUsersRefetch = true;
+        continue;
+      }
+      if (t === 'user_updated') {
+        needsUsersRefetch = true;
+        continue;
+      }
+      if (t === 'user_properties_assigned') {
+        needsUsersRefetch = true;
+        needsPropertiesRefetch = true;
+        continue;
+      }
+    }
+    if (needsUsersRefetch) {
+      queryClient.invalidateQueries({ queryKey: ['users'] });
+    }
+    if (needsPropertiesRefetch) {
+      queryClient.invalidateQueries({ queryKey: ['properties'] });
+    }
+  }, getFlagBool('USERS_REALTIME_V1', true));
 
   const createUserMutation = useMutation({
     mutationFn: async (userData: typeof newUser) => {

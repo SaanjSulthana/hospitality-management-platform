@@ -8,9 +8,11 @@ import { formatCardDateTime } from '../lib/datetime';
 import { formatDateForAPI, getCurrentDateString, getCurrentDateTimeString, formatDateForInput, formatDateForDisplay } from '../lib/date-utils';
 import { compressImageIfNeeded, bufferToBase64 } from '../lib/image-compression';
 import { API_CONFIG } from '../src/config/api';
+import { envUtils } from '@/src/utils/environment-detector';
 import { useRouteActive } from '@/hooks/use-route-aware-query';
 import { QUERY_CATEGORIES } from '@/src/config/query-config';
-import { getFlagNumber } from '../lib/feature-flags';
+import { useDailyApprovalCheck } from '@/hooks/useDailyApprovalCheck';
+import { getFlagNumber, getFlagBool } from '../lib/feature-flags';
 import { FileUpload } from '@/components/ui/file-upload';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -86,6 +88,7 @@ export default function FinancePage() {
 
   // Telemetry helper: posts with Authorization and keepalive; falls back silently on errors
   const sendTelemetry = (_sampleRate: number, events: any[]) => {
+    if (envUtils.isProduction()) return;
     try {
       const token = localStorage.getItem('accessToken') || '';
       if (!token) return;
@@ -266,6 +269,71 @@ export default function FinancePage() {
               // Handle special events
               if (eventType === 'daily_approval_granted') {
                 hasApprovalChange = true;
+                
+                // Patch individual items if transaction IDs are provided
+                const transactionIds = metadata?.transactionIds as number[] | undefined;
+                const newStatus = metadata?.newStatus || 'approved';
+                
+                console.log('[Finance] daily_approval_granted received', { 
+                  transactionIds, 
+                  newStatus, 
+                  userId: ev.userId,
+                  metadata 
+                });
+                
+                if (transactionIds && transactionIds.length > 0) {
+                  // Update revenues list - use setQueriesData for partial key matching
+                  queryClient.setQueriesData(
+                    { queryKey: ['revenues'] },
+                    (old: any) => {
+                      if (!old?.revenues) return old;
+                      const updated = {
+                        ...old,
+                        revenues: old.revenues.map((r: any) =>
+                          transactionIds.includes(r.id)
+                            ? { ...r, status: newStatus, approvedByUserId: ev.userId, approvedAt: ev.timestamp || new Date().toISOString() }
+                            : r
+                        ),
+                      };
+                      console.log('[Finance] Updated revenues cache', { 
+                        affected: transactionIds.length,
+                        newStatus 
+                      });
+                      return updated;
+                    }
+                  );
+                  
+                  // Update expenses list
+                  queryClient.setQueriesData(
+                    { queryKey: ['expenses'] },
+                    (old: any) => {
+                      if (!old?.expenses) return old;
+                      const updated = {
+                        ...old,
+                        expenses: old.expenses.map((e: any) =>
+                          transactionIds.includes(e.id)
+                            ? { ...e, status: newStatus, approvedByUserId: ev.userId, approvedAt: ev.timestamp || new Date().toISOString() }
+                            : e
+                        ),
+                      };
+                      console.log('[Finance] Updated expenses cache', { 
+                        affected: transactionIds.length,
+                        newStatus 
+                      });
+                      return updated;
+                    }
+                  );
+                  
+                  hasExpenseChange = true;
+                  hasRevenueChange = true;
+                } else {
+                  // Fallback: if no transactionIds, force invalidate the lists
+                  console.log('[Finance] daily_approval_granted without transactionIds - forcing invalidation');
+                  queryClient.invalidateQueries({ queryKey: ['revenues'] });
+                  queryClient.invalidateQueries({ queryKey: ['expenses'] });
+                  hasExpenseChange = true;
+                  hasRevenueChange = true;
+                }
               }
               continue;
             }
@@ -303,6 +371,10 @@ export default function FinancePage() {
                   paymentMode: metadata?.paymentMode || 'cash',
                   status: metadata?.newStatus || 'pending',
                   createdAt: ev.timestamp || new Date().toISOString(),
+                  // FIX: Include creator info from event metadata for realtime UI updates
+                  createdByName: metadata?.createdByName || 'Unknown User',
+                  createdByUserId: metadata?.createdByUserId || ev.userId,
+                  description: metadata?.description || '',
                 };
                 if (isExpense) {
                   newRow.category = metadata?.category || 'other';
@@ -424,13 +496,19 @@ export default function FinancePage() {
         });
 
         // Soft refresh safety net: ensure lists converge even if a patch was missed
+        // Only needed in non-patch mode; in patch mode, scheduleDerivedInvalidations
+        // already handles profit-loss and daily-approval-check at ~1s debounce
         if (financeSoftRefreshTimerRef.current) {
           clearTimeout(financeSoftRefreshTimerRef.current);
         }
-        financeSoftRefreshTimerRef.current = setTimeout(() => {
-          queryClient.invalidateQueries({ queryKey: ['revenues'] });
-          queryClient.invalidateQueries({ queryKey: ['expenses'] });
-        }, 5000);
+        if (!getFlagBool('REALTIME_PATCH_MODE', true)) {
+          financeSoftRefreshTimerRef.current = setTimeout(() => {
+            queryClient.invalidateQueries({ queryKey: ['revenues'] });
+            queryClient.invalidateQueries({ queryKey: ['expenses'] });
+          }, 5000);
+        }
+        // In patch mode: no 5s safety net needed - derived queries already
+        // invalidated by scheduleDerivedInvalidations, lists patched in real-time
       } catch (outerErr) {
         console.error('[Finance] Event batch failed', outerErr);
       }
@@ -455,29 +533,29 @@ export default function FinancePage() {
   
   // Helper function to invalidate all expense-related queries
   const invalidateAllExpenseQueries = () => {
-    queryClient.invalidateQueries({ queryKey: ['expenses'] }); // This will invalidate all expense queries with any filters
-    queryClient.invalidateQueries({ queryKey: ['profit-loss'] });
-    queryClient.invalidateQueries({ queryKey: ['pending-approvals'] });
-    queryClient.invalidateQueries({ queryKey: ['daily-approval-check'] });
-    queryClient.invalidateQueries({ queryKey: ['analytics'] });
-    queryClient.invalidateQueries({ queryKey: ['dashboard'] });
-    queryClient.invalidateQueries({ queryKey: ['daily-report'] });
-    queryClient.invalidateQueries({ queryKey: ['monthly-report'] });
-    queryClient.invalidateQueries({ queryKey: ['today-pending-transactions'] });
+    if (!getFlagBool('REALTIME_PATCH_MODE', true)) {
+      queryClient.invalidateQueries({ queryKey: ['expenses'] });
+    }
+    // Use the shared scheduler to coalesce derived invalidations
+    scheduleDerivedInvalidations({
+      profitLoss: true,
+      approvals: true,
+      todayPending: true,
+    });
   };
   
   // Helper function to invalidate all revenue-related queries
   const invalidateAllRevenueQueries = () => {
-    queryClient.invalidateQueries({ queryKey: ['revenues'] }); // This will invalidate all revenue queries with any filters
-    queryClient.invalidateQueries({ queryKey: ['expenses'] });
-    queryClient.invalidateQueries({ queryKey: ['profit-loss'] });
-    queryClient.invalidateQueries({ queryKey: ['pending-approvals'] });
-    queryClient.invalidateQueries({ queryKey: ['daily-approval-check'] });
-    queryClient.invalidateQueries({ queryKey: ['analytics'] });
-    queryClient.invalidateQueries({ queryKey: ['dashboard'] });
-    queryClient.invalidateQueries({ queryKey: ['daily-report'] });        // ✅ ADD
-    queryClient.invalidateQueries({ queryKey: ['monthly-report'] });      // ✅ ADD
-    queryClient.invalidateQueries({ queryKey: ['today-pending-transactions'] }); // ✅ ADD
+    if (!getFlagBool('REALTIME_PATCH_MODE', true)) {
+      queryClient.invalidateQueries({ queryKey: ['revenues'] });
+      queryClient.invalidateQueries({ queryKey: ['expenses'] });
+    }
+    // Use the shared scheduler to coalesce derived invalidations
+    scheduleDerivedInvalidations({
+      profitLoss: true,
+      approvals: true,
+      todayPending: true,
+    });
   };
   
   const [isExpenseDialogOpen, setIsExpenseDialogOpen] = useState(false);
@@ -663,7 +741,7 @@ export default function FinancePage() {
       return result;
     },
     enabled: routeActive,
-    ...QUERY_CATEGORIES.expenses,
+    ...(getFlagBool('REALTIME_PATCH_MODE', true) ? QUERY_CATEGORIES['realtime-connected'] : QUERY_CATEGORIES.expenses),
   });
 
   const { data: revenues, isLoading: revenuesLoading } = useQuery({
@@ -703,7 +781,7 @@ export default function FinancePage() {
       return result;
     },
     enabled: routeActive,
-    ...QUERY_CATEGORIES.revenues,
+    ...(getFlagBool('REALTIME_PATCH_MODE', true) ? QUERY_CATEGORIES['realtime-connected'] : QUERY_CATEGORIES.revenues),
   });
 
   // Reconcile totals from server lists (base truth)
@@ -747,33 +825,8 @@ export default function FinancePage() {
     ...QUERY_CATEGORIES.analytics,
   });
 
-  // Check daily approval status for managers
-  const { data: approvalStatus } = useQuery({
-    queryKey: ['daily-approval-check'],
-    queryFn: async () => {
-      // Direct API call since the endpoint isn't in generated client yet
-      const response = await fetch(`${API_CONFIG.BASE_URL}/finance/check-daily-approval`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('accessToken')}`,
-        },
-        body: JSON.stringify({}),
-      });
-      
-      if (!response.ok) {
-        throw new Error(`Failed to check approval status: ${response.statusText}`);
-      }
-      
-      return response.json();
-    },
-    enabled: user?.role === 'MANAGER',
-    refetchInterval: false, // No automatic polling - rely on events
-    staleTime: 10000, // Consider data fresh for 10 seconds
-    gcTime: 300000, // Cache results for 5 minutes
-    refetchOnWindowFocus: false,
-    refetchOnMount: true, // Refetch when component mounts
-  });
+  // Check daily approval status for managers (centralized hook)
+  const { data: approvalStatus } = useDailyApprovalCheck();
 
   const addExpenseMutation = useMutation({
     mutationFn: async (data: any) => {
@@ -2242,8 +2295,8 @@ export default function FinancePage() {
           </CardContent>
         </Card>
 
-        {/* Enhanced Action Buttons Section */}
-        <Card className="border-l-4 border-l-green-500 shadow-sm">
+        {/* Enhanced Action Buttons Section (desktop and tablet only) */}
+        <Card className="hidden sm:block border-l-4 border-l-green-500 shadow-sm">
           <CardContent className="pt-6">
             <div className="hidden sm:flex flex-wrap items-center gap-3">
               <Dialog open={isRevenueDialogOpen} onOpenChange={setIsRevenueDialogOpen}>

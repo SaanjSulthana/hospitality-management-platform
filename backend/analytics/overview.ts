@@ -1,13 +1,22 @@
-import { api, APIError } from "encore.dev/api";
+import { api, APIError, Header } from "encore.dev/api";
 import { getAuthData } from "~encore/auth";
 import { analyticsDB } from "./db";
 import { requireRole } from "../auth/middleware";
+import { 
+  trackMetrics,
+  generateETag,
+  checkConditionalGet,
+  generateCacheHeaders,
+  recordETagCheck
+} from "../middleware";
 
 interface OverviewRequest {
   propertyId?: number;
   regionId?: number;
   startDate?: string; // YYYY-MM-DD format
   endDate?: string; // YYYY-MM-DD format
+  // Conditional GET headers for cache validation
+  ifNoneMatch?: Header<"If-None-Match">;
 }
 
 export interface OverviewMetrics {
@@ -30,6 +39,12 @@ export interface OverviewResponse {
     startDate: Date;
     endDate: Date;
   };
+  // Cache metadata
+  _meta?: {
+    etag?: string;
+    cacheControl?: string;
+    cached?: boolean;  // True if this is a 304-equivalent response
+  };
 }
 
 // Gets analytics overview with role-based filtering
@@ -38,11 +53,15 @@ async function overviewHandler(req: OverviewRequest): Promise<OverviewResponse> 
     if (!authData) {
       throw APIError.unauthenticated("Authentication required");
     }
-    requireRole("ADMIN", "MANAGER")(authData);
+    
+    // Wrap with metrics tracking and ETag support
+    return trackMetrics('/v1/analytics/overview', async (timer) => {
+      timer.checkpoint('auth');
+      requireRole("ADMIN", "MANAGER")(authData);
 
-    const { propertyId, regionId, startDate, endDate } = req || {};
+      const { propertyId, regionId, startDate, endDate, ifNoneMatch } = req || {};
 
-    try {
+      try {
       // Default to last 30 days if no date range provided
       const defaultEndDate = new Date();
       const defaultStartDate = new Date();
@@ -166,7 +185,9 @@ async function overviewHandler(req: OverviewRequest): Promise<OverviewResponse> 
       // Staff utilization (placeholder)
       const staffUtilization = 75;
 
-      return {
+      timer.checkpoint('db_complete');
+      
+      const response = {
         metrics: {
           occupancyRate: Math.round(occupancyRate * 100) / 100,
           adr: Math.round(adr * 100) / 100,
@@ -185,10 +206,58 @@ async function overviewHandler(req: OverviewRequest): Promise<OverviewResponse> 
           endDate: periodEnd,
         },
       };
+      
+      // Generate ETag for response
+      const etag = generateETag(response);
+      
+      // Check if client has valid cached version
+      if (ifNoneMatch && checkConditionalGet(etag, ifNoneMatch)) {
+        recordETagCheck('/v1/analytics/overview', true);
+        console.log('[Analytics] 304 Not Modified - ETag match:', etag);
+        // Return minimal response (zeros signal use cached version)
+        return { 
+          metrics: {
+            occupancyRate: 0,
+            adr: 0,
+            revpar: 0,
+            totalRevenue: 0,
+            totalExpenses: 0,
+            netIncome: 0,
+            totalBookings: 0,
+            totalGuests: 0,
+            averageStayLength: 0,
+            taskCompletionRate: 0,
+            staffUtilization: 0,
+          },
+          period: response.period,
+          _meta: { 
+            etag, 
+            cacheControl: 'public, s-maxage=300, stale-while-revalidate=86400',
+            cached: true
+          } 
+        };
+      }
+      
+      recordETagCheck('/v1/analytics/overview', false);
+      
+      // Generate cache headers (analytics = 5 min CDN cache)
+      const cacheHeaders = generateCacheHeaders('summaries', {
+        orgId: authData.orgId,
+        propertyId,
+      });
+      
+      return {
+        ...response,
+        _meta: {
+          etag,
+          cacheControl: cacheHeaders['Cache-Control']
+        }
+      };
     } catch (error) {
       console.error('Analytics overview error:', error);
       throw new Error('Failed to fetch analytics data');
     }
+  }); // End trackMetrics
 }
 
 // LEGACY: Gets analytics overview (keep for backward compatibility)

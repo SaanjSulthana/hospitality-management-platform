@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "encore-mcp": {
+      "command": "encore",
+      "args": ["mcp", "run", "--app=hospitality-management-platform-cr8i"],
+      "cwd": "backend"
+    }
+  }
+}

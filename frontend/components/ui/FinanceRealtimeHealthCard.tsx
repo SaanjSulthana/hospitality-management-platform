@@ -31,16 +31,61 @@ export function FinanceRealtimeHealthCard() {
     setLoading(true);
     setError(null);
     try {
+      try {
+        (window as any).__realtimeClientStats = (window as any).__realtimeClientStats || { invalidationsFlushed: 0, keys: 0, patchesApplied: 0, metricsFetches: 0, financeMetricsFetches: 0, listRefetchesBurst: 0 };
+        (window as any).__realtimeClientStats.financeMetricsFetches++;
+      } catch {}
+      
+      const token = localStorage.getItem('accessToken');
+      if (!token) {
+        throw new Error('Not authenticated');
+      }
+      
       const resp = await fetch(`${API_CONFIG.BASE_URL}/finance/events/metrics`, {
-        headers: { Authorization: `Bearer ${localStorage.getItem('accessToken')}` }
+        headers: { Authorization: `Bearer ${token}` }
       });
       
       if (!resp.ok) {
-        throw new Error(`Failed to fetch metrics: ${resp.status}`);
+        // Try to parse error message from response
+        const text = await resp.text();
+        throw new Error(text || `HTTP ${resp.status}`);
       }
       
-      const json = await resp.json();
-      setData(json);
+      // Check if response body is empty
+      const text = await resp.text();
+      if (!text || text.trim() === '') {
+        throw new Error('Empty response from server');
+      }
+      
+      // Parse JSON
+      let json;
+      try {
+        json = JSON.parse(text);
+      } catch (parseErr) {
+        throw new Error(`Invalid JSON: ${text.substring(0, 100)}`);
+      }
+      
+      // Adapt the backend response to our expected format
+      // Backend returns: { metrics, realtime, timestamp }
+      // We expect: { realtime: { buffers, totals, publishedByType, ... } }
+      const adapted: RealtimeMetrics = {
+        realtime: json.realtime || {
+          buffers: [],
+          totals: { orgs: 0, totalDropped: 0 },
+          publishedByType: {},
+          deliveredByType: {},
+          maxBufferSize: 200,
+          eventTtlMs: 25000,
+        },
+        database: json.metrics ? {
+          last24Hours: json.metrics.map((m: any) => ({
+            event_type: m.event_type,
+            count: Number(m.count) || 0,
+          })),
+        } : undefined,
+      };
+      
+      setData(adapted);
     } catch (err) {
       console.error('Failed to fetch finance realtime metrics:', err);
       setError(err instanceof Error ? err.message : 'Unknown error');
@@ -50,10 +95,24 @@ export function FinanceRealtimeHealthCard() {
   };
   
   useEffect(() => {
-    fetchMetrics();
-    // Auto-refresh every 30 seconds
-    const interval = setInterval(fetchMetrics, 30000);
-    return () => clearInterval(interval);
+    const fetchIfVisible = () => {
+      if (typeof document !== 'undefined' && document.visibilityState !== 'visible') return;
+      void fetchMetrics();
+    };
+
+    fetchIfVisible();
+    // Auto-refresh every 60 seconds when tab is visible
+    const interval = setInterval(fetchIfVisible, 60000);
+
+    const onVis = () => {
+      if (document.visibilityState === 'visible') void fetchMetrics();
+    };
+    document.addEventListener('visibilitychange', onVis);
+
+    return () => {
+      clearInterval(interval);
+      document.removeEventListener('visibilitychange', onVis);
+    };
   }, []);
   
   if (error) {
@@ -224,7 +283,7 @@ export function FinanceRealtimeHealthCard() {
         </Button>
         
         <div className="text-[10px] text-gray-500 text-center pt-2 border-t">
-          Metrics auto-refresh every 30 seconds
+          Metrics auto-refresh every 60 seconds
         </div>
       </CardContent>
     </Card>

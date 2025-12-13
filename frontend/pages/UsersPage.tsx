@@ -827,8 +827,8 @@ export default function UsersPage() {
   // Only show to ADMIN
   if (user?.role !== 'ADMIN') {
     return (
-      <div className="min-h-screen bg-gray-50">
-        <div className="px-6 py-6">
+      <div className="w-full min-h-screen bg-gray-50">
+        <div className="px-6 pb-6 sm:py-6">
           <Card className="border-l-4 border-l-red-500 shadow-sm">
             <CardContent className="flex items-center justify-center p-12">
               <div className="text-center">
@@ -847,8 +847,8 @@ export default function UsersPage() {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-gray-50">
-        <div className="px-6 py-6">
+      <div className="w-full min-h-screen bg-gray-50">
+        <div className="px-6 pb-6 sm:py-6">
           <Card className="border-l-4 border-l-blue-500 shadow-sm">
             <CardContent className="flex items-center justify-center p-12">
               <div className="text-center">
@@ -864,11 +864,12 @@ export default function UsersPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <div className="px-6 py-6">
+    <div className="w-full min-h-screen bg-gray-50">
+      <div className="px-6 pb-6 sm:py-6">
         {/* Optimized User Management Section */}
         <Card className="border-l-4 border-l-blue-500 shadow-sm hover:shadow-md transition-shadow duration-200 mb-6">
-          <CardHeader className="pb-4">
+          {/* Header hidden on mobile since title appears in app nav */}
+          <CardHeader className="pb-4 hidden sm:block">
           <div className="flex items-center gap-3">
               <div className="p-2 bg-blue-100 rounded-lg shadow-sm">
                 <Users className="h-5 w-5 text-blue-600" />

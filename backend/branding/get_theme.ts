@@ -1,7 +1,14 @@
-import { api, APIError } from "encore.dev/api";
+import { api, APIError, Header } from "encore.dev/api";
 import { getAuthData } from "~encore/auth";
 import { requireRole } from "../auth/middleware";
 import { brandingDB } from "./db";
+import { 
+  trackMetrics,
+  generateETag,
+  checkConditionalGet,
+  generateCacheHeaders,
+  recordETagCheck
+} from "../middleware";
 
 export interface Theme {
   brandName: string;
@@ -16,10 +23,19 @@ export interface Theme {
   timeFormat: string;
 }
 
-export interface GetThemeRequest {}
+export interface GetThemeRequest {
+  // Conditional GET headers for cache validation
+  ifNoneMatch?: Header<"If-None-Match">;
+}
 
 export interface GetThemeResponse {
   theme: Theme;
+  // Cache metadata
+  _meta?: {
+    etag?: string;
+    cacheControl?: string;
+    cached?: boolean;  // True if this is a 304-equivalent response
+  };
 }
 
 // Shared handler for getting theme configuration
@@ -28,11 +44,17 @@ async function getThemeHandler(req: GetThemeRequest): Promise<GetThemeResponse> 
     if (!authData) {
       throw APIError.unauthenticated("Authentication required");
     }
-    requireRole("ADMIN", "MANAGER")(authData);
+    
+    // Wrap with metrics tracking and ETag support
+    return trackMetrics('/v1/branding/theme', async (timer) => {
+      timer.checkpoint('auth');
+      requireRole("ADMIN", "MANAGER")(authData);
 
-    try {
+      const { ifNoneMatch } = req;
 
-      console.log('Getting theme for organization:', authData.orgId);
+      try {
+
+        console.log('Getting theme for organization:', authData.orgId);
 
       const orgRow = await brandingDB.queryRow`
         SELECT name, theme_json FROM organizations WHERE id = ${authData.orgId}
@@ -109,7 +131,51 @@ async function getThemeHandler(req: GetThemeRequest): Promise<GetThemeResponse> 
         dateFormat: theme.dateFormat
       });
 
-      return { theme };
+      timer.checkpoint('db_complete');
+      
+      // Generate ETag for response
+      const response = { theme };
+      const etag = generateETag(response);
+      
+      // Check if client has valid cached version
+      if (ifNoneMatch && checkConditionalGet(etag, ifNoneMatch)) {
+        recordETagCheck('/v1/branding/theme', true);
+        console.log('[Branding] 304 Not Modified - ETag match:', etag);
+        // Return minimal response (empty theme signals use cached version)
+        return { 
+          theme: {
+            brandName: '',
+            primaryColor: '',
+            secondaryColor: '',
+            accentColor: '',
+            backgroundColor: '',
+            textColor: '',
+            currency: '',
+            dateFormat: '',
+            timeFormat: ''
+          }, 
+          _meta: { 
+            etag, 
+            cacheControl: 'public, s-maxage=1800, stale-while-revalidate=86400',
+            cached: true
+          } 
+        };
+      }
+      
+      recordETagCheck('/v1/branding/theme', false);
+      
+      // Generate cache headers (theme rarely changes - 30 min CDN cache)
+      const cacheHeaders = generateCacheHeaders('metadata', {
+        orgId: authData.orgId,
+      });
+      
+      return { 
+        theme, 
+        _meta: { 
+          etag, 
+          cacheControl: cacheHeaders['Cache-Control'] 
+        } 
+      };
     } catch (error: any) {
       console.error('Get theme failed:', error);
       
@@ -140,6 +206,7 @@ async function getThemeHandler(req: GetThemeRequest): Promise<GetThemeResponse> 
       
       return { theme: safeDefaultTheme };
     }
+  }); // End trackMetrics
 }
 
 // LEGACY: Gets theme configuration (keep for backward compatibility)

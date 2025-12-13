@@ -12,6 +12,14 @@
 
 import type { ServiceName, StreamMessage } from "./types";
 
+// Defaults ON unless explicitly disabled
+const CREDITS_ENABLED =
+  typeof process !== "undefined" &&
+    process.env &&
+    process.env.REALTIME_CREDITS_ENABLED === "false"
+    ? false
+    : true;
+
 /**
  * Connection information for a single WebSocket (Enhanced with backpressure)
  */
@@ -30,6 +38,8 @@ interface Connection {
   // Quarantine state
   quarantined?: boolean;
   quarantineUntil?: number;
+  // Credits (optional, only if REALTIME_CREDITS_ENABLED=true)
+  availableCredits?: number;
 }
 
 /**
@@ -37,8 +47,14 @@ interface Connection {
  * Maps orgId → Set of active connections
  */
 class ConnectionPool {
+  private readonly MAX_CONNECTIONS_PER_USER = 10;
+  private readonly MAX_CONNECTIONS_PER_ORG = 1000;
   private orgConnections = new Map<number, Set<Connection>>();
+  private userConnections = new Map<number, Set<Connection>>();
   private activeSubscriptions = new Map<string, number>(); // "orgId-service" → refCount
+  // Lightweight delivery stats
+  private totalSent = 0;
+  private totalDropped = 0;
 
   /**
    * Register a new WebSocket connection
@@ -51,6 +67,18 @@ class ConnectionPool {
     propertyFilter: number | null,
     sendFn: (message: StreamMessage) => Promise<void>
   ): Connection {
+    // Per-user connection cap
+    const userConns = this.userConnections.get(userId) || new Set();
+    if (userConns.size >= this.MAX_CONNECTIONS_PER_USER) {
+      throw new Error(`User connection limit exceeded: ${this.MAX_CONNECTIONS_PER_USER} connections per user`);
+    }
+
+    // Per-org connection cap
+    const orgConns = this.orgConnections.get(orgId);
+    if (orgConns && orgConns.size >= this.MAX_CONNECTIONS_PER_ORG) {
+      throw new Error(`Organization connection limit exceeded: ${this.MAX_CONNECTIONS_PER_ORG} connections per organization`);
+    }
+
     // Create connection object with backpressure limits
     const connection: Connection = {
       userId,
@@ -70,6 +98,10 @@ class ConnectionPool {
       this.orgConnections.set(orgId, new Set());
     }
     this.orgConnections.get(orgId)!.add(connection);
+
+    // Add to user's connection set
+    userConns.add(connection);
+    this.userConnections.set(userId, userConns);
 
     // Track subscription refs
     for (const service of services) {
@@ -151,6 +183,15 @@ class ConnectionPool {
       }
     }
 
+    // Remove from user's connection set
+    const userConns = this.userConnections.get(connection.userId);
+    if (userConns) {
+      userConns.delete(connection);
+      if (userConns.size === 0) {
+        this.userConnections.delete(connection.userId);
+      }
+    }
+
     console.log("[ConnectionPool][unregistered]", {
       orgId,
       userId: connection.userId,
@@ -177,7 +218,7 @@ class ConnectionPool {
     // 2. Match property filter (if any)
     const relevantConnections = Array.from(connections).filter((conn) => {
       if (!conn.services.has(service)) return false;
-      
+
       // If connection has property filter, check if event matches
       if (conn.propertyFilter !== null) {
         // Extract propertyId from first event (they should all be same property)
@@ -216,7 +257,8 @@ class ConnectionPool {
       if (conn.queueSize >= conn.maxQueueSize) {
         conn.slowConsumerWarnings++;
         droppedCount++;
-        
+        this.totalDropped++;
+
         console.warn("[ConnectionPool][backpressure-drop]", {
           orgId,
           userId: conn.userId,
@@ -226,7 +268,7 @@ class ConnectionPool {
           warnings: conn.slowConsumerWarnings,
           action: "dropping-event",
         });
-        
+
         // If too many warnings, consider disconnecting
         if (conn.slowConsumerWarnings > 10) {
           // Enter quarantine for 30s; shed low-tier services
@@ -239,16 +281,27 @@ class ConnectionPool {
           });
           // Connection will be cleaned up on next send failure
         }
-        
+
         return;
       }
 
       // Track queue size
+      // Optional credit-based flow control
+      if (CREDITS_ENABLED) {
+        const credits = typeof conn.availableCredits === "number" ? conn.availableCredits : Infinity;
+        if (credits <= 0) {
+          droppedCount++;
+          return;
+        }
+        conn.availableCredits = credits - 1;
+      }
+
       conn.queueSize++;
-      
+
       try {
         await conn.send(message);
         sentCount++;
+        this.totalSent++;
         conn.queueSize = Math.max(0, conn.queueSize - 1);
         conn.slowConsumerWarnings = Math.max(0, conn.slowConsumerWarnings - 1);
         // If recovering, clear quarantine early
@@ -309,10 +362,20 @@ class ConnectionPool {
    * Get stats for monitoring
    */
   getStats() {
+    // Count quarantined connections
+    let quarantinedActive = 0;
+    for (const conns of this.orgConnections.values()) {
+      for (const c of conns) {
+        if (c.quarantined) quarantinedActive++;
+      }
+    }
     return {
       totalConnections: this.getTotalConnections(),
       totalOrgs: this.orgConnections.size,
       totalSubscriptions: this.activeSubscriptions.size,
+      sentTotal: this.totalSent,
+      droppedTotal: this.totalDropped,
+      quarantinedActive,
       connectionsByOrg: Array.from(this.orgConnections.entries()).map(([orgId, conns]) => ({
         orgId,
         connections: conns.size,
@@ -333,6 +396,22 @@ class ConnectionPool {
   getConnections(orgId: number): Connection[] {
     const connections = this.orgConnections.get(orgId);
     return connections ? Array.from(connections) : [];
+  }
+
+  /**
+   * Set available credits for all connections of a user in an org
+   */
+  setCredits(orgId: number, userId: number, credits: number): number {
+    if (!CREDITS_ENABLED) return 0;
+    const connections = this.orgConnections.get(orgId);
+    if (!connections || connections.size === 0) return 0;
+    let updated = 0;
+    for (const conn of connections) {
+      if (conn.userId !== userId) continue;
+      conn.availableCredits = Math.max(0, Math.floor(credits));
+      updated++;
+    }
+    return updated;
   }
 }
 

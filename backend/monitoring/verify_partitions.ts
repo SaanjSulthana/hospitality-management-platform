@@ -1,3 +1,5 @@
+// Add logging to detect partition sync issues
+import { api } from "encore.dev/api";
 /**
  * Partition Verification Endpoint
  * 
@@ -5,8 +7,6 @@
  * 
  * Verifies that the partitioned database setup is working correctly
  */
-
-import { api } from "encore.dev/api";
 import { SQLDatabase } from "encore.dev/storage/sqldb";
 
 const db = SQLDatabase.named("hospitality");
@@ -56,7 +56,7 @@ async function verifyPartitionsHandler(): Promise<VerificationResult> {
       // 1. Check partitioned tables
       let partitionedTables: PartitionInfo[] = [];
       try {
-        partitionedTables = await db.query<PartitionInfo>`
+        partitionedTables = await db.queryAll<PartitionInfo>`
           SELECT tablename 
           FROM pg_tables 
           WHERE tablename LIKE '%_partitioned' 
@@ -69,7 +69,7 @@ async function verifyPartitionsHandler(): Promise<VerificationResult> {
       // 2. Check revenue partitions
       let revenuePartitions: PartitionInfo[] = [];
       try {
-        revenuePartitions = await db.query<PartitionInfo>`
+        revenuePartitions = await db.queryAll<PartitionInfo>`
           SELECT tablename 
           FROM pg_tables 
           WHERE tablename LIKE 'revenues_20%' 
@@ -83,7 +83,7 @@ async function verifyPartitionsHandler(): Promise<VerificationResult> {
       // 3. Check expense partitions
       let expensePartitions: PartitionInfo[] = [];
       try {
-        expensePartitions = await db.query<PartitionInfo>`
+        expensePartitions = await db.queryAll<PartitionInfo>`
           SELECT tablename 
           FROM pg_tables 
           WHERE tablename LIKE 'expenses_20%' 
@@ -97,7 +97,7 @@ async function verifyPartitionsHandler(): Promise<VerificationResult> {
       // 4. Check balance partitions
       let balancePartitions: PartitionInfo[] = [];
       try {
-        balancePartitions = await db.query<PartitionInfo>`
+        balancePartitions = await db.queryAll<PartitionInfo>`
           SELECT tablename 
           FROM pg_tables 
           WHERE tablename LIKE 'daily_cash_balances_%'
@@ -109,7 +109,7 @@ async function verifyPartitionsHandler(): Promise<VerificationResult> {
       }
 
       // 5. Check triggers
-      const triggers = await db.query<TriggerStatus>`
+      const triggers = await db.queryAll<TriggerStatus>`
         SELECT 
           trigger_name,
           event_manipulation,
@@ -148,6 +148,49 @@ async function verifyPartitionsHandler(): Promise<VerificationResult> {
       const revenueMatch = Math.abs((revenueLegacy?.count || 0) - (revenuePartitioned?.count || 0)) <= 5;
       const expenseMatch = Math.abs((expenseLegacy?.count || 0) - (expensePartitioned?.count || 0)) <= 5;
       const balanceMatch = Math.abs((balanceLegacy?.count || 0) - (balancePartitioned?.count || 0)) <= 5;
+
+      // Add detailed logging for partition sync issues
+      console.log('[PARTITION_SYNC_CHECK]', {
+        timestamp: new Date().toISOString(),
+        revenueSync: {
+          legacy: revenueLegacy?.count || 0,
+          partitioned: revenuePartitioned?.count || 0,
+          delta: Math.abs((revenueLegacy?.count || 0) - (revenuePartitioned?.count || 0)),
+          match: revenueMatch
+        },
+        expenseSync: {
+          legacy: expenseLegacy?.count || 0,
+          partitioned: expensePartitioned?.count || 0,
+          delta: Math.abs((expenseLegacy?.count || 0) - (expensePartitioned?.count || 0)),
+          match: expenseMatch
+        },
+        balanceSync: {
+          legacy: balanceLegacy?.count || 0,
+          partitioned: balancePartitioned?.count || 0,
+          delta: Math.abs((balanceLegacy?.count || 0) - (balancePartitioned?.count || 0)),
+          match: balanceMatch
+        }
+      });
+
+      // Log critical sync issues
+      if (!revenueMatch) {
+        console.error('[PARTITION_SYNC_CRITICAL] Revenue tables out of sync!', {
+          legacy: revenueLegacy?.count || 0,
+          partitioned: revenuePartitioned?.count || 0
+        });
+      }
+      if (!expenseMatch) {
+        console.error('[PARTITION_SYNC_CRITICAL] Expense tables out of sync!', {
+          legacy: expenseLegacy?.count || 0,
+          partitioned: expensePartitioned?.count || 0
+        });
+      }
+      if (!balanceMatch) {
+        console.error('[PARTITION_SYNC_CRITICAL] Balance tables out of sync!', {
+          legacy: balanceLegacy?.count || 0,
+          partitioned: balancePartitioned?.count || 0
+        });
+      }
 
       // 7. Determine verdict
       const allChecksPass = 

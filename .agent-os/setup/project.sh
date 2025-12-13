@@ -242,6 +242,7 @@ if [ "$CURSOR" = true ]; then
     echo ""
     echo "📥 Installing Cursor support..."
     mkdir -p "./.cursor/rules"
+    mkdir -p "./.cursor"
 
     echo "  📂 Rules:"
 
@@ -265,6 +266,38 @@ if [ "$CURSOR" = true ]; then
                 rm "$TEMP_FILE"
             fi
         done
+    fi
+
+    echo ""
+    echo "  ⚙️ Configuring Encore MCP server for Cursor (mcp.json)..."
+
+    # Only create MCP config if it doesn't already exist
+    if [ -f "./.cursor/mcp.json" ]; then
+        echo "  ⏭  .cursor/mcp.json already exists, skipping MCP config creation"
+    else
+        # Try to read Encore app id from backend/encore.app, fall back to default
+        ENCORE_APP_ID="hospitality-management-platform-cr8i"
+        if [ -f "./backend/encore.app" ]; then
+            # Extract the "id" field value using grep/sed; ignore errors if format changes
+            DETECTED_ID=$(grep '"id"' ./backend/encore.app | head -n 1 | sed -E 's/.*"id":[[:space:]]*"([^"]+)".*/\1/' || true)
+            if [ -n "$DETECTED_ID" ]; then
+                ENCORE_APP_ID="$DETECTED_ID"
+            fi
+        fi
+
+        cat > "./.cursor/mcp.json" <<EOF
+{
+  "mcpServers": {
+    "encore-mcp": {
+      "command": "encore",
+      "args": ["mcp", "run", "--app=${ENCORE_APP_ID}"],
+      "cwd": "backend"
+    }
+  }
+}
+EOF
+
+        echo "  ✅ Created .cursor/mcp.json for Encore MCP (app id: ${ENCORE_APP_ID})"
     fi
 fi
 

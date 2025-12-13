@@ -219,11 +219,11 @@ export interface MetricsResponse {
 }
 
 async function getAllMetricsHandler(): Promise<MetricsResponse> {
-    return {
-      timestamp: new Date().toISOString(),
-      metrics: metricsCollector.getAllMetrics(),
-    };
-  }
+  return {
+    timestamp: new Date().toISOString(),
+    metrics: metricsCollector.getAllMetrics(),
+  };
+}
 
 export const getAllMetrics = api(
   { expose: true, method: "GET", path: "/metrics/all" },
@@ -236,19 +236,19 @@ export const getAllMetricsV1 = api(
 );
 
 async function getMetricHistoryHandler({ name }: GetMetricHistoryRequest): Promise<{
-    name: string;
-    timestamp: string;
-    data: any;
-  }> {
-    const windowMs = 3600000; // Last hour
-    const data = metricsCollector.getMetric(name, windowMs);
+  name: string;
+  timestamp: string;
+  data: any;
+}> {
+  const windowMs = 3600000; // Last hour
+  const data = metricsCollector.getMetric(name, windowMs);
 
-    return {
-      name,
-      timestamp: new Date().toISOString(),
-      data: data || { message: 'No data available' },
-    };
-  }
+  return {
+    name,
+    timestamp: new Date().toISOString(),
+    data: data || { message: 'No data available' },
+  };
+}
 
 export const getMetricHistory = api<GetMetricHistoryRequest, { name: string; timestamp: string; data: any }>(
   { expose: true, method: "GET", path: "/metrics/:name" },
@@ -286,46 +286,39 @@ export interface AggregatedMetricsResponse {
 }
 
 async function getAggregatedMetricsHandler(): Promise<AggregatedMetricsResponse> {
-    const allMetrics = metricsCollector.getAllMetrics();
+  const allMetrics = metricsCollector.getAllMetrics();
 
-    return {
-      timestamp: new Date().toISOString(),
-      cache: {
-        available: (allMetrics['cache.redis.connected']?.value || 0) === 1,
-        backend: (allMetrics['cache.redis.connected']?.value || 0) === 1 ? 'redis' : 'memory',
-        totalEntries: 
-          (allMetrics['cache.reports.entries']?.value || 0) +
-          (allMetrics['cache.balance.entries']?.value || 0) +
-          (allMetrics['cache.summary.entries']?.value || 0),
-        invalidationQueue: allMetrics['cache.invalidation.queue.size']?.value || 0,
+  return {
+    timestamp: new Date().toISOString(),
+    cache: {
+      available: (allMetrics['cache.redis.connected']?.value || 0) === 1,
+      backend: (allMetrics['cache.redis.connected']?.value || 0) === 1 ? 'redis' : 'memory',
+      totalEntries:
+        (allMetrics['cache.reports.entries']?.value || 0) +
+        (allMetrics['cache.balance.entries']?.value || 0) +
+        (allMetrics['cache.summary.entries']?.value || 0),
+      invalidationQueue: allMetrics['cache.invalidation.queue.size']?.value || 0,
+    },
+    database: {
+      replicasEnabled: (allMetrics['replica.enabled']?.value || 0) === 1,
+      replicaCount: allMetrics['replica.total.count']?.value || 0,
+      healthyReplicas: allMetrics['replica.healthy.count']?.value || 0,
+      maxReplicaLag: allMetrics['replica.lag.max']?.value || 0,
+      primaryConnections: {
+        total: allMetrics['db.primary.connections.total']?.value || 0,
+        active: allMetrics['db.primary.connections.active']?.value || 0,
+        idle: allMetrics['db.primary.connections.idle']?.value || 0,
       },
-      database: {
-        replicasEnabled: (allMetrics['replica.enabled']?.value || 0) === 1,
-        replicaCount: allMetrics['replica.total.count']?.value || 0,
-        healthyReplicas: allMetrics['replica.healthy.count']?.value || 0,
-        maxReplicaLag: allMetrics['replica.lag.max']?.value || 0,
-        primaryConnections: {
-          total: allMetrics['db.primary.connections.total']?.value || 0,
-          active: allMetrics['db.primary.connections.active']?.value || 0,
-          idle: allMetrics['db.primary.connections.idle']?.value || 0,
-        },
-      },
-      partitions: {
-        enabled: (allMetrics['partition.enabled']?.value || 0) === 1,
-        count: allMetrics['partition.count']?.value || 0,
-      },
-    };
-  }
+    },
+    partitions: {
+      enabled: (allMetrics['partition.enabled']?.value || 0) === 1,
+      count: allMetrics['partition.count']?.value || 0,
+    },
+  };
+}
 
-export const getAggregatedMetrics = api(
-  { expose: true, method: "GET", path: "/metrics/aggregated" },
-  getAggregatedMetricsHandler
-);
-
-export const getAggregatedMetricsV1 = api(
-  { expose: true, method: "GET", path: "/v1/system/metrics/aggregated" },
-  getAggregatedMetricsHandler
-);
+// Conflicting getAggregatedMetrics APIs removed.
+// See aggregated_metrics.ts for the actual implementation.
 
 // Export metrics collector for internal use
 export { metricsCollector };

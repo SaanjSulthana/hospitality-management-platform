@@ -1,9 +1,20 @@
-import { api, APIError } from "encore.dev/api";
+import { api, APIError, Header, Query } from "encore.dev/api";
 import { getAuthData } from "~encore/auth";
 import { financeDB } from "./db";
 import { requireRole } from "../auth/middleware";
 import { handleFinanceError, executeWithRetry, generateFallbackQuery, isSchemaError } from "./error_handling";
 import { v1Path } from "../shared/http";
+import { 
+  trackMetrics,
+  generateCollectionETag,
+  checkConditionalGet,
+  generateCacheHeaders,
+  recordETagCheck
+} from "../middleware";
+import {
+  createFieldSelector,
+  recordFieldSelectionStats,
+} from "../middleware/field_selector";
 
 interface ListExpensesRequest {
   propertyId?: number;
@@ -11,6 +22,12 @@ interface ListExpensesRequest {
   status?: string;
   startDate?: string; // YYYY-MM-DD format
   endDate?: string; // YYYY-MM-DD format
+  // Conditional GET headers for cache validation
+  ifNoneMatch?: Header<"If-None-Match">;
+  // Field selection for sparse responses (reduces payload size)
+  fields?: Query<"fields">;
+  // Expand nested objects
+  expand?: Query<"expand">;
 }
 
 export interface ExpenseInfo {
@@ -38,6 +55,13 @@ export interface ExpenseInfo {
 export interface ListExpensesResponse {
   expenses: ExpenseInfo[];
   totalAmount: number;
+  // Cache metadata (returned for client-side caching)
+  _meta?: {
+    etag?: string;
+    cacheControl?: string;
+    count?: number;
+    cached?: boolean;  // True if this is a 304-equivalent response
+  };
 }
 
 // Lists expenses with filtering
@@ -46,11 +70,18 @@ async function listExpensesHandler(req: ListExpensesRequest): Promise<ListExpens
     if (!authData) {
       throw APIError.unauthenticated("Authentication required");
     }
-    requireRole("ADMIN", "MANAGER")(authData);
+    
+    // Wrap with metrics tracking and ETag support
+    return trackMetrics('/v1/finance/expenses', async (timer) => {
+      timer.checkpoint('auth');
+      requireRole("ADMIN", "MANAGER")(authData);
 
-    const { propertyId, category, status, startDate, endDate } = req || {};
+      const { propertyId, category, status, startDate, endDate, ifNoneMatch, fields, expand } = req || {};
+      
+      // === FIELD SELECTION ===
+      const fieldSelector = createFieldSelector('finance/expenses', fields, expand);
 
-    console.log('List expenses request:', { propertyId, category, status, startDate, endDate, orgId: authData.orgId });
+      console.log('List expenses request:', { propertyId, category, status, startDate, endDate, orgId: authData.orgId });
 
     // Use full query with all columns (they are guaranteed to exist after migrations)
     let query = `
@@ -128,33 +159,85 @@ async function listExpensesHandler(req: ListExpensesRequest): Promise<ListExpens
       
       console.log('Query result count:', expenses.length);
 
+      timer.checkpoint('db_complete');
+      
       // Calculate total amount for all expenses (including pending)
       const totalAmount = expenses
         .reduce((sum, expense) => sum + (parseInt(expense.amount_cents) || 0), 0);
 
+      const expenseList = expenses.map((expense) => ({
+        id: expense.id,
+        propertyId: expense.property_id,
+        propertyName: expense.property_name,
+        category: expense.category,
+        amountCents: parseInt(expense.amount_cents),
+        currency: expense.currency,
+        description: expense.description,
+        receiptUrl: expense.receipt_url,
+        receiptFileId: expense.receipt_file_id,
+        expenseDate: expense.expense_date,
+        paymentMode: expense.payment_mode || 'cash',
+        bankReference: expense.bank_reference,
+        status: expense.status || 'pending',
+        createdByUserId: expense.created_by_user_id,
+        createdByName: expense.created_by_name,
+        approvedByUserId: expense.approved_by_user_id,
+        approvedByName: expense.approved_by_name,
+        approvedAt: expense.approved_at,
+        createdAt: expense.created_at,
+      }));
+
+      // Generate ETag from the response data
+      const responseData = { expenses: expenseList, totalAmount };
+      const etag = generateCollectionETag(responseData, expenseList.length);
+      
+      // Check If-None-Match for conditional GET (304 response)
+      if (ifNoneMatch) {
+        const isMatch = checkConditionalGet(etag, ifNoneMatch);
+        recordETagCheck('/v1/finance/expenses', isMatch);
+        
+        if (isMatch) {
+          console.log('[Expenses] 304 Not Modified - ETag match:', etag);
+          return {
+            expenses: [],
+            totalAmount: 0,
+            _meta: { etag, cacheControl: 's-maxage=60, stale-while-revalidate=300', count: expenseList.length, cached: true }
+          };
+        }
+      }
+
+      // Generate cache headers
+      const cacheHeaders = generateCacheHeaders('summaries', {
+        orgId: authData.orgId,
+        propertyId: propertyId,
+      });
+      
+      // === APPLY FIELD SELECTION ===
+      const filteredExpenses = fieldSelector.apply(expenseList) as ExpenseInfo[];
+      
+      // Record stats for monitoring
+      if (fieldSelector.hasCustomFields) {
+        const savings = fieldSelector.calculateSavings(expenseList, filteredExpenses);
+        recordFieldSelectionStats(true, savings.savedBytes, savings.savedPercent);
+        console.log('[Expenses] Field selection applied:', {
+          fieldsReturned: fieldSelector.fields.length,
+          bytesSaved: savings.savedBytes,
+          percentSaved: savings.savedPercent,
+        });
+      }
+      
+      // Get field selection headers
+      const fieldHeaders = fieldSelector.getHeaders();
+
       return {
-        expenses: expenses.map((expense) => ({
-          id: expense.id,
-          propertyId: expense.property_id,
-          propertyName: expense.property_name,
-          category: expense.category,
-          amountCents: parseInt(expense.amount_cents),
-          currency: expense.currency,
-          description: expense.description,
-          receiptUrl: expense.receipt_url,
-          receiptFileId: expense.receipt_file_id,
-          expenseDate: expense.expense_date,
-          paymentMode: expense.payment_mode || 'cash',
-          bankReference: expense.bank_reference,
-          status: expense.status || 'pending',
-          createdByUserId: expense.created_by_user_id,
-          createdByName: expense.created_by_name,
-          approvedByUserId: expense.approved_by_user_id,
-          approvedByName: expense.approved_by_name,
-          approvedAt: expense.approved_at,
-          createdAt: expense.created_at,
-        })),
+        expenses: filteredExpenses,
         totalAmount,
+        _meta: {
+          etag,
+          cacheControl: cacheHeaders['Cache-Control'],
+          count: expenseList.length,
+          fieldsReturned: fieldHeaders['X-Fields-Returned'] || undefined,
+        }
       };
     } catch (error) {
       // Handle schema errors with fallback query
@@ -219,6 +302,7 @@ async function listExpensesHandler(req: ListExpensesRequest): Promise<ListExpens
         table: 'expenses'
       });
     }
+  }); // End trackMetrics
 }
 
 // Legacy path (kept during migration window)

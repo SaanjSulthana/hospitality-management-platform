@@ -33,7 +33,12 @@ class TokenManager {
   private refreshPromise: Promise<string> | null = null;
   private requestQueue: QueuedRequest[] = [];
   private refreshTimer: number | null = null;
+  private backgroundRefreshInterval: number | null = null;
   private isRefreshing = false;
+  
+  // DEBUG: Toggle to disable auto-refresh for debugging
+  private autoRefreshEnabled = true;
+  private debugMode = false;
   
   // Configuration
   private readonly REFRESH_BEFORE_EXPIRY = 60; // Refresh 60s before expiry
@@ -48,6 +53,20 @@ class TokenManager {
     // Private constructor for singleton
     this.startBackgroundRefresh();
     this.setupStorageListener();
+    
+    // DEBUG: Check if debug mode was enabled in localStorage
+    const debugEnabled = localStorage.getItem('tokenManager_debug') === 'true';
+    const autoRefreshDisabled = localStorage.getItem('tokenManager_autoRefreshDisabled') === 'true';
+    
+    if (debugEnabled) {
+      this.debugMode = true;
+      console.log('[TokenManager] Debug mode ENABLED');
+    }
+    
+    if (autoRefreshDisabled) {
+      this.autoRefreshEnabled = false;
+      console.warn('[TokenManager] Auto-refresh is DISABLED for debugging');
+    }
   }
 
   /**
@@ -297,6 +316,14 @@ class TokenManager {
       clearTimeout(this.refreshTimer);
     }
 
+    // DEBUG: Skip if auto-refresh is disabled
+    if (!this.autoRefreshEnabled) {
+      if (this.debugMode) {
+        console.log('[TokenManager] Auto-refresh scheduling skipped - disabled for debugging');
+      }
+      return;
+    }
+
     const token = this.getAccessToken();
     if (!token) return;
 
@@ -326,7 +353,15 @@ class TokenManager {
    */
   private startBackgroundRefresh(): void {
     // Check for expiring tokens every 30 seconds
-    setInterval(() => {
+    this.backgroundRefreshInterval = window.setInterval(() => {
+      // DEBUG: Skip if auto-refresh is disabled
+      if (!this.autoRefreshEnabled) {
+        if (this.debugMode) {
+          console.log('[TokenManager] Background check skipped - auto-refresh disabled');
+        }
+        return;
+      }
+      
       const token = this.getAccessToken();
       if (token && this.isTokenExpiringSoon(token) && !this.isRefreshing) {
         console.log('[TokenManager] Background check detected expiring token');
@@ -382,6 +417,140 @@ class TokenManager {
    */
   public async forceRefresh(): Promise<string> {
     return this.refreshAccessToken();
+  }
+
+  // ============================================================================
+  // DEBUG METHODS - For diagnosing auth refresh issues
+  // ============================================================================
+
+  /**
+   * Enable/disable auto-refresh for debugging
+   * When disabled, token refresh will only happen via forceRefresh()
+   */
+  public setAutoRefreshEnabled(enabled: boolean): void {
+    this.autoRefreshEnabled = enabled;
+    localStorage.setItem('tokenManager_autoRefreshDisabled', enabled ? 'false' : 'true');
+    
+    if (enabled) {
+      console.log('[TokenManager] Auto-refresh ENABLED');
+      this.scheduleNextRefresh();
+    } else {
+      console.warn('[TokenManager] Auto-refresh DISABLED - manual refresh only');
+      if (this.refreshTimer) {
+        clearTimeout(this.refreshTimer);
+        this.refreshTimer = null;
+      }
+    }
+  }
+
+  /**
+   * Enable/disable debug mode for verbose logging
+   */
+  public setDebugMode(enabled: boolean): void {
+    this.debugMode = enabled;
+    localStorage.setItem('tokenManager_debug', enabled ? 'true' : 'false');
+    console.log(`[TokenManager] Debug mode ${enabled ? 'ENABLED' : 'DISABLED'}`);
+  }
+
+  /**
+   * Get comprehensive debug status for diagnosing auth issues
+   */
+  public getDebugStatus(): {
+    autoRefreshEnabled: boolean;
+    debugMode: boolean;
+    isRefreshing: boolean;
+    queuedRequests: number;
+    hasScheduledRefresh: boolean;
+    accessToken: {
+      present: boolean;
+      length: number | null;
+      payload: any | null;
+      expiresAt: string | null;
+      expiresInSeconds: number | null;
+      isExpired: boolean | null;
+      isExpiringSoon: boolean | null;
+    };
+    refreshToken: {
+      present: boolean;
+      length: number | null;
+    };
+    serverTime: string;
+    clientTime: string;
+    timeDiff: string;
+  } {
+    const accessToken = this.getAccessToken();
+    const refreshToken = this.getRefreshToken();
+    const payload = accessToken ? this.decodeToken(accessToken) : null;
+    const now = Math.floor(Date.now() / 1000);
+    
+    let expiresInSeconds: number | null = null;
+    let isExpired: boolean | null = null;
+    let isExpiringSoon: boolean | null = null;
+    
+    if (payload?.exp) {
+      expiresInSeconds = payload.exp - now;
+      isExpired = payload.exp <= now;
+      isExpiringSoon = this.isTokenExpiringSoon(accessToken!, 0);
+    }
+
+    return {
+      autoRefreshEnabled: this.autoRefreshEnabled,
+      debugMode: this.debugMode,
+      isRefreshing: this.isRefreshing,
+      queuedRequests: this.requestQueue.length,
+      hasScheduledRefresh: this.refreshTimer !== null,
+      accessToken: {
+        present: !!accessToken,
+        length: accessToken?.length ?? null,
+        payload: payload ? {
+          sub: payload.sub,
+          orgId: payload.orgId,
+          role: payload.role,
+          email: payload.email,
+          exp: payload.exp,
+          iat: payload.iat,
+        } : null,
+        expiresAt: payload?.exp ? new Date(payload.exp * 1000).toISOString() : null,
+        expiresInSeconds,
+        isExpired,
+        isExpiringSoon,
+      },
+      refreshToken: {
+        present: !!refreshToken,
+        length: refreshToken?.length ?? null,
+      },
+      serverTime: 'Use backend debug endpoint for server time',
+      clientTime: new Date().toISOString(),
+      timeDiff: 'Compare client vs server time to detect clock skew',
+    };
+  }
+
+  /**
+   * Log comprehensive debug info to console
+   */
+  public logDebugStatus(): void {
+    const status = this.getDebugStatus();
+    console.group('[TokenManager] Debug Status');
+    console.log('Auto-refresh enabled:', status.autoRefreshEnabled);
+    console.log('Debug mode:', status.debugMode);
+    console.log('Is refreshing:', status.isRefreshing);
+    console.log('Queued requests:', status.queuedRequests);
+    console.log('Has scheduled refresh:', status.hasScheduledRefresh);
+    console.log('Client time:', status.clientTime);
+    console.group('Access Token');
+    console.log('Present:', status.accessToken.present);
+    console.log('Length:', status.accessToken.length);
+    console.log('Expires at:', status.accessToken.expiresAt);
+    console.log('Expires in (seconds):', status.accessToken.expiresInSeconds);
+    console.log('Is expired:', status.accessToken.isExpired);
+    console.log('Is expiring soon:', status.accessToken.isExpiringSoon);
+    console.log('Payload:', status.accessToken.payload);
+    console.groupEnd();
+    console.group('Refresh Token');
+    console.log('Present:', status.refreshToken.present);
+    console.log('Length:', status.refreshToken.length);
+    console.groupEnd();
+    console.groupEnd();
   }
 }
 

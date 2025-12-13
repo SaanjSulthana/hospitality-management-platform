@@ -10,6 +10,7 @@ import { CacheBackend, CacheStats, CacheEntry } from './types';
 // External Redis client interface (will be initialized lazily)
 let redisClient: any = null;
 let redisAvailable = false;
+let redisInitialized = false; // FIX: Track if init has run to avoid log spam
 
 /**
  * Initialize external Redis if configured
@@ -22,9 +23,11 @@ async function initRedis(config: {
   maxRetries: number;
   connectTimeout: number;
 }): Promise<boolean> {
-  if (redisClient !== null) {
+  // FIX: Check if already initialized to prevent repeated log messages
+  if (redisInitialized) {
     return redisAvailable;
   }
+  redisInitialized = true;
 
   const { host, port, password, useTLS, maxRetries, connectTimeout } = config;
 

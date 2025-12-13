@@ -1,15 +1,32 @@
-import { api, APIError } from "encore.dev/api";
+import { api, APIError, Header, Query } from "encore.dev/api";
 import { getAuthData } from "~encore/auth";
 import { financeDB } from "./db";
 import { requireRole } from "../auth/middleware";
 import { handleFinanceError, executeWithRetry, generateFallbackQuery, isSchemaError } from "./error_handling";
 import { v1Path } from "../shared/http";
+import { 
+  trackMetrics,
+  generateCollectionETag,
+  checkConditionalGet,
+  generateCacheHeaders,
+  recordETagCheck
+} from "../middleware";
+import {
+  createFieldSelector,
+  recordFieldSelectionStats,
+} from "../middleware/field_selector";
 
 interface ListRevenuesRequest {
   propertyId?: number;
   source?: string;
   startDate?: string; // YYYY-MM-DD format
   endDate?: string; // YYYY-MM-DD format
+  // Conditional GET headers for cache validation
+  ifNoneMatch?: Header<"If-None-Match">;
+  // Field selection for sparse responses (reduces payload size)
+  fields?: Query<"fields">;
+  // Expand nested objects
+  expand?: Query<"expand">;
 }
 
 export interface RevenueInfo {
@@ -34,6 +51,13 @@ export interface RevenueInfo {
 export interface ListRevenuesResponse {
   revenues: RevenueInfo[];
   totalAmount: number;
+  // Cache metadata (returned for client-side caching)
+  _meta?: {
+    etag?: string;
+    cacheControl?: string;
+    count?: number;
+    cached?: boolean;  // True if this is a 304-equivalent response
+  };
 }
 
 // Lists revenues with filtering
@@ -42,11 +66,18 @@ async function listRevenuesHandler(req: ListRevenuesRequest): Promise<ListRevenu
     if (!authData) {
       throw APIError.unauthenticated("Authentication required");
     }
-    requireRole("ADMIN", "MANAGER")(authData);
+    
+    // Wrap with metrics tracking and ETag support
+    return trackMetrics('/v1/finance/revenues', async (timer) => {
+      timer.checkpoint('auth');
+      requireRole("ADMIN", "MANAGER")(authData);
 
-    const { propertyId, source, startDate, endDate } = req || {};
+      const { propertyId, source, startDate, endDate, ifNoneMatch, fields, expand } = req || {};
+      
+      // === FIELD SELECTION ===
+      const fieldSelector = createFieldSelector('finance/revenues', fields, expand);
 
-    console.log('List revenues request:', { propertyId, source, startDate, endDate, orgId: authData.orgId });
+      console.log('List revenues request:', { propertyId, source, startDate, endDate, orgId: authData.orgId });
     
     // Use full query with all columns (they are guaranteed to exist after migrations)
     let query = `
@@ -120,33 +151,87 @@ async function listRevenuesHandler(req: ListRevenuesRequest): Promise<ListRevenu
       
       console.log('Query result count:', revenues.length);
 
+      timer.checkpoint('db_complete');
+      
       // Calculate total amount for all revenues (including pending)
       const totalAmount = revenues
         .reduce((sum, revenue) => sum + (parseInt(revenue.amount_cents) || 0), 0);
 
+      const revenueList = revenues.map((revenue) => ({
+        id: revenue.id,
+        propertyId: revenue.property_id,
+        propertyName: revenue.property_name,
+        source: revenue.source,
+        amountCents: parseInt(revenue.amount_cents),
+        currency: revenue.currency,
+        description: revenue.description,
+        receiptUrl: revenue.receipt_url,
+        receiptFileId: revenue.receipt_file_id,
+        occurredAt: revenue.occurred_at,
+        paymentMode: revenue.payment_mode || 'cash',
+        bankReference: revenue.bank_reference,
+        status: revenue.status || 'pending',
+        createdByUserId: revenue.created_by_user_id,
+        createdByName: revenue.created_by_name,
+        approvedByUserId: revenue.approved_by_user_id,
+        approvedByName: revenue.approved_by_name,
+        approvedAt: revenue.approved_at,
+        createdAt: revenue.created_at,
+      }));
+
+      // Generate ETag from the response data
+      const responseData = { revenues: revenueList, totalAmount };
+      const etag = generateCollectionETag(responseData, revenueList.length);
+      
+      // Check If-None-Match for conditional GET (304 response)
+      if (ifNoneMatch) {
+        const isMatch = checkConditionalGet(etag, ifNoneMatch);
+        recordETagCheck('/v1/finance/revenues', isMatch);
+        
+        if (isMatch) {
+          console.log('[Revenues] 304 Not Modified - ETag match:', etag);
+          // Return minimal response with 304 indicator
+          // Note: Encore handles the actual 304 status code
+          return {
+            revenues: [],
+            totalAmount: 0,
+            _meta: { etag, cacheControl: 's-maxage=60, stale-while-revalidate=300', count: revenueList.length, cached: true }
+          };
+        }
+      }
+
+      // Generate cache headers
+      const cacheHeaders = generateCacheHeaders('summaries', {
+        orgId: authData.orgId,
+        propertyId: propertyId,
+      });
+      
+      // === APPLY FIELD SELECTION ===
+      const filteredRevenues = fieldSelector.apply(revenueList) as RevenueInfo[];
+      
+      // Record stats for monitoring
+      if (fieldSelector.hasCustomFields) {
+        const savings = fieldSelector.calculateSavings(revenueList, filteredRevenues);
+        recordFieldSelectionStats(true, savings.savedBytes, savings.savedPercent);
+        console.log('[Revenues] Field selection applied:', {
+          fieldsReturned: fieldSelector.fields.length,
+          bytesSaved: savings.savedBytes,
+          percentSaved: savings.savedPercent,
+        });
+      }
+      
+      // Get field selection headers
+      const fieldHeaders = fieldSelector.getHeaders();
+
       return {
-        revenues: revenues.map((revenue) => ({
-          id: revenue.id,
-          propertyId: revenue.property_id,
-          propertyName: revenue.property_name,
-          source: revenue.source,
-          amountCents: parseInt(revenue.amount_cents),
-          currency: revenue.currency,
-          description: revenue.description,
-          receiptUrl: revenue.receipt_url,
-          receiptFileId: revenue.receipt_file_id,
-          occurredAt: revenue.occurred_at,
-          paymentMode: revenue.payment_mode || 'cash',
-          bankReference: revenue.bank_reference,
-          status: revenue.status || 'pending',
-          createdByUserId: revenue.created_by_user_id,
-          createdByName: revenue.created_by_name,
-          approvedByUserId: revenue.approved_by_user_id,
-          approvedByName: revenue.approved_by_name,
-          approvedAt: revenue.approved_at,
-          createdAt: revenue.created_at,
-        })),
+        revenues: filteredRevenues,
         totalAmount,
+        _meta: {
+          etag,
+          cacheControl: cacheHeaders['Cache-Control'],
+          count: revenueList.length,
+          fieldsReturned: fieldHeaders['X-Fields-Returned'] || undefined,
+        }
       };
     } catch (error) {
       // Handle schema errors with fallback query
@@ -210,6 +295,7 @@ async function listRevenuesHandler(req: ListRevenuesRequest): Promise<ListRevenu
         table: 'revenues'
       });
     }
+  }); // End trackMetrics
 }
 
 // Legacy path (kept during migration window)

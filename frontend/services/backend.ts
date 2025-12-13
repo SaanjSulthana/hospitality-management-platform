@@ -1,6 +1,7 @@
 import Client, { Local, Environment } from '../src/client';
 import { isDevelopment, getVersionedApiUrl } from '../src/utils/env';
 import { API_CONFIG } from '../src/config/api';
+import { envUtils } from '@/src/utils/environment-detector';
 
 // Test if the import is working
 console.log('=== BACKEND IMPORT TEST ===');
@@ -205,7 +206,7 @@ const fetcherWithTokenRefresh = async (url: string, init: RequestInit) => {
       const responseText = await response.clone().text().catch(() => '');
 
       // Telemetry (sampled)
-      if (Math.random() < sampleRate) {
+      if (!envUtils.isProduction() && Math.random() < sampleRate) {
         try {
           await fetch(`${API_CONFIG.BASE_URL}/telemetry/client`, {
             method: 'POST',
@@ -244,7 +245,7 @@ const fetcherWithTokenRefresh = async (url: string, init: RequestInit) => {
     return response;
   } catch (err) {
     // Network-level failure (status 0)
-    if (Math.random() < sampleRate) {
+    if (!envUtils.isProduction() && Math.random() < sampleRate) {
       try {
         await fetch(`${API_CONFIG.BASE_URL}/telemetry/client`, {
           method: 'POST',

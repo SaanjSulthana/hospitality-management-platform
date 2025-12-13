@@ -15,8 +15,10 @@ import React, { useEffect, useRef, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { API_CONFIG } from '../src/config/api';
+import { envUtils } from '@/src/utils/environment-detector';
 import { getAccessTokenHash, getFlagBool, getFlagNumber } from '../lib/feature-flags';
 import Client from '../src/client';
+import { tokenManager } from '../services/token-manager';
 
 /**
  * Service names
@@ -54,7 +56,7 @@ interface StreamMessage {
   timestamp: string;
   seq: number;
   // Include 'batch' to match server-side StreamOutMessage.type
-  type: 'event' | 'ping' | 'ack' | 'error' | 'batch';
+  type: 'event' | 'ping' | 'ack' | 'error' | 'batch' | 'invalidate';
   error?: {
     message: string;
     code?: string;
@@ -126,6 +128,11 @@ export default function RealtimeProviderV2Fixed(): null {
   // Disable leader election by default for stability; can be re-enabled via FIN_LEADER_ENABLED=true
   const leaderEnabled = getFlagBool('FIN_LEADER_ENABLED', false);
   const rolloutPercent = getFlagNumber('REALTIME_ROLLOUT_PERCENT', 100);
+  const invalidateEnabled = getFlagBool('REALTIME_INVALIDATE', true);
+  const creditsEnabled = getFlagBool('REALTIME_CREDITS', true);
+  const polyfillEnabled = typeof window !== 'undefined'
+    ? (localStorage.getItem('REALTIME_DECOMP_POLYFILL') === 'true')
+    : false;
 
   // Connection state
   const wsRef = useRef<WebSocket | null>(null);
@@ -175,22 +182,34 @@ export default function RealtimeProviderV2Fixed(): null {
   // Property filter propagated by pages
   const [subscribedPropertyId, setSubscribedPropertyId] = useState<number | null>(null);
   // Token refresh cadence
+
+  // Add connection stability logging
+  console.log('[REALTIME_DEBUG] Provider initialized', {
+    timestamp: new Date().toISOString(),
+    isProduction: IS_PRODUCTION,
+    masterEnabled,
+    orgId: orgId || 'none',
+    userId: user?.userID || 'none'
+  });
   const lastTokenRefreshRef = useRef<number>(0);
 
   const maybeRefreshAuthToken = async (): Promise<void> => {
     const now = Date.now();
-    // Refresh at most once every 5 minutes
+    // Refresh at most once every 5 minutes to avoid hammering the auth service
     if (now - lastTokenRefreshRef.current < 5 * 60 * 1000) return;
+
     try {
-      const token = localStorage.getItem('accessToken') || '';
-      if (!token) return;
-      await fetch(`${API_CONFIG.BASE_URL.replace(/\/$/, '')}/auth/refresh`, {
-        method: 'GET',
-        headers: { 'Authorization': `Bearer ${token}` },
-        keepalive: true,
-      }).catch(() => {});
-    } catch {}
-    lastTokenRefreshRef.current = now;
+      // Delegate to the centralized TokenManager, which knows how to call
+      // the correct Encore auth.refresh endpoint and update stored tokens.
+      await tokenManager.forceRefresh();
+    } catch (err) {
+      // Best-effort only; failures here should not break realtime streaming.
+      if (import.meta.env.DEV) {
+        console.warn('[RealtimeV2Fixed][token-refresh-failed]', err);
+      }
+    } finally {
+      lastTokenRefreshRef.current = now;
+    }
   };
 
   /**
@@ -214,16 +233,20 @@ export default function RealtimeProviderV2Fixed(): null {
   /**
    * Route → Service map (corrected)
    */
+  /**
+   * FIX: Added 'reports' to dashboard route so report updates reach dashboard users
+   * FIX: Added 'reports' to analytics route for consistency
+   */
   const ROUTE_SERVICE_MAP: Record<string, ServiceName[]> = {
     '/finance': ['finance', 'properties', 'reports'],
-    '/dashboard': ['finance', 'properties', 'tasks', 'users', 'dashboard', 'analytics'],
+    '/dashboard': ['finance', 'properties', 'tasks', 'users', 'dashboard', 'analytics', 'reports'],
     '/staff': ['staff', 'properties', 'users'],
     '/guest-checkin': ['guest', 'properties'],
     '/tasks': ['tasks', 'properties', 'users'],
     '/task-management': ['tasks', 'staff', 'properties', 'users'],
     '/properties': ['properties'],
     '/users': ['users', 'properties'],
-    '/analytics': ['analytics', 'finance', 'properties'],
+    '/analytics': ['analytics', 'finance', 'properties', 'reports'],
     '/reports': ['reports', 'finance', 'properties'],
     '/settings': ['branding'],
   };
@@ -567,10 +590,98 @@ export default function RealtimeProviderV2Fixed(): null {
     } catch {}
   };
 
+  // Optional compression helpers (gzip via DecompressionStream)
+  const base64ToUint8 = (b64: string): Uint8Array => {
+    try {
+      const bin = atob(b64);
+      const out = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+      return out;
+    } catch {
+      return new Uint8Array();
+    }
+  };
+  const gunzipToText = async (bytes: Uint8Array): Promise<string> => {
+    // @ts-ignore
+    if (typeof DecompressionStream === 'undefined') throw new Error('No DecompressionStream');
+    // @ts-ignore
+  const ds = new DecompressionStream('gzip');
+  // Ensure BlobPart is a proper ArrayBuffer to satisfy stricter TS definitions
+  const inputAb = new ArrayBuffer(bytes.byteLength);
+  new Uint8Array(inputAb).set(bytes as any);
+  const blob = new Blob([inputAb]);
+    // @ts-ignore
+    const stream = blob.stream().pipeThrough(ds);
+  const outAb = await new Response(stream).arrayBuffer();
+  return new TextDecoder().decode(new Uint8Array(outAb));
+  };
+  const gunzipToTextWithFallback = async (bytes: Uint8Array): Promise<string> => {
+    try {
+      return await gunzipToText(bytes);
+    } catch {
+      if (!polyfillEnabled) {
+        throw new Error('No gzip support and polyfill disabled');
+      }
+      // Lazy-load fflate polyfill from CDN once
+      try {
+        const existing = document.querySelector('script[data-rt-fflate="1"]') as HTMLScriptElement | null;
+        if (!existing) {
+          await new Promise<void>((resolve, reject) => {
+            const s = document.createElement('script');
+            s.src = 'https://unpkg.com/fflate@0.8.2/umd/index.js';
+            s.async = true;
+            s.defer = true;
+            s.setAttribute('data-rt-fflate', '1');
+            s.onload = () => resolve();
+            s.onerror = () => reject(new Error('fflate load failed'));
+            document.head.appendChild(s);
+          });
+        }
+        // @ts-ignore
+        if (typeof fflate === 'undefined' || typeof fflate.gunzipSync !== 'function') {
+          throw new Error('fflate not available');
+        }
+        // @ts-ignore
+        const out: Uint8Array = fflate.gunzipSync(bytes);
+        return new TextDecoder().decode(out);
+      } catch (err) {
+        throw err instanceof Error ? err : new Error('polyfill failed');
+      }
+    }
+  };
+
+  const sendTelemetry = (type: string, payload: Record<string, any> = {}, sample = 0.05): void => {
+    try {
+      if (envUtils.isProduction()) return;
+      if (Math.random() >= sample) return;
+      const token = localStorage.getItem('accessToken') || '';
+      if (!token) return;
+      const baseUrl = API_CONFIG.BASE_URL.replace(/\/$/, '');
+      fetch(`${baseUrl}/telemetry/client`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify({ events: [{ type, ts: new Date().toISOString(), ...payload }] }),
+        keepalive: true,
+      }).catch(() => {});
+    } catch {}
+  };
+
+  // Capability telemetry (one-shot)
+  useEffect(() => {
+    try {
+      // @ts-ignore
+      const hasDS = typeof DecompressionStream !== 'undefined';
+      sendTelemetry('compression_support', {
+        hasDecompressionStream: hasDS,
+        polyfillEnabled,
+      }, 0.2);
+    } catch {}
+  }, [polyfillEnabled]);
+
   /**
    * Handle WebSocket message (Enhanced with latency tracking)
    */
-  const handleMessage = (data: string): void => {
+  const handleMessage = async (data: string): Promise<void> => {
     try {
       const message: StreamMessage = JSON.parse(data);
 
@@ -612,6 +723,28 @@ export default function RealtimeProviderV2Fixed(): null {
           break;
         }
 
+        case 'invalidate': {
+          // Transport-only invalidation broadcast; pages can listen and invalidate keys
+          if (!invalidateEnabled) break;
+          try {
+            const service = (message as any).service as ServiceName | undefined;
+            const keys = (message as any)?.invalidate?.keys as string[] | undefined;
+            if (Array.isArray(keys) && keys.length > 0) {
+              // Global invalidate event
+              window.dispatchEvent(new CustomEvent('realtime-invalidate', {
+                detail: { service, keys },
+              }));
+              // Per-service invalidate event
+              if (service) {
+                window.dispatchEvent(new CustomEvent(`${service}-stream-invalidate`, {
+                  detail: { keys },
+                }));
+              }
+            }
+          } catch {}
+          break;
+        }
+
         case 'batch': {
           // Batch of event messages (server-side batching)
           const innerMessages = (message as any).messages as StreamMessage[] | undefined;
@@ -648,6 +781,59 @@ export default function RealtimeProviderV2Fixed(): null {
               metricsRef.current.avgLatencyMs =
                 latencies.reduce((a, b) => a + b, 0) / latencies.length;
               metricsRef.current.p95LatencyMs = calculateP95(latencies);
+            }
+          } else if ((message as any).compressed && (message as any).data) {
+            // Decode gzip-compressed batch payload of messages (optional, awaited for ordering)
+            try {
+              const dataB64 = (message as any).data as string;
+              const txt = await gunzipToTextWithFallback(base64ToUint8(dataB64));
+              const decoded = JSON.parse(txt) as StreamMessage[];
+              if (Array.isArray(decoded) && decoded.length > 0) {
+                // Simple client telemetry counters (best-effort)
+                try {
+                  (metricsRef.current as any).__compressedDecodedBatches =
+                    ((metricsRef.current as any).__compressedDecodedBatches || 0) + 1;
+                  (metricsRef.current as any).__compressedBytes =
+                    ((metricsRef.current as any).__compressedBytes || 0) + (dataB64?.length || 0);
+                } catch {}
+                sendTelemetry('compressed_decode_success', {
+                  bytes: dataB64?.length || 0,
+                  usedPolyfill: (typeof (window as any).fflate !== 'undefined'),
+                }, 0.1);
+
+                for (const m of decoded) {
+                  if (m.timestamp) {
+                    const serverTime = new Date(m.timestamp).getTime();
+                    const clientTime = Date.now();
+                    const latency = clientTime - serverTime;
+                    metricsRef.current.eventLatencyMs.push(latency);
+                    if (metricsRef.current.eventLatencyMs.length > 100) {
+                      metricsRef.current.eventLatencyMs.shift();
+                    }
+                    if (m.service) recordServiceLatency(m.service, latency);
+                  }
+                  metricsRef.current.eventsReceived++;
+                  metricsRef.current.lastEventAt = Date.now();
+                  if (m.service) {
+                    metricsRef.current.byServiceLastEventAt![String(m.service)] = Date.now();
+                  }
+                  if (m.service && m.events) {
+                    dispatchEvents(m.service, m.events, m.seq);
+                  }
+                }
+                const lat = metricsRef.current.eventLatencyMs;
+                if (lat.length > 0) {
+                  metricsRef.current.avgLatencyMs = lat.reduce((a, b) => a + b, 0) / lat.length;
+                  metricsRef.current.p95LatencyMs = calculateP95(lat);
+                }
+              }
+            } catch {
+              try {
+                (metricsRef.current as any).__compressedDecodeFailures =
+                  ((metricsRef.current as any).__compressedDecodeFailures || 0) + 1;
+              } catch {}
+                sendTelemetry('compressed_decode_failure', {}, 0.2);
+              // If decode fails, ignore compressed payload; rely on normal path if present
             }
           } else if (message.service && message.events) {
             // Fallback: some servers may set events on the batch itself
@@ -840,7 +1026,7 @@ export default function RealtimeProviderV2Fixed(): null {
         (async () => {
           try {
             for await (const message of stream as any) {
-              handleMessage(JSON.stringify(message));
+              await handleMessage(JSON.stringify(message));
             }
           } catch (err) {
             console.error('[RealtimeV2Fixed][stream-error]', {
@@ -1152,6 +1338,46 @@ export default function RealtimeProviderV2Fixed(): null {
       delete (window as any).__realtimeState;
     };
   }, [subscribedPropertyId]);
+
+  /**
+   * Credits trickle (optional): periodically grant credits to server for current user
+   * Safe no-op unless REALTIME_CREDITS=true
+   */
+  useEffect(() => {
+    if (!creditsEnabled || !orgId) return;
+    const baseUrl = API_CONFIG.BASE_URL.replace(/\/$/, '');
+    let timer: ReturnType<typeof setInterval> | null = null;
+    let initialTimer: ReturnType<typeof setTimeout> | null = null;
+
+    const sendCredits = async (): Promise<void> => {
+      // Gate 1: Leader-only when leader election is enabled
+      if (leaderEnabled && !isLeaderRef.current) return;
+      // Gate 2: Visible tab only
+      if (typeof document !== 'undefined' && document.visibilityState !== 'visible') return;
+      // Gate 3: WebSocket connected only
+      if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
+      try {
+        const token = localStorage.getItem('accessToken') || '';
+        if (!token) return;
+        await fetch(`${baseUrl}/v2/realtime/credits`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+          body: JSON.stringify({ credits: 2000 }),
+          keepalive: true,
+        }).catch(() => {});
+      } catch {}
+    };
+
+    // Initial delayed grant to allow connection to establish
+    initialTimer = setTimeout(() => { void sendCredits(); }, 5000);
+    // Periodic grant every 30s
+    timer = setInterval(() => { void sendCredits(); }, 30000);
+
+    return () => {
+      if (initialTimer) clearTimeout(initialTimer);
+      if (timer) clearInterval(timer);
+    };
+  }, [creditsEnabled, orgId, leaderEnabled]);
 
   return null;
 }

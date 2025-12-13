@@ -111,10 +111,76 @@ export function getAuthSystemStatus() {
 // Install debug helpers in development
 if (process.env.NODE_ENV === 'development') {
   (window as any).authSystem = {
+    // Basic status
     status: getAuthSystemStatus,
+    
+    // Token operations
     forceRefresh: () => tokenManager.forceRefresh(),
     clearTokens: () => tokenManager.clearTokens(),
+    
+    // DEBUG: New debugging methods
+    debugStatus: () => tokenManager.getDebugStatus(),
+    logDebugStatus: () => tokenManager.logDebugStatus(),
+    
+    // DEBUG: Toggle auto-refresh (disable to prevent auto-redirect)
+    disableAutoRefresh: () => {
+      tokenManager.setAutoRefreshEnabled(false);
+      console.log('Auto-refresh DISABLED. Use window.authSystem.forceRefresh() to manually test refresh.');
+    },
+    enableAutoRefresh: () => {
+      tokenManager.setAutoRefreshEnabled(true);
+      console.log('Auto-refresh ENABLED.');
+    },
+    
+    // DEBUG: Toggle verbose debug mode
+    enableDebugMode: () => tokenManager.setDebugMode(true),
+    disableDebugMode: () => tokenManager.setDebugMode(false),
+    
+    // DEBUG: Quick test - manually call refresh endpoint
+    testRefresh: async () => {
+      console.log('Testing manual token refresh...');
+      try {
+        const result = await tokenManager.forceRefresh();
+        console.log('Refresh SUCCESS:', result.substring(0, 50) + '...');
+        return { success: true };
+      } catch (error) {
+        console.error('Refresh FAILED:', error);
+        return { success: false, error };
+      }
+    },
+    
+    // DEBUG: Decode and display access token
+    decodeAccessToken: () => {
+      const token = tokenManager.getAccessToken();
+      if (!token) {
+        console.log('No access token found');
+        return null;
+      }
+      try {
+        const payload = JSON.parse(atob(token.split('.')[1]));
+        const now = Math.floor(Date.now() / 1000);
+        console.log('Access Token Payload:', {
+          ...payload,
+          expiresAt: new Date(payload.exp * 1000).toISOString(),
+          expiresInSeconds: payload.exp - now,
+          isExpired: payload.exp <= now,
+        });
+        return payload;
+      } catch (e) {
+        console.error('Failed to decode token:', e);
+        return null;
+      }
+    },
   };
+  
   console.log('[Auth System] Debug helpers installed: window.authSystem');
+  console.log('[Auth System] Available commands:');
+  console.log('  - window.authSystem.status()         - Get basic auth status');
+  console.log('  - window.authSystem.debugStatus()    - Get detailed debug info');
+  console.log('  - window.authSystem.logDebugStatus() - Log debug info to console');
+  console.log('  - window.authSystem.disableAutoRefresh() - Disable auto-refresh');
+  console.log('  - window.authSystem.enableAutoRefresh()  - Enable auto-refresh');
+  console.log('  - window.authSystem.testRefresh()    - Manually test token refresh');
+  console.log('  - window.authSystem.decodeAccessToken() - Decode and display JWT');
 }
 

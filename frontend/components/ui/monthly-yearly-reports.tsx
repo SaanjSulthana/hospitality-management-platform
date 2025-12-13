@@ -25,6 +25,7 @@ import {
   Banknote
 } from 'lucide-react';
 import { API_CONFIG } from '../../src/config/api';
+import { envUtils } from '@/src/utils/environment-detector';
 
 // Helper function to get current quarter (Indian fiscal year)
 function getCurrentQuarter(): string {
@@ -207,7 +208,7 @@ function MonthlyYearlyReportsComponent() {
       if (process.env.NODE_ENV !== 'production') {
         console.log('[ReportsTelemetry] quarterly refetch duration ms:', ms, { year: selectedYear, quarter: selectedQuarter, propertyId: selectedPropertyId || 'all' });
       }
-      if (Math.random() < 0.02) {
+      if (!envUtils.isProduction() && Math.random() < 0.02) {
         fetch(`${API_CONFIG.BASE_URL}/telemetry/client`, {
           method: 'POST',
           headers: {
@@ -318,7 +319,7 @@ function MonthlyYearlyReportsComponent() {
       if (process.env.NODE_ENV !== 'production') {
         console.log('[ReportsTelemetry] yearly refetch duration ms:', ms, { year: selectedYear, propertyId: selectedPropertyId || 'all' });
       }
-      if (Math.random() < 0.02) {
+      if (!envUtils.isProduction() && Math.random() < 0.02) {
         fetch(`${API_CONFIG.BASE_URL}/telemetry/client`, {
           method: 'POST',
           headers: {

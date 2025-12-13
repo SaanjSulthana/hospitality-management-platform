@@ -12,7 +12,7 @@ import { WelcomePopup } from '@/components/ui/welcome-popup';
 import { API_CONFIG } from '../src/config/api';
 import { GlobalAuthBanner } from './GlobalAuthBanner';
 import RealtimeProviderV2Fixed from '../providers/RealtimeProviderV2_Fixed';
-import RealtimeHealthBadge from './RealtimeHealthBadge';
+import RealtimeInvalidateBridge from './RealtimeInvalidateBridge';
 import { 
   LayoutDashboard, 
   Building2, 
@@ -542,6 +542,7 @@ export default function Layout({ children }: LayoutProps) {
     <div className="min-h-screen bg-gray-50">
       {/* WebSocket-based realtime is always enabled via RealtimeProviderV2Fixed */}
       <RealtimeProviderV2Fixed />
+      <RealtimeInvalidateBridge />
       <AuthBanner />
       {/* Desktop sidebar */}
       <div className="hidden lg:fixed lg:inset-y-0 lg:flex lg:w-60 lg:flex-col">
@@ -640,7 +641,6 @@ export default function Layout({ children }: LayoutProps) {
 
               {/* User Info */}
               <div className="flex items-center space-x-3 h-full">
-                <RealtimeHealthBadge />
                 <div className="hidden sm:flex items-center space-x-2 px-3 py-1 rounded-full bg-gray-100 h-8">
                   {React.createElement(getRoleIcon(user?.role || ''), { 
                     className: "h-4 w-4",

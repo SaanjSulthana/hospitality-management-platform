@@ -118,6 +118,8 @@ export function DailyApprovalManager({ className, propertyId, startDate, endDate
     onSuccess: (data, variables) => {
       const action = variables.action === 'approve' ? 'approved' : 'rejected';
       const count = variables.action === 'approve' ? data.results.approved : data.results.rejected;
+      const newStatus = variables.action === 'approve' ? 'approved' : 'rejected';
+      
       toast({
         title: `Transactions ${action}`,
         description: `${count} transactions have been ${action} successfully.`,
@@ -126,14 +128,41 @@ export function DailyApprovalManager({ className, propertyId, startDate, endDate
       // Clear selection and refresh data
       setSelectedTransactions(new Set());
       
-      // Invalidate Daily Approval Manager queries
+      // Immediately update revenues/expenses lists to reflect the new status
+      // This ensures the UI updates even before the realtime event arrives
+      queryClient.setQueriesData(
+        { queryKey: ['revenues'] },
+        (old: any) => {
+          if (!old?.revenues) return old;
+          return {
+            ...old,
+            revenues: old.revenues.map((r: any) =>
+              variables.transactionIds.includes(r.id)
+                ? { ...r, status: newStatus, approvedAt: new Date().toISOString() }
+                : r
+            ),
+          };
+        }
+      );
+      
+      queryClient.setQueriesData(
+        { queryKey: ['expenses'] },
+        (old: any) => {
+          if (!old?.expenses) return old;
+          return {
+            ...old,
+            expenses: old.expenses.map((e: any) =>
+              variables.transactionIds.includes(e.id)
+                ? { ...e, status: newStatus, approvedAt: new Date().toISOString() }
+                : e
+            ),
+          };
+        }
+      );
+      
+      // Invalidate the approval manager and approval status queries
       queryClient.invalidateQueries({ queryKey: ['today-pending-transactions'] });
       queryClient.invalidateQueries({ queryKey: ['daily-approval-check'] });
-      
-      // ✅ ADD: Invalidate Finance page queries so individual transactions update immediately
-      queryClient.invalidateQueries({ queryKey: ['expenses'] });
-      queryClient.invalidateQueries({ queryKey: ['revenues'] });
-      queryClient.invalidateQueries({ queryKey: ['profit-loss'] });
       
     },
     onError: (error: any, variables, context) => {

@@ -2,6 +2,53 @@ import { api } from "encore.dev/api";
 import { getAuthData } from "~encore/auth";
 import { v1Path } from "../shared/http";
 
+// RUM metric types from frontend - all fields explicit (no index signatures)
+interface RUMNavigationMetric {
+  type: "navigation";
+  url: string;
+  ttfbMs: number;
+  domContentLoadedMs?: number;
+  loadMs?: number;
+  transferSizeBytes?: number;
+  encodedBodySizeBytes?: number;
+  decodedBodySizeBytes?: number;
+  timestamp: string;
+}
+
+interface RUMFetchMetric {
+  type: "fetch";
+  url: string;
+  method: string;
+  ttfbMs: number;
+  durationMs: number;
+  transferSizeBytes?: number;
+  statusCode: number;
+  cached?: boolean;
+  compressed?: boolean;
+  was304?: boolean;
+  timestamp: string;
+}
+
+interface RUMFetchErrorMetric {
+  type: "fetch_error";
+  url: string;
+  method: string;
+  errorType: string;
+  durationMs: number;
+  timestamp: string;
+}
+
+interface RUMWebVitalMetric {
+  type: "web_vital";
+  name: string;
+  value: number;
+  rating?: string;
+  url?: string;
+  timestamp: string;
+}
+
+type RUMMetricData = RUMNavigationMetric | RUMFetchMetric | RUMFetchErrorMetric | RUMWebVitalMetric;
+
 type ClientTelemetryEvent =
   | {
       type: "fast_empty";
@@ -24,6 +71,11 @@ type ClientTelemetryEvent =
       type: "derived_debounce_fired";
       coalescedCount: number;
       ts: string;
+    }
+  | {
+      type: "rum_metric";
+      data: RUMMetricData;
+      ts: string;
     };
 
 export interface TelemetryIngestRequest {
@@ -45,14 +97,38 @@ async function ingestClientTelemetryHandler(req: TelemetryIngestRequest): Promis
 
     const accepted = Array.isArray(req.events) ? req.events.length : 0;
     if (accepted > 0) {
-      // Basic structured log; forward to your metrics system if desired
-      console.log("[ClientTelemetry]", {
-        orgId: (auth as any).orgId,
-        userId: (auth as any).userID,
-        sampleRate: req.sampleRate ?? 0.02,
-        count: accepted,
-        events: req.events.slice(0, 50), // cap to keep logs readable
-      });
+      // Separate RUM metrics from other telemetry for clearer logging
+      const rumMetrics = req.events.filter((e: ClientTelemetryEvent) => e.type === "rum_metric");
+      const otherEvents = req.events.filter((e: ClientTelemetryEvent) => e.type !== "rum_metric");
+      
+      // Log RUM metrics separately for easier parsing
+      if (rumMetrics.length > 0) {
+        console.log("[RUM][metrics]", {
+          orgId: (auth as any).orgId,
+          userId: (auth as any).userID,
+          sampleRate: req.sampleRate ?? 0.05,
+          count: rumMetrics.length,
+          metrics: rumMetrics.slice(0, 20).map((m: any) => ({
+            type: m.data?.type,
+            url: m.data?.url,
+            ttfbMs: m.data?.ttfbMs,
+            statusCode: m.data?.statusCode,
+            compressed: m.data?.compressed,
+            was304: m.data?.was304,
+          })),
+        });
+      }
+      
+      // Log other telemetry events
+      if (otherEvents.length > 0) {
+        console.log("[ClientTelemetry]", {
+          orgId: (auth as any).orgId,
+          userId: (auth as any).userID,
+          sampleRate: req.sampleRate ?? 0.02,
+          count: otherEvents.length,
+          events: otherEvents.slice(0, 50),
+        });
+      }
     }
 
     return { accepted };

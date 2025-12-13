@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "encore-mcp": {
+      "command": "C:\\Users\\ATIF TEAM EXP\\.encore\\bin\\encore.exe",
+      "args": ["mcp", "run", "--app=hospitality-management-platform-cr8i"],
+      "cwd": "C:\\Users\\ATIF TEAM EXP\\Desktop\\hospitality-management-platform\\backend"
+    }
+  }
+}
+
+

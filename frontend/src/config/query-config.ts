@@ -13,6 +13,15 @@ export const QUERY_DEFAULTS = {
     refetchOnMount: true,
     refetchInterval: false,
   },
+  // For data maintained live via WebSocket patching.
+  // Never auto-refetch due to invalidation; fetch on mount only.
+  REALTIME_CONNECTED: {
+    staleTime: Infinity as number,
+    gcTime: 600_000,
+    refetchOnWindowFocus: false,
+    refetchOnMount: true,
+    refetchInterval: false,
+  },
   SLOW_CHANGING_DATA: {
     staleTime: 300_000,
     gcTime: 600_000,
@@ -31,6 +40,7 @@ export const QUERY_CATEGORIES = {
   analytics: QUERY_DEFAULTS.SLOW_CHANGING_DATA,
   'leave-requests': QUERY_DEFAULTS.SLOW_CHANGING_DATA,
   'pending-approvals': QUERY_DEFAULTS.SLOW_CHANGING_DATA,
+  'realtime-connected': QUERY_DEFAULTS.REALTIME_CONNECTED,
 } as const;
 
 

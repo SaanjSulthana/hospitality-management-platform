@@ -14,6 +14,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from './tabs';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from './dialog';
 import { useToast } from './use-toast';
 import { API_CONFIG } from '../../src/config/api';
+import { envUtils } from '@/src/utils/environment-detector';
 import { 
   Calendar, 
   TrendingUp, 
@@ -329,7 +330,7 @@ function MonthlyReportSpreadsheet({ year, month, propertyId, orgId }: MonthlyRep
       if (process.env.NODE_ENV !== 'production') {
         console.log('[ReportsTelemetry] monthly refetch duration ms:', ms, { propertyId, year, month });
       }
-      if (Math.random() < 0.02) {
+      if (!envUtils.isProduction() && Math.random() < 0.02) {
         fetch(`${API_CONFIG.BASE_URL}/telemetry/client`, {
           method: 'POST',
           headers: {

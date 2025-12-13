@@ -1,15 +1,23 @@
-import { api, APIError } from "encore.dev/api";
+import { api, APIError, Header } from "encore.dev/api";
 import { getAuthData } from "~encore/auth";
 import { requireRole } from "../auth/middleware";
 import { reportsDB } from "./db";
 import { distributedCache } from "../cache/distributed_cache_manager";
 import { normalizeDateKey } from "../shared/date_utils";
+import { 
+  recordRequestMetric,
+  generateETag,
+  checkConditionalGet,
+  recordETagCheck
+} from "../middleware";
 
 interface MonthlyYearlyReportRequest {
   propertyId?: number;
   startDate?: string; // YYYY-MM-DD format
   endDate?: string; // YYYY-MM-DD format
   includePending?: boolean; // Include pending transactions
+  // Conditional GET headers for cache validation
+  ifNoneMatch?: Header<"If-None-Match">;
 }
 
 export interface MonthlyYearlyReportData {
@@ -33,27 +41,59 @@ export interface MonthlyYearlyReportResponse {
   };
   propertyId?: number;
   propertyName?: string;
+  // Cache metadata
+  _meta?: {
+    etag?: string;
+    cacheControl?: string;
+    fromCache?: boolean;
+  };
 }
 
 // Gets profit and loss statement for monthly/yearly reports
 export const getMonthlyYearlyReport = api<MonthlyYearlyReportRequest, MonthlyYearlyReportResponse>(
   { auth: true, expose: true, method: "GET", path: "/reports/monthly-yearly-report" },
   async (req) => {
+    const startTime = performance.now();
+    
     const authData = getAuthData();
     if (!authData) {
       throw APIError.unauthenticated("Authentication required");
     }
     requireRole("ADMIN", "MANAGER")(authData);
 
-    const { propertyId, startDate, endDate, includePending = true } = req || {};
+    const { propertyId, startDate, endDate, includePending = true, ifNoneMatch } = req || {};
 
     // Check cache first
     const monthKey = normalizeDateKey(startDate || new Date().toISOString()).substring(0, 7);
     const cacheKey = `monthly_report:${authData.orgId}:${propertyId || 'all'}:${monthKey}`;
     const cached = await distributedCache.getSummary(authData.orgId, propertyId || 0, `month:${monthKey}`);
     if (cached) {
-      console.log('[Reports] Cache hit for monthly report (IST):', { orgId: authData.orgId, propertyId, monthKey });
-      return cached;
+      // Generate ETag for cache validation
+      const etag = generateETag(cached);
+      
+      // Check If-None-Match for conditional GET (304 response)
+      if (ifNoneMatch) {
+        const isMatch = checkConditionalGet(etag, ifNoneMatch);
+        recordETagCheck('/v1/reports/monthly-yearly-report', isMatch);
+        
+        if (isMatch) {
+          const ttfbMs = performance.now() - startTime;
+          recordRequestMetric('/v1/reports/monthly-yearly-report', ttfbMs, 0, 304);
+          console.log('[Reports] 304 Not Modified - ETag match:', { orgId: authData.orgId, propertyId, monthKey, etag, ttfbMs: ttfbMs.toFixed(2) });
+          return {
+            data: { totalRevenue: 0, totalExpenses: 0, netIncome: 0, profitMargin: 0, revenueBySource: { room: 0, addon: 0, other: 0 }, expensesByCategory: {} },
+            period: { startDate: new Date(), endDate: new Date() },
+            _meta: { etag, cacheControl: 's-maxage=300, stale-while-revalidate=86400', fromCache: true }
+          };
+        }
+      }
+      
+      // Record metrics for cache hit
+      const ttfbMs = performance.now() - startTime;
+      const payloadBytes = JSON.stringify(cached).length;
+      recordRequestMetric('/v1/reports/monthly-yearly-report', ttfbMs, payloadBytes, 200);
+      console.log('[Reports] Cache hit for monthly report (IST):', { orgId: authData.orgId, propertyId, monthKey, ttfbMs: ttfbMs.toFixed(2) });
+      return { ...cached, _meta: { etag, cacheControl: 's-maxage=300, stale-while-revalidate=86400', fromCache: true } };
     }
     
     console.log('[Reports] Cache miss, fetching from DB:', { orgId: authData.orgId, propertyId, monthKey });
@@ -233,8 +273,19 @@ export const getMonthlyYearlyReport = api<MonthlyYearlyReportRequest, MonthlyYea
       // Cache the result before returning (using IST-normalized key)
       await distributedCache.setSummary(authData.orgId, propertyId || 0, `month:${monthKey}`, result);
       
-      return result;
+      // Generate ETag for the fresh result
+      const etag = generateETag(result);
+      
+      // Record metrics for cache miss (DB fetch)
+      const ttfbMs = performance.now() - startTime;
+      const payloadBytes = JSON.stringify(result).length;
+      recordRequestMetric('/v1/reports/monthly-yearly-report', ttfbMs, payloadBytes, 200);
+      
+      return { ...result, _meta: { etag, cacheControl: 's-maxage=300, stale-while-revalidate=86400', fromCache: false } };
     } catch (error) {
+      // Record error metrics
+      const ttfbMs = performance.now() - startTime;
+      recordRequestMetric('/v1/reports/monthly-yearly-report', ttfbMs, 0, 500);
       console.error('Get monthly/yearly report error:', error);
       throw APIError.internal("Failed to get monthly/yearly report");
     }

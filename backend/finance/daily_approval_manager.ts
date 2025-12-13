@@ -435,14 +435,50 @@ async function bulkApproveTransactionsHandler(req: BulkApproveRequest): Promise<
 
       await tx.commit();
 
-      // Publish event for real-time updates
+      // Track which transaction IDs were approved/rejected for real-time updates
+      const processedIds = transactionIds.filter(id => !errors.some(e => e.includes(`${id}`)));
+      
+      // FIX: Publish individual approval events for each transaction
+      // This ensures the frontend receives proper status updates
+      for (const transactionId of processedIds) {
+        try {
+          // Determine the event type based on transaction type
+          // For bulk operations, we default to revenue unless we can determine the type
+          const eventType = transactionType === 'expense' 
+            ? (action === 'approve' ? 'expense_approved' : 'expense_rejected')
+            : (action === 'approve' ? 'revenue_approved' : 'revenue_rejected');
+          
+          await financeEvents.publish({
+            eventId: uuidv4(),
+            eventVersion: 'v1',
+            eventType: eventType,
+            orgId: authData.orgId,
+            propertyId: 0, // Bulk operation - property unknown
+            entityId: transactionId,
+            entityType: transactionType === 'expense' ? 'expense' : 'revenue',
+            userId: parseInt(authData.userID),
+            timestamp: new Date(),
+            metadata: {
+              newStatus: newStatus,
+              approvedByUserId: parseInt(authData.userID),
+              approvedByName: (authData as any)?.displayName || (authData as any)?.email || 'Admin',
+              approvedAt: currentTime.toISOString(),
+            },
+          });
+        } catch (eventError) {
+          console.error(`[Finance] Failed to publish approval event for transaction ${transactionId}:`, eventError);
+          // Continue with other events even if one fails
+        }
+      }
+
+      // Also publish a summary event for dashboard updates
       await financeEvents.publish({
         eventId: uuidv4(),
         eventVersion: 'v1',
-        eventType: 'daily_approval_granted', // Valid event type from schema
+        eventType: 'daily_approval_granted',
         orgId: authData.orgId,
-        propertyId: 0, // Bulk operation across properties
-        entityId: 0, // Bulk operation
+        propertyId: 0,
+        entityId: 0,
         entityType: 'daily_approval',
         userId: parseInt(authData.userID),
         timestamp: new Date(),
@@ -450,6 +486,8 @@ async function bulkApproveTransactionsHandler(req: BulkApproveRequest): Promise<
           count: approved + rejected,
           approved,
           rejected,
+          transactionIds: processedIds,
+          newStatus: newStatus,
         },
       });
 

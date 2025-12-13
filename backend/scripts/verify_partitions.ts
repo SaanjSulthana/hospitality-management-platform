@@ -34,7 +34,7 @@ async function verifyPartitions() {
     console.log("📊 Step 1: Checking Partitioned Tables");
     console.log("=" .repeat(60));
     
-    const partitionedTables = await db.query<PartitionInfo>`
+    const partitionedTables = await db.queryAll<PartitionInfo>`
       SELECT tablename, schemaname 
       FROM pg_tables 
       WHERE tablename LIKE '%_partitioned' 
@@ -48,7 +48,7 @@ async function verifyPartitions() {
     console.log("\n📊 Step 2: Checking Partition Children");
     console.log("=" .repeat(60));
 
-    const revenuePartitions = await db.query<PartitionInfo>`
+    const revenuePartitions = await db.queryAll<PartitionInfo>`
       SELECT tablename 
       FROM pg_tables 
       WHERE tablename LIKE 'revenues_20%' 
@@ -58,7 +58,7 @@ async function verifyPartitions() {
     console.log(`✅ Revenue partitions: ${revenuePartitions.length}`);
     revenuePartitions.forEach(p => console.log(`   - ${p.tablename}`));
 
-    const expensePartitions = await db.query<PartitionInfo>`
+    const expensePartitions = await db.queryAll<PartitionInfo>`
       SELECT tablename 
       FROM pg_tables 
       WHERE tablename LIKE 'expenses_20%' 
@@ -68,7 +68,7 @@ async function verifyPartitions() {
     console.log(`✅ Expense partitions: ${expensePartitions.length}`);
     expensePartitions.forEach(p => console.log(`   - ${p.tablename}`));
 
-    const balancePartitions = await db.query<PartitionInfo>`
+    const balancePartitions = await db.queryAll<PartitionInfo>`
       SELECT tablename 
       FROM pg_tables 
       WHERE tablename LIKE 'daily_cash_balances_%'
@@ -84,7 +84,7 @@ async function verifyPartitions() {
     console.log("\n📊 Step 3: Checking Dual-Write Triggers");
     console.log("=" .repeat(60));
 
-    const triggers = await db.query<TriggerStatus>`
+    const triggers = await db.queryAll<TriggerStatus>`
       SELECT 
         trigger_name,
         event_manipulation,

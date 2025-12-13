@@ -80,8 +80,39 @@ async function loginHandler(req: LoginRequest): Promise<LoginResponse> {
         VALUES (${user.id}, ${refreshTokenHash}, NOW() + INTERVAL '7 days')
       `;
 
+      // DEBUG: Verify session was created successfully
+      const createdSession = await tx.queryRow<{
+        id: number;
+        user_id: number;
+        expires_at: Date;
+        created_at: Date;
+      }>`
+        SELECT id, user_id, expires_at, created_at
+        FROM sessions
+        WHERE user_id = ${user.id}
+        ORDER BY created_at DESC
+        LIMIT 1
+      `;
+
+      if (createdSession) {
+        log.info("[SESSION_DEBUG] Session created on login", {
+          userId: user.id,
+          sessionId: createdSession.id,
+          expiresAt: createdSession.expires_at.toISOString(),
+          createdAt: createdSession.created_at.toISOString(),
+          refreshTokenLength: refreshToken.length,
+          refreshTokenHashLength: refreshTokenHash.length,
+        });
+      } else {
+        log.error("[SESSION_DEBUG] CRITICAL: Session NOT found after INSERT!", {
+          userId: user.id,
+          email,
+        });
+      }
+
       await tx.commit();
       log.info("Login successful", { email, userId: user.id, orgId: user.orgId });
+      log.info("[SESSION_DEBUG] Login transaction committed", { userId: user.id });
 
       return {
         accessToken,

@@ -2,7 +2,7 @@
   "id": "hospitality-management-platform-cr8i", 
   "lang": "typescript",
   "http": {
-    "max_body_size": 524288000
+    "max_body_size": 33554432
   },
   "secrets": {
     "JWTSecret": {
@@ -13,40 +13,42 @@
     },
     "OpenAI_API_Key": {
       "description": "OpenAI API key for LLM document extraction"
+    },
+    "RedisPassword": {
+      "description": "Redis Cloud password for idempotency and caching"
     }
   },
   "global_cors": {
     "allow_origins_without_credentials": [
       "http://localhost:5173",
-      "http://localhost:5174",
-      "http://localhost:5175",
-      "http://localhost:5176",
-      "http://localhost:5177",
-      "http://localhost:5178",
-      "http://localhost:5179",
       "https://staging-hospitality-management-platform-cr8i.frontend.encr.app",
-      "https://hospitality-management-platform-cr8i.frontend.encr.app",
-      "https://www.curat.ai"
+      "https://hospitality-management-platform-cr8i.frontend.encr.app"
     ],
     "allow_origins_with_credentials": [
       "http://localhost:5173",
-      "http://localhost:5174",
-      "http://localhost:5175",
-      "http://localhost:5176",
-      "http://localhost:5177",
-      "http://localhost:5178",
-      "http://localhost:5179",
       "https://staging-hospitality-management-platform-cr8i.frontend.encr.app",
-      "https://hospitality-management-platform-cr8i.frontend.encr.app",
-      "https://www.curat.ai"
+      "https://hospitality-management-platform-cr8i.frontend.encr.app"
     ],
     "allow_headers": [
       "Content-Type",
       "Authorization",
-      "X-Requested-With"
+      "X-Requested-With",
+      "Idempotency-Key",
+      "If-None-Match",
+      "If-Modified-Since"
     ],
     "expose_headers": [
-      "Content-Length"
+      "Content-Length",
+      "ETag",
+      "Last-Modified",
+      "Cache-Control",
+      "X-RateLimit-Limit",
+      "X-RateLimit-Remaining",
+      "X-RateLimit-Reset",
+      "Retry-After",
+      "Idempotent-Replayed",
+      "X-Fields-Returned",
+      "X-Fields-Available"
     ],
     "max_age_seconds": 7200
   }

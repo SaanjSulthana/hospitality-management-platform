@@ -10,6 +10,7 @@ import { correctionBatcher } from "./correction_batcher";
 import { enhancedBalanceCache } from "./enhanced_balance_cache";
 import { addCorrection } from "./correction_queue";
 import { normalizeDateKey, addDaysIST, toISTDateString } from "../shared/date_utils";
+import { recordRequestMetric } from "../middleware";
 
 // 🔥 NEW FUNCTION: Calculate real-time closing balance from transactions
 async function calculateRealTimeClosingBalance(
@@ -803,6 +804,8 @@ export interface MonthlyReportResponse {
 export const getDailyReport = api<DailyReportRequest, DailyReportResponse>(
   { auth: true, expose: true, method: "GET", path: "/reports/daily-report" },
   async (req) => {
+    const startTime = performance.now();
+    
     const authData = getAuthData();
     if (!authData) {
       throw APIError.unauthenticated("Authentication required");
@@ -818,7 +821,11 @@ export const getDailyReport = api<DailyReportRequest, DailyReportResponse>(
     // Cache still protects DB, but invalidation happens fast for real-time updates
     const cached = await distributedCache.getDailyReport(authData.orgId, propertyId!, dateIST);
     if (cached) {
-      console.log('[Reports] ✅ Redis cache hit for daily report (IST):', { orgId: authData.orgId, propertyId, dateIST });
+      // Record metrics for cache hit
+      const ttfbMs = performance.now() - startTime;
+      const payloadBytes = JSON.stringify(cached).length;
+      recordRequestMetric('/v1/reports/daily-report', ttfbMs, payloadBytes, 200);
+      console.log('[Reports] ✅ Redis cache hit for daily report (IST):', { orgId: authData.orgId, propertyId, dateIST, ttfbMs: ttfbMs.toFixed(2) });
       
       // 🔥 OPTIONAL: Background revalidation for today's date to ensure freshness
       const today = toISTDateString(new Date());
@@ -1094,8 +1101,17 @@ export const getDailyReport = api<DailyReportRequest, DailyReportResponse>(
         // Don't fail the request if caching fails
       }
 
+      // Record metrics for cache miss (DB fetch)
+      const ttfbMs = performance.now() - startTime;
+      const payloadBytes = JSON.stringify(reportData).length;
+      recordRequestMetric('/v1/reports/daily-report', ttfbMs, payloadBytes, 200);
+      console.log('[Reports] 📊 Metrics recorded for daily report (cache miss):', { ttfbMs: ttfbMs.toFixed(2), payloadBytes });
+
       return reportData;
     } catch (error) {
+      // Record error metrics
+      const ttfbMs = performance.now() - startTime;
+      recordRequestMetric('/v1/reports/daily-report', ttfbMs, 0, 500);
       console.error('Get daily report error:', error);
       throw APIError.internal("Failed to get daily report");
     }

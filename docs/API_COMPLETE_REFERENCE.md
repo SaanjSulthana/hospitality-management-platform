@@ -23,7 +23,7 @@
 - [10. Branding Service](#10-branding-service-branding)
 - [11. Analytics Service](#11-analytics-service-analytics)
 - [Testing Scripts](#testing-scripts)
-
+- [12.Guest Check-in Service]
 ---
 
 ## **Getting Started**

@@ -204,4 +204,775 @@ This document summarizes the end‑to‑end networking and realtime (Pub/Sub) im
 
 With these foundations, the platform is prepared for sustained growth to 1M+ orgs, minimizing backend overhead while delivering near‑instant UI updates and actionable diagnostics. These patterns are generic and ready for reuse across services and new features.
 
+---
+
+## 13) Security: Tenant Cache Partitioning
+
+Multi-tenant cache isolation is **critical** to prevent cross-tenant data exposure.
+
+### 13.1 X-Org-Key Implementation
+
+```typescript
+// backend/middleware/tenant_isolation.ts
+
+// Generate deterministic tenant key from validated orgId
+const tenantKey = sha256(`org:${orgId}:tenant-isolation-key`).slice(0, 16);
+
+// Headers added to every cacheable response
+headers['X-Org-Key'] = tenantKey;
+```
+
+### 13.2 CDN Configuration
+
+**Cloudflare:**
+- Cache Key Rules include `X-Org-Key` in cache key computation
+- Response Transform Rules strip `X-Org-Key` before delivery to client
+
+**Fastly:**
+- VCL: `set req.http.X-Org-Key = ...` includes in cache key
+- VCL: `unset beresp.http.X-Org-Key` removes from response
+
+### 13.3 Policy (MANDATORY)
+
+> **X-Org-Key MUST NOT appear in client-visible response headers.**
+> 
+> Enforce strip at edge by default. Failure to strip is a **security incident**.
+
+Headers that must be stripped from client responses:
+- `X-Org-Key`
+- `Surrogate-Key`
+- `Surrogate-Control`
+- `X-Cache-Tags`
+- `X-Tenant-Partition`
+
+### 13.4 Validation
+
+```bash
+# Verify X-Org-Key is NOT in response
+curl -I https://api.example.com/v1/properties -H "Authorization: Bearer $TOKEN" \
+  | grep -i "x-org-key"
+# Should return nothing
+```
+
+---
+
+## 14) Rollback Strategy
+
+### 14.1 Trigger Conditions
+
+| Condition | Action | Priority |
+|-----------|--------|----------|
+| **Cross-tenant data exposure** | Immediate CDN bypass for affected endpoints | P0 |
+| **Staleness tickets >5% of weekly** | Reduce s-maxage to 30s for affected families | P1 |
+| **Purge lag >30s on critical paths** | Disable caching for those endpoints | P1 |
+| **CDN 5xx rate >1% for 5 minutes** | Activate circuit breaker, bypass CDN | P1 |
+
+### 14.2 Rollback Procedure
+
+1. **Immediate Response** (within 5 minutes)
+   ```bash
+   # Push edge rule to disable caching
+   curl -X POST "https://api.cloudflare.com/client/v4/zones/{zone}/rulesets/{ruleset}/rules" \
+     -H "Authorization: Bearer $CF_TOKEN" \
+     -d '{"expression": "http.request.uri.path matches \"^/v1/finance/\"", "action": "set_cache_settings", "action_parameters": {"cache": false}}'
+   ```
+
+2. **Purge All Relevant Keys**
+   ```bash
+   # Coarse purge for org and property
+   curl -X POST "https://api.cloudflare.com/client/v4/zones/{zone}/purge_cache" \
+     -H "Authorization: Bearer $CF_TOKEN" \
+     -d '{"tags": ["org:123", "property:456", "finance:summary:property:456"]}'
+   ```
+
+3. **Incident Review** (within 24 hours)
+   - Verify cache key correctness
+   - Audit tenant partitioning (X-Org-Key in cache key)
+   - Check purge latencies in metrics
+   - Review affected user reports
+
+4. **Re-enablement** (with approval)
+   - Start with s-maxage=30s
+   - Monitor for 2 hours
+   - Increase to s-maxage=120s
+   - Monitor for 4 hours
+   - Return to baseline TTL
+
+### 14.3 Circuit Breaker Configuration
+
+```typescript
+// Automatic CDN bypass on failure
+const circuitBreaker = {
+  failureThreshold: 5,        // 5 failures
+  failureWindow: 60_000,      // within 1 minute
+  resetTimeout: 300_000,      // 5 minutes cooldown
+  state: 'closed',            // closed | open | half-open
+};
+```
+
+---
+
+## 15) Purge Storm Mitigation
+
+### 15.1 Debouncing Strategy
+
+```typescript
+// backend/middleware/purge_manager.ts
+
+const DEBOUNCE_MS = 1500; // 1.5 second debounce per key family
+
+// Keys are grouped by family before purging
+// Multiple mutations to same property within 1.5s = single purge
+```
+
+### 15.2 Queue-and-Batch
+
+| Config | Value | Rationale |
+|--------|-------|-----------|
+| Max purges/second | 50 | CDN allows ~1000/min |
+| Max keys/batch | 30 | Cloudflare limit |
+| Debounce window | 1500ms | Balance freshness vs load |
+| Rate limit retry | 5s | Backoff on 429 |
+
+### 15.3 Coarse Keys for Bulk Operations
+
+During bulk ingest/import, use property-level keys instead of item-level:
+```typescript
+// Instead of purging each expense:
+// ❌ finance:expense:123, finance:expense:124, ...
+
+// Purge the property summary:
+// ✅ finance:expenses:property:456
+// ✅ finance:summary:property:456
+```
+
+### 15.4 Monitoring
+
+- **Queue depth**: Alert if >100 pending purges
+- **429 rate**: Alert on any CDN rate limit responses
+- **Purge latency**: p95 should be <5s
+
+---
+
+## 16) Rate Limiting
+
+### 16.1 Token Bucket Configuration
+
+| Endpoint Type | Per User | Per Org | Rationale |
+|--------------|----------|---------|-----------|
+| Write (POST/PUT/PATCH) | 100 req/min | 500 req/min | Protect database |
+| Read (after CDN miss) | 300 req/min | - | Prevent origin abuse |
+| Realtime subscriptions | 10 streams | 1000 streams | Memory limits |
+| Signed URL generation | 50 req/min | 500 req/min | S3 rate limits |
+
+### 16.2 Response Format
+
+```http
+HTTP/1.1 429 Too Many Requests
+Retry-After: 17
+X-RateLimit-Limit: 100
+X-RateLimit-Remaining: 0
+X-RateLimit-Reset: 1702234567
+
+{
+  "code": "rate_limit_exceeded",
+  "message": "Rate limit exceeded. Please retry after 17 seconds.",
+  "details": {
+    "retryAfter": 17,
+    "limitType": "WRITE_USER",
+    "remaining": 0
+  }
+}
+```
+
+### 16.3 Implementation
+
+```typescript
+// backend/middleware/rate_limiter.ts
+const result = enforceRateLimit('write', userId, orgId);
+
+if (!result.allowed) {
+  throw new APIError({
+    code: ErrCode.ResourceExhausted,
+    message: result.error.message,
+  });
+}
+```
+
+---
+
+## 17) Idempotency-Key Enforcement
+
+### 17.1 Required Endpoints (P1)
+
+- `POST /finance/expenses` - Expense creation
+- `POST /finance/revenues` - Revenue recording
+- `POST /guest-checkin/create` - Guest check-in
+- `POST /staff/check-in` - Staff check-in
+- `POST /staff/check-out` - Staff check-out
+- `POST /uploads/file` - Document upload start
+
+### 17.2 Behavior
+
+| Scenario | Response |
+|----------|----------|
+| New key + payload | Process request, store result |
+| Same key + same payload | Return cached result (replay) |
+| Same key + different payload | `409 Conflict` |
+
+### 17.3 Storage
+
+- **Backend**: Redis with 24h TTL
+- **Key format**: `idempotency:{orgId}:{key}`
+- **Stored data**: payload hash, status, response body, entity ID
+
+### 17.4 Client Usage
+
+```bash
+curl -X POST "https://api.example.com/v1/finance/expenses" \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Idempotency-Key: expense-$(uuidgen)" \
+  -d '{"propertyId": 1, "amountCents": 50000, ...}'
+```
+
+---
+
+## 18) Materialized View Refresh Strategy
+
+### 18.1 Option A: Concurrent Refresh (Recommended Initially)
+
+```sql
+-- Create MV with unique index for concurrent refresh
+CREATE MATERIALIZED VIEW finance_daily_summary AS
+SELECT 
+  property_id,
+  DATE(occurred_at AT TIME ZONE 'Asia/Kolkata') as date,
+  SUM(CASE WHEN type = 'revenue' THEN amount_cents ELSE 0 END) as revenue_cents,
+  SUM(CASE WHEN type = 'expense' THEN amount_cents ELSE 0 END) as expense_cents
+FROM transactions
+WHERE status = 'approved'
+GROUP BY property_id, DATE(occurred_at AT TIME ZONE 'Asia/Kolkata');
+
+CREATE UNIQUE INDEX ON finance_daily_summary (property_id, date);
+
+-- Refresh without blocking reads
+REFRESH MATERIALIZED VIEW CONCURRENTLY finance_daily_summary;
+```
+
+### 18.2 Refresh Cadence
+
+| MV Type | Refresh Interval | Cache Invalidation |
+|---------|------------------|-------------------|
+| Daily summaries | 5 minutes | After refresh completes |
+| Monthly summaries | 5 minutes | After refresh completes |
+| Reports (daily) | 15 minutes | On transaction mutation |
+| Reports (monthly) | 1 hour | On report regeneration |
+
+### 18.3 Fallback Strategy
+
+```typescript
+async function getSummary(propertyId: number) {
+  // Try MV first
+  const mvResult = await queryMV(propertyId);
+  
+  if (mvResult.isStale || mvResult.refreshDelayed) {
+    // Fallback to direct query with Redis cache (60s TTL)
+    const directResult = await queryWithCache(propertyId, 60);
+    
+    // Log stale-serve event for monitoring
+    logStaleSummaryServe(propertyId);
+    
+    return directResult;
+  }
+  
+  return mvResult;
+}
+```
+
+### 18.4 Option B: Incremental Aggregation (Future)
+
+For high-volume scenarios, consider:
+- Triggers on transaction inserts
+- Append-only event streams
+- Periodic compaction
+
+---
+
+## 19) PgBouncer Configuration
+
+### 19.1 Recommended Settings
+
+```ini
+[pgbouncer]
+; Pool mode - transaction is best for web workloads
+pool_mode = transaction
+
+; Pool sizing (2× logical CPU cores per replica)
+default_pool_size = 20
+min_pool_size = 5
+reserve_pool_size = 5
+reserve_pool_timeout = 3
+
+; Connection limits
+max_client_conn = 1000
+max_db_connections = 100
+
+; Timeouts
+server_connect_timeout = 3
+server_idle_timeout = 60
+query_timeout = 30
+query_wait_timeout = 60
+
+; Prepared statements (disable for transaction mode)
+; server_reset_query = DISCARD ALL
+ignore_startup_parameters = extra_float_digits
+```
+
+### 19.2 Pool Sizing Formula
+
+```
+pool_size = CPU_cores × 2 × num_replicas
+reserve_pool = 5 per database (emergency/admin)
+```
+
+### 19.3 Monitoring
+
+| Metric | Alert Threshold | Action |
+|--------|-----------------|--------|
+| Connection saturation | >80% | Scale pool or add replica |
+| Server-side wait events | >100ms avg | Check slow queries |
+| Avg transaction time | >50ms | Optimize queries |
+| Client queue time | >100ms | Increase pool size |
+
+### 19.4 Prepared Statements
+
+With `pool_mode = transaction`, avoid:
+- Named prepared statements
+- `PREPARE` / `EXECUTE` patterns
+- ORM features that use prepared statements
+
+Use parameterized queries instead:
+```typescript
+// ✅ Good - parameterized
+await db.query('SELECT * FROM expenses WHERE property_id = $1', [propertyId]);
+
+// ❌ Bad - prepared statement
+await db.prepare('get_expenses').query(propertyId);
+```
+
+---
+
+## 20) Load Testing Gates
+
+### 20.1 Pre-Production Test Requirements
+
+| Test | Criteria | Duration |
+|------|----------|----------|
+| Traffic | 500 RPS sustained, 2000 RPS burst | 60+ minutes |
+| Purge throughput | 1000 purge ops/min, no throttling | 10 minutes |
+| Chaos | CDN 5xx → circuit breaker <1 min | 5 minutes |
+| Realtime | 50k concurrent, p95 <500ms, errors <0.1% | 30 minutes |
+
+### 20.2 Pass Criteria
+
+- All SLOs met for 60+ minutes at 80th percentile of target loads
+- No cross-tenant data leakage
+- No rollback triggers activated
+- p95 latency within budget
+
+### 20.3 Run Load Tests
+
+```bash
+# Run full test suite
+cd backend && npx ts-node tests/load_testing.ts
+
+# Dry run (simulated)
+npx ts-node tests/load_testing.ts --dry-run
+
+# With custom config
+BASE_URL=https://staging.example.com AUTH_TOKEN=$TOKEN npx ts-node tests/load_testing.ts
+```
+
+---
+
+## 21) Time-Bound Rollout Timeline
+
+### P0: Foundation (Week 0-2)
+
+| Week | Deliverable | Owner |
+|------|-------------|-------|
+| 0 | Instrumentation: edge/origin p95/p99, payload sizes, CDN metrics | Backend |
+| 0 | Dashboards live: Grafana/Datadog with SLO tracking | DevOps |
+| 1 | Global middleware: compression + ETag/Last-Modified | Backend |
+| 1 | Validate 304 paths in staging | QA |
+| 2 | Tenant cache partitioning: X-Org-Key in cache key | Backend |
+| 2 | Edge rule: strip X-Org-Key from responses | DevOps |
+
+### P1: Core Features (Week 3-5)
+
+| Week | Deliverable | Owner |
+|------|-------------|-------|
+| 3 | Realtime consolidation: 10% → 50% → 100% rollout | Backend |
+| 3 | Tiered batching: 0-50/50-150/150-400ms | Backend |
+| 4 | CDN caching for reports/metadata with purge-by-tag | Backend/DevOps |
+| 4 | Request coalescing and shielding enabled | DevOps |
+| 5 | Idempotency-Key enforcement for critical writes | Backend |
+| 5 | Rate limiting middleware deployed | Backend |
+
+### P2: Optimization (Week 6-8)
+
+| Week | Deliverable | Owner |
+|------|-------------|-------|
+| 6 | Bootstrap split: /static (edge) + /user (origin with ETag) | Backend |
+| 6 | Client on-disk caches for web/Android/iOS | Frontend/Mobile |
+| 7 | Database: read replicas for reports/analytics | DBA |
+| 7 | PgBouncer pool_mode=transaction | DBA |
+| 8 | Redis result cache for hot summaries (30-60s TTL) | Backend |
+| 8 | Materialized views with refresh cadence | DBA |
+
+### P3: Advanced (Week 9+)
+
+| Week | Deliverable | Owner |
+|------|-------------|-------|
+| 9 | HTTP/3 enablement (after H2 optimization) | DevOps |
+| 9 | 0-RTT only for idempotent GET | Backend |
+| 10+ | Offline mutation queue (based on telemetry ROI) | Frontend |
+| 10+ | Binary encodings if justified by payload analysis | Backend |
+
+---
+
+## 22) fields= Sparse Field Selector
+
+### 22.1 Supported Endpoints (Initial 10)
+
+1. `/v1/finance/expenses` (list)
+2. `/v1/finance/revenues` (list)
+3. `/v1/reports/daily-report`
+4. `/v1/reports/monthly-report`
+5. `/v1/reports/date-transactions`
+6. `/v1/guest-checkin/list`
+7. `/v1/staff/attendance`
+8. `/v1/staff/leave-requests`
+9. `/v1/properties` (list)
+10. `/v1/users/properties`
+
+### 22.2 Usage
+
+```bash
+# Request only specific fields
+curl "https://api.example.com/v1/finance/expenses?fields=id,amountCents,description,status"
+
+# Expand nested objects
+curl "https://api.example.com/v1/reports/daily-report?fields=date,totalReceivedCents&expand=transactions"
+
+# Response includes metadata
+# X-Fields-Returned: id,amountCents,description,status
+# X-Fields-Available: id,propertyId,propertyName,amountCents,...
+```
+
+### 22.3 Payload Savings
+
+| Endpoint | Full Response | With fields= | Savings |
+|----------|--------------|--------------|---------|
+| /finance/expenses (100 items) | ~85 KB | ~25 KB | 70% |
+| /reports/monthly-report | ~45 KB | ~8 KB | 82% |
+| /guest-checkin/list (50 items) | ~120 KB | ~30 KB | 75% |
+
+---
+
+## 23) CDN Failure Degradation
+
+### 23.1 Gateway Fallback
+
+```typescript
+// On CDN 5xx/timeout, activate bypass mode
+if (cdnError || cdnTimeout) {
+  headers['X-CDN-Bypass'] = 'true';
+  
+  // Apply rate limiting to protect origin
+  const rateLimit = enforceRateLimit('read', userId, orgId);
+  if (!rateLimit.allowed) {
+    return { status: 429, retryAfter: rateLimit.retryAfter };
+  }
+  
+  // Add jittered retry
+  headers['Retry-After'] = String(5 + Math.random() * 10);
+}
+```
+
+### 23.2 Client Bypass Header
+
+For last-resort retries, clients can request CDN bypass:
+
+```http
+GET /v1/finance/summary
+X-Bypass-CDN: true
+```
+
+This triggers origin-direct fetch with:
+- Exponential backoff
+- Rate limiting applied
+- No caching
+
+### 23.3 Alert Thresholds
+
+| Metric | Threshold | Action |
+|--------|-----------|--------|
+| CDN 5xx rate | >1% for 5 min | Trigger incident |
+| CDN timeout rate | >0.5% for 5 min | Enable bypass mode |
+| Origin latency | p95 >500ms | Scale origin |
+
+---
+
+## 24) Media and Documents Policy
+
+### 24.1 Public Assets (task-images, logos)
+
+| Setting | Value | Rationale |
+|---------|-------|-----------|
+| URL format | `/assets/{hash}/{filename}` | Immutable, content-hash |
+| Cache-Control | `public, max-age=2592000, immutable` | 30 days |
+| Edge resizing | Enabled | Responsive images |
+| Surrogate-Key | `static:{hash}` | Purge on rotation |
+
+### 24.2 Private Documents (guest-documents)
+
+| Document Type | Signed URL TTL | Lifecycle |
+|---------------|----------------|-----------|
+| Guest ID documents | 1-2 hours | Delete after checkout + 90 days |
+| Receipts | 4-6 hours | Retain for 7 years |
+| Exports | 1 hour | Delete after 24 hours |
+
+### 24.3 Access Controls
+
+```typescript
+// Generate signed URL with audit logging
+const signedUrl = await generateSignedUrl({
+  bucket: 'guest-documents',
+  key: `org/${orgId}/guest/${guestId}/${documentId}`,
+  expiresIn: 3600, // 1 hour
+  audit: {
+    userId: auth.userId,
+    action: 'view_document',
+    resourceId: documentId,
+  },
+});
+```
+
+### 24.4 Range and HEAD Support
+
+- `Range` header supported for large documents
+- `HEAD` requests return metadata without body
+- `Content-Disposition: inline` for viewing, `attachment` for download
+
+---
+
+## 25) Decision Log
+
+This section captures key architectural decisions, rationale, and responsible parties.
+
+| Decision | Choice | Rationale | Date | Owner |
+|----------|--------|-----------|------|-------|
+| Tenant partitioning | X-Org-Key header, SHA-256 hash | Deterministic, non-reversible, CDN-compatible | 2024-01 | Backend |
+| Cache TTLs | See Section 13.2 | Balance freshness vs origin load | 2024-01 | Backend |
+| Rate limits | Token bucket, see Section 16.1 | Smooth rate limiting with burst allowance | 2024-01 | Backend |
+| Idempotency storage | Redis with 24h TTL | Fast, ephemeral, clustered | 2024-01 | Backend |
+| Purge debounce | 1.5s per key family | Reduce purge storms during bulk ops | 2024-01 | Backend |
+| MV refresh | CONCURRENTLY, 5-15 min cadence | Non-blocking, eventual consistency acceptable | 2024-01 | DBA |
+| PgBouncer mode | transaction | Best for web workloads, avoids prepared statement issues | 2024-01 | DBA |
+| HTTP/3 | Deferred to P3 | Optimize H2 first, measure ROI | 2024-01 | DevOps |
+| fields= scope | Top 10 endpoints only | 80/20 rule, minimize engineering cost | 2024-01 | Backend |
+
+### Code Touchpoints
+
+- **Tenant isolation**: `backend/middleware/tenant_isolation.ts`
+- **Rate limiting**: `backend/middleware/rate_limiter.ts`
+- **Idempotency**: `backend/middleware/idempotency.ts`
+- **Purge management**: `backend/middleware/purge_manager.ts`
+- **Field selection**: `backend/middleware/field_selector.ts`
+- **Cache headers**: `backend/middleware/cache_headers.ts`
+- **Load testing**: `backend/tests/load_testing.ts`
+- **Realtime client**: `frontend/providers/RealtimeProviderV2_Fixed.tsx`
+- **Connection pool**: `backend/realtime/connection_pool.ts`
+- **API reference**: `docs/API_COMPLETE_REFERENCE.md`
+- **CDN setup**: `docs/CDN_SETUP_GUIDE.md`
+
+---
+
+## 26) P0 Networking Optimizations (10M-User Scale)
+
+This section documents the edge caching, compression, and conditional GET optimizations implemented as part of the P0 phase targeting 10M users.
+
+### 26.1 Middleware Service Overview
+
+A new `backend/middleware/` service provides global networking optimizations:
+
+| File | Purpose |
+|------|---------|
+| `metrics_aggregator.ts` | In-memory metrics storage with p50/p95/p99 percentiles |
+| `response_metrics.ts` | Server-Timing header and request timing tracking |
+| `compression.ts` | Brotli/gzip compression for responses > 1KB |
+| `etag.ts` | ETag generation and If-None-Match 304 handling |
+| `last_modified.ts` | Last-Modified tracking and If-Modified-Since handling |
+| `cache_headers.ts` | Cache-Control and Surrogate-Key header generation |
+| `baseline_metrics.ts` | Metrics API endpoints for dashboards |
+| `wrapper.ts` | Combined wrapper for easy endpoint integration |
+
+### 26.2 TTL Policies by Endpoint Family
+
+| Family | s-maxage | max-age | Rationale |
+|--------|----------|---------|-----------|
+| Properties | 30 min | 5 min | Low churn, purge on change |
+| Branding | 30 min | 10 min | Low churn, purge on change |
+| Analytics | 5 min | 1 min | Summary data, realtime invalidates |
+| Finance | 5 min | 1 min | Summary data, realtime invalidates |
+| Reports | 15 min | 5 min | Historical data, stable |
+| Staff | 3 min | 1 min | Operational data |
+| Tasks | 2 min | 30 sec | High churn |
+| Guest Check-in | 1 min | 15 sec | Very high churn |
+
+### 26.3 Surrogate-Key Taxonomy (for CDN Purge-by-Tag)
+
+```
+org:{orgId}
+property:{propertyId}
+user:{userId}
+finance:summary:property:{propertyId}
+finance:expenses:property:{propertyId}
+finance:revenues:property:{propertyId}
+reports:daily:property:{propertyId}:date:{YYYY-MM-DD}
+reports:monthly:property:{propertyId}:year:{YYYY}:month:{MM}
+branding:theme:org:{orgId}
+analytics:overview:org:{orgId}
+```
+
+### 26.4 Conditional GET Flow
+
+```
+Client Request:
+  GET /v1/reports/daily-report
+  If-None-Match: "a1b2c3d4"
+  Accept-Encoding: br, gzip
+
+Server Response (cache hit):
+  304 Not Modified
+  ETag: "a1b2c3d4"
+  Cache-Control: public, s-maxage=900, stale-while-revalidate=86400
+
+Server Response (cache miss):
+  200 OK
+  ETag: "e5f6g7h8"
+  Content-Encoding: br
+  Cache-Control: public, s-maxage=900, stale-while-revalidate=86400
+  Surrogate-Key: org:123 property:456 reports:daily:property:456:date:2024-01-15
+  Server-Timing: total;dur=45.23, db;dur=32.10
+```
+
+### 26.5 Baseline Metrics Endpoints
+
+```
+GET /v1/monitoring/baseline-metrics
+  Returns: Overall TTFB percentiles, payload sizes, 304 ratio, compression stats
+
+GET /v1/monitoring/baseline-metrics/:family
+  Returns: Metrics for specific endpoint family (reports, finance, etc.)
+
+GET /v1/monitoring/slo-status
+  Returns: Current SLO compliance with recommendations
+```
+
+### 26.6 Frontend RUM Collection
+
+`frontend/lib/rum-metrics.ts` captures:
+- Navigation Timing API data (TTFB, DOMContentLoaded, Load)
+- Fetch performance for API calls (timing, size, status)
+- 5% sampling rate to minimize overhead
+- Batched submission to `/telemetry/client`
+
+### 26.7 Integration Pattern
+
+To add optimizations to an existing endpoint:
+
+```typescript
+import { withNetworkingOptimizations } from '../middleware';
+
+export const myEndpoint = api<MyRequest, MyResponse>(
+  { auth: true, method: "GET", path: "/v1/my/endpoint" },
+  async (req) => {
+    const result = await withNetworkingOptimizations(
+      {
+        path: "/v1/my/endpoint",
+        acceptEncoding: req.acceptEncoding,
+        ifNoneMatch: req.ifNoneMatch,
+        orgId: authData.orgId,
+        propertyId: req.propertyId,
+        entityType: 'my_entity_type',
+      },
+      async (timer) => {
+        timer.checkpoint('db');
+        const data = await fetchData();
+        return data;
+      }
+    );
+
+    return result.data;
+  }
+);
+```
+
+### 26.8 SLO Targets
+
+| Metric | Target | Measurement |
+|--------|--------|-------------|
+| Edge p95 TTFB | ≤100 ms | Cached reads |
+| Dynamic p95 TTFB | ≤250 ms | Cache misses |
+| Write p95 TTFB | ≤350 ms | POST/PUT/PATCH |
+| CDN hit ratio (static) | ≥95% | Task images, logos |
+| CDN hit ratio (GET) | ≥80% | Eligible API endpoints |
+| 304 ratio | ≥50% | On revisits with ETag |
+| Median payload | ≤40 KB | Compressed |
+
+### 26.9 CDN Setup
+
+See [CDN_SETUP_GUIDE.md](./CDN_SETUP_GUIDE.md) for detailed Cloudflare/CloudFront configuration including:
+- Multi-tenant cache isolation via X-Org-Key
+- Purge-by-tag integration
+- Header stripping for security
+- Rollout checklist
+
+---
+
+## 27) File Index (Updated)
+
+### Backend (Networking Middleware)
+
+- `backend/middleware/encore.service.ts` – Service declaration
+- `backend/middleware/metrics_aggregator.ts` – In-memory metrics with sliding window
+- `backend/middleware/response_metrics.ts` – Server-Timing + request timing
+- `backend/middleware/compression.ts` – Brotli/gzip compression
+- `backend/middleware/etag.ts` – ETag generation + 304 handling
+- `backend/middleware/last_modified.ts` – Last-Modified tracking
+- `backend/middleware/cache_headers.ts` – Cache-Control + Surrogate-Key
+- `backend/middleware/baseline_metrics.ts` – Metrics API endpoints
+- `backend/middleware/wrapper.ts` – Combined optimization wrapper
+- `backend/middleware/integration_examples.ts` – Usage examples
+- `backend/middleware/tenant_isolation.ts` – X-Org-Key tenant cache partitioning
+- `backend/middleware/rate_limiter.ts` – Token bucket rate limiting
+- `backend/middleware/idempotency.ts` – Idempotency-Key enforcement
+- `backend/middleware/purge_manager.ts` – CDN purge debouncing and batching
+- `backend/middleware/field_selector.ts` – Sparse field selection (fields= parameter)
+
+### Backend (Testing)
+
+- `backend/tests/load_testing.ts` – Load testing harness (traffic, purge, chaos, realtime)
+
+### Frontend (RUM)
+
+- `frontend/lib/rum-metrics.ts` – Real User Monitoring collection
+
+### Documentation
+
+- `docs/CDN_SETUP_GUIDE.md` – CDN configuration guide
+- `docs/NETWORKING_AND_REALTIME_IMPROVEMENTS.md` – This document (A-grade networking plan)
+
 

@@ -16,6 +16,7 @@ import { FinanceTabs, FinanceTabsList, FinanceTabsTrigger } from '@/components/u
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { useToast } from '@/components/ui/use-toast';
 import { API_CONFIG } from '../src/config/api';
+import { envUtils } from '@/src/utils/environment-detector';
 import { useRealtimeService } from '../hooks/useRealtimeService';
 import { setRealtimePropertyFilter } from '../lib/realtime-helpers';
 import {
@@ -57,7 +58,7 @@ function DailyReportPopup({ date, propertyId, orgId, isOpen, onClose }: DailyRep
   const TELEMETRY_SAMPLE = 0.02;
   const sendClientTelemetry = (events: any[]) => {
     try {
-      if (Math.random() >= TELEMETRY_SAMPLE) return;
+      if (envUtils.isProduction() || Math.random() >= TELEMETRY_SAMPLE) return;
       fetch(`${API_CONFIG.BASE_URL}/telemetry/client`, {
         method: 'POST',
         headers: {
@@ -550,7 +551,7 @@ function DailyReportManagerContent({ selectedPropertyId, selectedDate, onPropert
       if (process.env.NODE_ENV !== 'production') {
         console.log('[ReportsTelemetry] daily refetch duration ms:', ms, { propertyId, date: selectedDate });
       }
-      if (Math.random() < 0.02) {
+      if (!envUtils.isProduction() && Math.random() < 0.02) {
         fetch(`${API_CONFIG.BASE_URL}/telemetry/client`, {
           method: 'POST',
           headers: {
@@ -1183,7 +1184,7 @@ export default function ReportsPage() {
   const TELEMETRY_SAMPLE = 0.02;
   const sendClientTelemetry = (events: any[]) => {
     try {
-      if (Math.random() >= TELEMETRY_SAMPLE) return;
+      if (envUtils.isProduction() || Math.random() >= TELEMETRY_SAMPLE) return;
       fetch(`${API_CONFIG.BASE_URL}/telemetry/client`, {
         method: 'POST',
         headers: {
@@ -1325,9 +1326,9 @@ export default function ReportsPage() {
 
   return (
     <div className="w-full min-h-screen bg-gray-50">
-      <div className="px-6 py-6">
-        {/* Header Section */}
-        <div className="flex items-center justify-between mb-6">
+      <div className="px-6 pb-6 sm:py-6">
+        {/* Header Section (hidden on mobile since title appears in app nav) */}
+        <div className="hidden sm:flex items-center justify-between mb-6">
           <div className="flex items-center gap-4">
             <div className="p-3 bg-blue-100 rounded-xl">
               <BarChart3 className="h-6 w-6 text-blue-600" />
@@ -1344,49 +1345,54 @@ export default function ReportsPage() {
         </div>
 
         <FinanceTabs defaultValue="daily-manager" theme={theme}>
-          <FinanceTabsList className="grid-cols-3" theme={theme}>
-            <FinanceTabsTrigger value="daily-manager" theme={theme}>
-              <Receipt className="h-4 w-4 mr-2" />
-              Daily Report Manager
-            </FinanceTabsTrigger>
-            <FinanceTabsTrigger value="daily-spreadsheet" theme={theme}>
-              <BarChart3 className="h-4 w-4 mr-2" />
-              Monthly Spreadsheet
-            </FinanceTabsTrigger>
-            <FinanceTabsTrigger value="monthly-yearly" theme={theme}>
-              <TrendingUp className="h-4 w-4 mr-2" />
-              Quarterly & Yearly
-            </FinanceTabsTrigger>
-          </FinanceTabsList>
-
-        {/* Tab Content Container */}
-        <div className="px-6 py-6">
-          <div className="max-w-7xl mx-auto">
-            <TabsContent value="daily-manager" className="space-y-6 mt-0">
-              <DailyReportManagerContent 
-                selectedPropertyId={selectedPropertyId}
-                selectedDate={selectedDate}
-                onPropertyDateChange={(propertyId: number, date: string) => {
-                  setSelectedPropertyId(propertyId.toString());
-                  setSelectedDate(date);
-                }}
-              />
-            </TabsContent>
-
-            <TabsContent value="daily-spreadsheet" className="space-y-6 mt-0">
-              <DailyReportsManager 
-                onOpenDailyReportManager={(propertyId: number, date: string) => {
-                  setSelectedPropertyId(propertyId.toString());
-                  setSelectedDate(date);
-                }}
-              />
-            </TabsContent>
-
-            <TabsContent value="monthly-yearly" className="space-y-6 mt-0">
-              <MonthlyYearlyReports />
-            </TabsContent>
+          {/* Enhanced Sticky Tabs for mobile and desktop */}
+          <div className="sticky top-16 z-30 bg-white border-b border-gray-200 -mx-6 px-4 sm:px-6 py-3 shadow-sm">
+            <div className="overflow-x-auto no-scrollbar">
+              <FinanceTabsList className="grid w-full grid-cols-3 min-w-max bg-gray-100" theme={theme}>
+                <FinanceTabsTrigger value="daily-manager" theme={theme}>
+                  <Receipt className="h-4 w-4 mr-2" />
+                  Daily Report Manager
+                </FinanceTabsTrigger>
+                <FinanceTabsTrigger value="daily-spreadsheet" theme={theme}>
+                  <BarChart3 className="h-4 w-4 mr-2" />
+                  Monthly Spreadsheet
+                </FinanceTabsTrigger>
+                <FinanceTabsTrigger value="monthly-yearly" theme={theme}>
+                  <TrendingUp className="h-4 w-4 mr-2" />
+                  Quarterly & Yearly
+                </FinanceTabsTrigger>
+              </FinanceTabsList>
+            </div>
           </div>
-        </div>
+
+          {/* Tab Content Container */}
+          <div className="py-6">
+            <div className="max-w-7xl mx-auto">
+              <TabsContent value="daily-manager" className="space-y-6 mt-0">
+                <DailyReportManagerContent 
+                  selectedPropertyId={selectedPropertyId}
+                  selectedDate={selectedDate}
+                  onPropertyDateChange={(propertyId: number, date: string) => {
+                    setSelectedPropertyId(propertyId.toString());
+                    setSelectedDate(date);
+                  }}
+                />
+              </TabsContent>
+
+              <TabsContent value="daily-spreadsheet" className="space-y-6 mt-0">
+                <DailyReportsManager 
+                  onOpenDailyReportManager={(propertyId: number, date: string) => {
+                    setSelectedPropertyId(propertyId.toString());
+                    setSelectedDate(date);
+                  }}
+                />
+              </TabsContent>
+
+              <TabsContent value="monthly-yearly" className="space-y-6 mt-0">
+                <MonthlyYearlyReports />
+              </TabsContent>
+            </div>
+          </div>
         </FinanceTabs>
       </div>
     </div>

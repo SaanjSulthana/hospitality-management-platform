@@ -2,6 +2,7 @@ import React, { useEffect, useRef } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useQueryClient } from '@tanstack/react-query';
 import { API_CONFIG } from '../src/config/api';
+import { envUtils } from '@/src/utils/environment-detector';
 import { getAccessTokenHash, getFlagBool, getFlagNumber } from '../lib/feature-flags';
 
 /**
@@ -249,6 +250,7 @@ export default function RealtimeProvider(): null {
   };
 
   const sendClientTelemetry = (events: any[]) => {
+    if (envUtils.isProduction()) return;
     try {
       fetch(`${API_CONFIG.BASE_URL}/telemetry/client`, {
         method: 'POST',
@@ -1855,7 +1857,7 @@ export default function RealtimeProvider(): null {
 
     // SLI reporting (every 5 minutes) - lightweight placeholder
     const sliTimer = setInterval(() => {
-      if (Math.random() >= TELEMETRY_SAMPLE) return;
+      if (envUtils.isProduction() || Math.random() >= TELEMETRY_SAMPLE) return;
       try {
         fetch(`${API_CONFIG.BASE_URL}/telemetry/client`, {
           method: 'POST',

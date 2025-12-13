@@ -16,6 +16,7 @@ import { Settings, Palette, Building2, Save, Upload, X, Image, Activity } from '
 import { useNavigate } from 'react-router-dom';
 import { API_CONFIG } from '../src/config/api';
 import { getFlagBool } from '../lib/feature-flags';
+import { envUtils } from '@/src/utils/environment-detector';
 
 export default function SettingsPage() {
   const { user } = useAuth();
@@ -46,7 +47,7 @@ export default function SettingsPage() {
       const events = e?.detail?.events || [];
       if (!Array.isArray(events) || events.length === 0) return;
       // 2% telemetry
-      if (Math.random() < 0.02) {
+      if (!envUtils.isProduction() && Math.random() < 0.02) {
         try {
           fetch(`/telemetry/client`, {
             method: 'POST',
@@ -339,8 +340,8 @@ export default function SettingsPage() {
   // Only show settings page to Admins
   if (user?.role !== 'ADMIN') {
     return (
-      <div className="min-h-screen bg-gray-50">
-        <div className="px-6 py-6">
+      <div className="w-full min-h-screen bg-gray-50">
+        <div className="px-6 pb-6 sm:py-6">
           <Card className="border-l-4 border-l-red-500 shadow-sm">
             <CardContent className="flex items-center justify-center p-12">
               <div className="text-center">
@@ -360,10 +361,10 @@ export default function SettingsPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <div className="px-6 py-6">
-        {/* Enhanced Header */}
-        <Card className="border-l-4 border-l-blue-500 shadow-sm hover:shadow-md transition-shadow duration-200 mb-6">
+    <div className="w-full min-h-screen bg-gray-50">
+      <div className="px-6 pb-6 sm:py-6">
+        {/* Enhanced Header (hidden on mobile since title appears in app nav) */}
+        <Card className="hidden sm:block border-l-4 border-l-blue-500 shadow-sm hover:shadow-md transition-shadow duration-200 mb-6">
           <CardHeader className="pb-4">
             <CardTitle className="text-xl font-bold text-gray-900 flex items-center gap-2">
               <div className="p-2 bg-blue-100 rounded-lg shadow-sm">
@@ -378,26 +379,34 @@ export default function SettingsPage() {
         </Card>
 
         <FinanceTabs defaultValue="branding" theme={theme}>
-          <FinanceTabsList className="grid-cols-4" theme={theme}>
-            <FinanceTabsTrigger value="branding" theme={theme}>
-              <Palette className="h-4 w-4 mr-2" />
-              Branding
-            </FinanceTabsTrigger>
-            <FinanceTabsTrigger value="organization" theme={theme}>
-              <Building2 className="h-4 w-4 mr-2" />
-              Organization
-            </FinanceTabsTrigger>
-            <FinanceTabsTrigger value="integrations" theme={theme}>
-              <Settings className="h-4 w-4 mr-2" />
-              Integrations
-            </FinanceTabsTrigger>
-            {user?.role === 'ADMIN' && (
-              <FinanceTabsTrigger value="system-health" theme={theme}>
-                <Activity className="h-4 w-4 mr-2" />
-                System Health
-              </FinanceTabsTrigger>
-            )}
-          </FinanceTabsList>
+          {/* Enhanced Sticky Tabs for mobile and desktop */}
+          <div className="sticky top-16 z-30 bg-white border-b border-gray-200 -mx-6 px-4 sm:px-6 py-3 shadow-sm">
+            <div className="overflow-x-auto no-scrollbar">
+              <FinanceTabsList className="grid w-full grid-cols-4 min-w-max bg-gray-100" theme={theme}>
+                <FinanceTabsTrigger value="branding" theme={theme}>
+                  <Palette className="h-4 w-4 mr-2" />
+                  Branding
+                </FinanceTabsTrigger>
+                <FinanceTabsTrigger value="organization" theme={theme}>
+                  <Building2 className="h-4 w-4 mr-2" />
+                  Organization
+                </FinanceTabsTrigger>
+                <FinanceTabsTrigger value="integrations" theme={theme}>
+                  <Settings className="h-4 w-4 mr-2" />
+                  Integrations
+                </FinanceTabsTrigger>
+                {user?.role === 'ADMIN' && (
+                  <FinanceTabsTrigger value="system-health" theme={theme}>
+                    <Activity className="h-4 w-4 mr-2" />
+                    System Health
+                  </FinanceTabsTrigger>
+                )}
+              </FinanceTabsList>
+            </div>
+          </div>
+
+          {/* Tab Content Container */}
+          <div className="py-6">
 
         <TabsContent value="branding" className="space-y-6 mt-0">
           <form onSubmit={handleThemeSubmit} className="space-y-6">
@@ -878,6 +887,8 @@ export default function SettingsPage() {
             </Card>
           </TabsContent>
         )}
+
+          </div>
         </FinanceTabs>
       </div>
     </div>

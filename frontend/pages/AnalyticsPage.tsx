@@ -16,6 +16,7 @@ import {
   RefreshCw
 } from 'lucide-react';
 import { getFlagBool } from '../lib/feature-flags';
+import { envUtils } from '@/src/utils/environment-detector';
 
 export default function AnalyticsPage() {
   const { getAuthenticatedBackend } = useAuth();
@@ -81,8 +82,8 @@ export default function AnalyticsPage() {
     const invalidate = () => {
       // Invalidate analytics overview queries
       queryClient.invalidateQueries({ queryKey: ['analytics'] });
-      // 2% telemetry
-      if (Math.random() < 0.02) {
+      // 2% telemetry (dev/staging only)
+      if (!envUtils.isProduction() && Math.random() < 0.02) {
         try {
           fetch(`/telemetry/client`, {
             method: 'POST',
@@ -131,8 +132,8 @@ export default function AnalyticsPage() {
 
   if (isAnyLoading) {
     return (
-      <div className="min-h-screen bg-gray-50">
-        <div className="px-6 py-6">
+      <div className="w-full min-h-screen bg-gray-50">
+        <div className="px-6 pb-6 sm:py-6">
           <div className="space-y-6">
             {/* Loading Header */}
             <Card className="border-l-4 border-l-blue-500 shadow-sm">
@@ -168,8 +169,8 @@ export default function AnalyticsPage() {
   // Show error state if there are any errors
   if (hasErrors) {
     return (
-      <div className="min-h-screen bg-gray-50">
-        <div className="px-6 py-6">
+      <div className="w-full min-h-screen bg-gray-50">
+        <div className="px-6 pb-6 sm:py-6">
           <Card className="border-l-4 border-l-red-500 shadow-sm">
             <CardContent className="flex items-center justify-center p-12">
               <div className="text-center">
@@ -197,11 +198,11 @@ export default function AnalyticsPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <div className="px-6 py-6">
+    <div className="w-full min-h-screen bg-gray-50">
+      <div className="px-6 pb-6 sm:py-6">
         <div className="space-y-6">
-          {/* Enhanced Header */}
-          <Card className="border-l-4 border-l-blue-500 shadow-sm hover:shadow-md transition-shadow duration-200">
+          {/* Enhanced Header (hidden on mobile since title appears in app nav) */}
+          <Card className="hidden sm:block border-l-4 border-l-blue-500 shadow-sm hover:shadow-md transition-shadow duration-200">
             <CardHeader className="pb-4">
               <CardTitle className="text-xl font-bold text-gray-900 flex items-center gap-2">
                 <div className="p-2 bg-blue-100 rounded-lg shadow-sm">

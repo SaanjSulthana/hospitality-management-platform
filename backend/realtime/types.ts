@@ -66,7 +66,7 @@ export interface StreamHandshake {
 /**
  * Message types sent over the stream
  */
-export type StreamMessageType = "event" | "ping" | "ack" | "error" | "batch";
+export type StreamMessageType = "event" | "ping" | "ack" | "error" | "batch" | "invalidate";
 
 /**
  * Unified message format sent from server to client
@@ -107,6 +107,13 @@ export interface StreamMessage {
    * Message type
    */
   type: StreamMessageType;
+
+  /**
+   * Optional invalidation payload for cache keys (when type=\"invalidate\")
+   */
+  invalidate?: {
+    keys: string[];
+  };
 
   /**
    * Optional error details (when type="error")
@@ -168,7 +175,7 @@ export interface StreamOutMessage {
   /**
    * Message type discriminator
    */
-  type: "event" | "batch" | "ping" | "ack" | "error";
+  type: "event" | "batch" | "ping" | "ack" | "error" | "invalidate";
   
   /**
    * Service name (for event/error messages)
@@ -189,6 +196,13 @@ export interface StreamOutMessage {
     | BrandingEventPayload
     | AnalyticsEventPayload
   >;
+
+  /**
+   * Invalidation payload (for invalidate messages)
+   */
+  invalidate?: {
+    keys: string[];
+  };
   
   /**
    * Batch of messages (for batch messages)

@@ -11,12 +11,15 @@ interface CacheEntry<T> {
 // External Redis client interface (will be initialized lazily)
 let redisClient: any = null;
 let redisAvailable = false;
+let redisInitialized = false; // FIX: Track if init has run to avoid log spam
 
 // Initialize external Redis if configured
 async function initRedis(): Promise<boolean> {
-  if (redisClient !== null) {
+  // FIX: Check if already initialized to prevent repeated log messages
+  if (redisInitialized) {
     return redisAvailable;
   }
+  redisInitialized = true;
 
   const redisHost = process.env.REDIS_HOST;
   const redisPort = process.env.REDIS_PORT || '6379';

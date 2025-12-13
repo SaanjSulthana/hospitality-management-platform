@@ -69,10 +69,9 @@ export default function TasksPage() {
     QUERY_KEYS.TASKS,
     '/tasks',
     {
-      staleTime: 25000,
-      gcTime: 300000,
-      refetchOnWindowFocus: false,
-      refetchOnMount: true,
+      ...(getFlagBool('REALTIME_PATCH_MODE', true)
+        ? { staleTime: Infinity as number, gcTime: 600000, refetchOnWindowFocus: false, refetchOnMount: true }
+        : { staleTime: 25000, gcTime: 300000, refetchOnWindowFocus: false, refetchOnMount: true }),
     }
   );
 
@@ -91,9 +90,20 @@ export default function TasksPage() {
     '/tasks/:id/status',
     'PATCH',
     {
-      invalidateQueries: [QUERY_KEYS.TASKS],
       successMessage: "Task status updated successfully",
       errorMessage: "Failed to update task status. Please try again.",
+      onSuccess: (_data, variables: any) => {
+        const taskId = variables?.id;
+        const newStatus = variables?.status;
+        if (!taskId || !newStatus) return;
+        queryClient.setQueryData(QUERY_KEYS.TASKS, (old: any) => {
+          if (!old?.tasks) return old;
+          return {
+            ...old,
+            tasks: old.tasks.map((t: any) => t.id === taskId ? { ...t, status: newStatus } : t),
+          };
+        });
+      },
     }
   );
 
@@ -102,9 +112,20 @@ export default function TasksPage() {
     '/tasks/:id/assign',
     'PATCH',
     {
-      invalidateQueries: [QUERY_KEYS.TASKS],
       successMessage: "Task assignment updated successfully",
       errorMessage: "Failed to update task assignment. Please try again.",
+      onSuccess: (_data, variables: any) => {
+        const taskId = variables?.id;
+        const assigneeStaffId = variables?.assigneeStaffId ?? null;
+        // Optional: include assigneeName if returned by server
+        queryClient.setQueryData(QUERY_KEYS.TASKS, (old: any) => {
+          if (!old?.tasks) return old;
+          return {
+            ...old,
+            tasks: old.tasks.map((t: any) => t.id === taskId ? { ...t, assigneeStaffId } : t),
+          };
+        });
+      },
     }
   );
 
@@ -113,15 +134,42 @@ export default function TasksPage() {
     '/tasks/:id',
     'PATCH',
     {
-      invalidateQueries: [QUERY_KEYS.TASKS, QUERY_KEYS.DASHBOARD, QUERY_KEYS.ANALYTICS],
-      refetchQueries: [QUERY_KEYS.TASKS],
       successMessage: "Task updated successfully",
       errorMessage: "Failed to update task. Please try again.",
-      onSuccess: () => {
-        // Force immediate refresh of tasks data
-        queryClient.invalidateQueries({ queryKey: [QUERY_KEYS.TASKS] });
-        queryClient.refetchQueries({ queryKey: [QUERY_KEYS.TASKS] });
-      }
+      onSuccess: (_data, variables: any) => {
+        const {
+          id,
+          title,
+          description,
+          priority,
+          dueAt,
+          assigneeStaffId,
+          estimatedHours,
+          type,
+          propertyId,
+        } = variables || {};
+        queryClient.setQueryData(QUERY_KEYS.TASKS, (old: any) => {
+          if (!old?.tasks) return old;
+          return {
+            ...old,
+            tasks: old.tasks.map((t: any) =>
+              t.id === id
+                ? {
+                    ...t,
+                    ...(title != null ? { title } : {}),
+                    ...(description != null ? { description } : {}),
+                    ...(priority != null ? { priority } : {}),
+                    ...(dueAt != null ? { dueAt } : {}),
+                    ...(assigneeStaffId != null ? { assigneeStaffId } : {}),
+                    ...(estimatedHours != null ? { estimatedHours } : {}),
+                    ...(type != null ? { type } : {}),
+                    ...(propertyId != null ? { propertyId } : {}),
+                  }
+                : t
+            ),
+          };
+        });
+      },
     }
   );
 
@@ -130,9 +178,16 @@ export default function TasksPage() {
     '/tasks/:id',
     'DELETE',
     {
-      invalidateQueries: [QUERY_KEYS.TASKS],
       successMessage: "Task deleted successfully",
       errorMessage: "Failed to delete task. Please try again.",
+      onSuccess: (_data, variables: any) => {
+        const taskId = variables?.id;
+        if (!taskId) return;
+        queryClient.setQueryData(QUERY_KEYS.TASKS, (old: any) => {
+          if (!old?.tasks) return old;
+          return { ...old, tasks: old.tasks.filter((t: any) => t.id !== taskId) };
+        });
+      },
     }
   );
 
@@ -191,19 +246,75 @@ export default function TasksPage() {
   // Realtime: Tasks events listener (row-level cache patching + minimal refetch)
   useEffect(() => { try { (window as any).__tasksSelectedPropertyId = 'all'; } catch {} }, []);
   useRealtimeService('tasks', (events) => {
+    const patchMode = getFlagBool('REALTIME_PATCH_MODE', true);
     let needsTasksRefetch = false;
     for (const ev of events) {
       const { eventType, entityId, metadata } = ev || {};
       if (!eventType || !entityId) continue;
       if (
-        eventType === 'task_created' ||
-        eventType === 'task_deleted' ||
-        eventType === 'task_attachment_added' ||
-        eventType === 'task_hours_updated' ||
-        eventType === 'task_assigned' ||
-        eventType === 'task_assignment_cleared'
+        eventType === 'task_attachment_added'
       ) {
-        needsTasksRefetch = true;
+        // Attachments are not shown in list cells; ignore to avoid refetch.
+        continue;
+      }
+      if (eventType === 'task_created') {
+        if (!patchMode) { needsTasksRefetch = true; continue; }
+        const newRow = {
+          id: entityId,
+          title: metadata?.title ?? 'New Task',
+          description: metadata?.description ?? '',
+          status: metadata?.status ?? 'open',
+          priority: metadata?.priority ?? 'med',
+          propertyId: metadata?.propertyId ?? null,
+          propertyName: metadata?.propertyName ?? '—',
+          dueAt: metadata?.dueAt ?? null,
+          assigneeStaffId: metadata?.assigneeStaffId ?? null,
+          assigneeName: metadata?.assigneeName ?? '',
+          createdAt: new Date().toISOString(),
+        };
+        queryClient.setQueryData(QUERY_KEYS.TASKS, (old: any) => {
+          if (!old?.tasks) return old;
+          if (old.tasks.some((t: any) => t.id === entityId)) return old;
+          return { ...old, tasks: [newRow, ...old.tasks] };
+        });
+        continue;
+      }
+      if (eventType === 'task_deleted') {
+        if (!patchMode) { needsTasksRefetch = true; continue; }
+        queryClient.setQueryData(QUERY_KEYS.TASKS, (old: any) => {
+          if (!old?.tasks) return old;
+          return { ...old, tasks: old.tasks.filter((t: any) => t.id !== entityId) };
+        });
+        continue;
+      }
+      if (eventType === 'task_assigned') {
+        if (!patchMode) { needsTasksRefetch = true; continue; }
+        const assigneeStaffId = metadata?.assigneeStaffId ?? null;
+        const assigneeName = metadata?.assigneeName ?? '';
+        queryClient.setQueryData(QUERY_KEYS.TASKS, (old: any) => {
+          if (!old?.tasks) return old;
+          return {
+            ...old,
+            tasks: old.tasks.map((t: any) =>
+              t.id === entityId ? { ...t, assigneeStaffId, assigneeName } : t
+            ),
+          };
+        });
+        continue;
+      }
+      if (eventType === 'task_hours_updated') {
+        if (!patchMode) { needsTasksRefetch = true; continue; }
+        const estimatedHours = metadata?.estimatedHours;
+        const hoursSpent = metadata?.hoursSpent;
+        queryClient.setQueryData(QUERY_KEYS.TASKS, (old: any) => {
+          if (!old?.tasks) return old;
+          return {
+            ...old,
+            tasks: old.tasks.map((t: any) =>
+              t.id === entityId ? { ...t, ...(estimatedHours != null ? { estimatedHours } : {}), ...(hoursSpent != null ? { hoursSpent } : {}) } : t
+            ),
+          };
+        });
         continue;
       }
       if (eventType === 'task_status_updated') {
@@ -239,7 +350,7 @@ export default function TasksPage() {
         continue;
       }
     }
-    if (needsTasksRefetch) {
+    if (needsTasksRefetch && !patchMode) {
       queryClient.invalidateQueries({ queryKey: QUERY_KEYS.TASKS });
     }
   }, getFlagBool('TASKS_REALTIME_V1', true));

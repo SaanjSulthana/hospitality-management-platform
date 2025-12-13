@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { API_CONFIG } from '../src/config/api';
+import { envUtils } from '@/src/utils/environment-detector';
 import { getAccessTokenHash, getFlagBool } from '../lib/feature-flags';
 
 type Options = {
@@ -85,7 +86,7 @@ export function useFinanceRealtimeV2(options: Options = {}) {
           setIsLeader(true);
           sendLeaderHeartbeat();
           // Telemetry: leader_acquired/leader_takeover
-          if (Math.random() < telemetrySampleRate) {
+          if (!envUtils.isProduction() && Math.random() < telemetrySampleRate) {
             fetch(`${API_CONFIG.BASE_URL}/telemetry/client`, {
               method: 'POST',
               headers: {
@@ -108,7 +109,7 @@ export function useFinanceRealtimeV2(options: Options = {}) {
         renewLease();
         setIsLeader(true);
         sendLeaderHeartbeat();
-        if (Math.random() < telemetrySampleRate) {
+        if (!envUtils.isProduction() && Math.random() < telemetrySampleRate) {
           fetch(`${API_CONFIG.BASE_URL}/telemetry/client`, {
             method: 'POST',
             headers: {
@@ -251,7 +252,7 @@ export function useFinanceRealtimeV2(options: Options = {}) {
           if (elapsed < 1500) {
             backoffMs = 2000 + Math.floor(Math.random() * 3000); // 2–5s
             // Telemetry: fast_empty
-            if (Math.random() < telemetrySampleRate) {
+            if (!envUtils.isProduction() && Math.random() < telemetrySampleRate) {
               fetch(`${API_CONFIG.BASE_URL}/telemetry/client`, {
                 method: 'POST',
                 headers: {

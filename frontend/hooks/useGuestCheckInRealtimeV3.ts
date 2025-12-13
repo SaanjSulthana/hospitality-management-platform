@@ -13,6 +13,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { API_CONFIG } from '../src/config/api';
+import { envUtils } from '@/src/utils/environment-detector';
 
 // Constants
 const LONG_POLL_TIMEOUT = 25_000;
@@ -329,6 +330,7 @@ function randomInRange([min, max]: [number, number]): number {
 
 async function sendTelemetry(eventType: string, data: any) {
   try {
+    if (envUtils.isProduction()) return;
     await fetch(`${API_CONFIG.BASE_URL}/telemetry/client`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },

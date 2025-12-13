@@ -3,6 +3,7 @@ import { getAuthData } from "~encore/auth";
 import { financeDB } from "./db";
 import { requireRole } from "../auth/middleware";
 import { v1Path } from "../shared/http";
+import { trackMetrics } from "../middleware";
 
 export interface FinancialSummaryRequest {
   propertyId?: number;
@@ -50,20 +51,21 @@ export interface FinancialSummaryResponse {
 
 // Get comprehensive financial summary with payment mode breakdown
 async function getFinancialSummaryHandler(req: FinancialSummaryRequest): Promise<FinancialSummaryResponse> {
-    console.log('=== GETTING FINANCIAL SUMMARY ===');
-    console.log('Request:', req);
-    
     const authData = getAuthData();
     if (!authData) {
       throw APIError.unauthenticated("Authentication required");
     }
-    requireRole("ADMIN", "MANAGER")(authData);
+    
+    // Wrap with metrics tracking for P0 baseline capture
+    return trackMetrics('/v1/finance/summary', async (timer) => {
+      timer.checkpoint('auth');
+      requireRole("ADMIN", "MANAGER")(authData);
 
-    const { propertyId, startDate, endDate } = req || {};
+      const { propertyId, startDate, endDate } = req || {};
 
-    try {
-
-      // Get revenue summary by payment mode
+      try {
+        timer.checkpoint('db_start');
+        // Get revenue summary by payment mode
       let revenueQuery = `
         SELECT 
           COALESCE(SUM(CASE WHEN r.payment_mode = 'cash' THEN r.amount_cents ELSE 0 END), 0)::text as cash_revenue,
@@ -184,19 +186,22 @@ async function getFinancialSummaryHandler(req: FinancialSummaryRequest): Promise
         },
       };
 
-      return {
-        success: true,
-        summary,
-        period: {
-          startDate,
-          endDate,
-          propertyId,
-        },
-      };
-    } catch (error) {
-      console.error('Error getting financial summary:', error);
-      throw APIError.internal(`Failed to get financial summary: ${error instanceof Error ? error.message : 'Unknown error'}`);
-    }
+        timer.checkpoint('db_complete');
+        
+        return {
+          success: true,
+          summary,
+          period: {
+            startDate,
+            endDate,
+            propertyId,
+          },
+        };
+      } catch (error) {
+        console.error('Error getting financial summary:', error);
+        throw APIError.internal(`Failed to get financial summary: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      }
+    }); // End trackMetrics
 }
 
 export const getFinancialSummary = api<FinancialSummaryRequest, FinancialSummaryResponse>(

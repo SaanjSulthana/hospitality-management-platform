@@ -2,8 +2,7 @@
 // Handles routing to partitioned or legacy tables based on configuration
 
 import { SQLDatabase } from "encore.dev/storage/sqldb";
-import { BaseRepository, PartitionAwareQueryBuilder } from "./base_repository";
-import { DatabaseConfig } from "../../config/runtime";
+import { BaseRepository } from "./base_repository";
 
 export interface RevenueData {
   id?: number;
@@ -43,7 +42,7 @@ export interface ExpenseData {
 }
 
 export class FinanceRepository extends BaseRepository {
-  
+
   constructor(db: SQLDatabase) {
     super(db);
   }
@@ -54,33 +53,32 @@ export class FinanceRepository extends BaseRepository {
    * Insert a new revenue record
    */
   async insertRevenue(data: RevenueData, usePartitioned?: boolean): Promise<RevenueData> {
-    const targetTable = this.getTableName({ 
-      tableName: 'revenues', 
-      usePartitioned 
+    const targetTable = this.getTableName({
+      tableName: 'revenues',
+      usePartitioned
     });
 
     this.logPartitionRouting('revenues', targetTable, 'INSERT');
 
-    const result = await this.db.queryRow<RevenueData>`
-      INSERT INTO ${this.db.exec(targetTable)} (
+    const row = await this.db.queryRow<RevenueData>`
+      INSERT INTO ${(this.db as any).exec(targetTable)} (
         org_id, property_id, amount_cents, occurred_at, description,
         category, payment_method, reference_number, status,
         created_by_user_id, created_at, updated_at
       ) VALUES (
-        ${data.org_id}, ${data.property_id}, ${data.amount_cents}, 
-        ${data.occurred_at}, ${data.description},
-        ${data.category || null}, ${data.payment_method || null}, 
-        ${data.reference_number || null}, ${data.status},
+        ${data.org_id}, ${data.property_id}, ${data.amount_cents}, ${data.occurred_at}, ${data.description},
+        ${data.category || null}, ${data.payment_method || null}, ${data.reference_number || null}, ${data.status},
         ${data.created_by_user_id}, NOW(), NOW()
       )
       RETURNING *
     `;
 
-    return result!;
+    return row!;
   }
 
   /**
    * Get revenues by organization and optional filters
+   * Uses read replica for better performance
    */
   async getRevenues(
     orgId: number,
@@ -92,67 +90,58 @@ export class FinanceRepository extends BaseRepository {
     } = {},
     usePartitioned?: boolean
   ): Promise<RevenueData[]> {
-    const targetTable = this.getTableName({ 
-      tableName: 'revenues', 
-      usePartitioned 
+    const targetTable = this.getTableName({
+      tableName: 'revenues',
+      usePartitioned
     });
 
     this.logPartitionRouting('revenues', targetTable, 'SELECT');
 
-    // Build query dynamically based on filters
-    const conditions = [`org_id = ${orgId}`];
-    const params: any[] = [orgId];
-    
-    if (filters.propertyId) {
-      conditions.push(`property_id = $${params.length + 1}`);
-      params.push(filters.propertyId);
-    }
-    
-    if (filters.startDate) {
-      conditions.push(`occurred_at >= $${params.length + 1}`);
-      params.push(filters.startDate);
-    }
-    
-    if (filters.endDate) {
-      conditions.push(`occurred_at <= $${params.length + 1}`);
-      params.push(filters.endDate);
-    }
-    
-    if (filters.status) {
-      conditions.push(`status = $${params.length + 1}`);
-      params.push(filters.status);
-    }
-    
-    const query = `SELECT * FROM ${targetTable} WHERE ${conditions.join(' AND ')} ORDER BY occurred_at DESC`;
-    const results = await this.db.query<RevenueData>(query, params);
-    return results;
+    // Use read replica for this query
+    const db = this.getReadConnection({ preferReplica: true, orgId });
+
+    const rows: RevenueData[] = [];
+    const cursor = await db.query<RevenueData>`
+      SELECT * FROM ${(db as any).exec(targetTable)}
+      WHERE org_id = ${orgId}
+        AND (${filters.propertyId ?? null} IS NULL OR property_id = ${filters.propertyId ?? null})
+        AND (${filters.startDate ?? null} IS NULL OR occurred_at >= ${filters.startDate ?? null})
+        AND (${filters.endDate ?? null} IS NULL OR occurred_at <= ${filters.endDate ?? null})
+        AND (${filters.status ?? null} IS NULL OR status = ${filters.status ?? null})
+      ORDER BY occurred_at DESC
+    `;
+    for await (const r of cursor) rows.push(r);
+    return rows;
   }
 
   /**
    * Get a single revenue by ID
+   * Uses read replica for better performance
    */
   async getRevenueById(
     id: number,
     orgId: number,
     usePartitioned?: boolean
   ): Promise<RevenueData | null> {
-    const targetTable = this.getTableName({ 
-      tableName: 'revenues', 
-      usePartitioned 
+    const targetTable = this.getTableName({
+      tableName: 'revenues',
+      usePartitioned
     });
 
     this.logPartitionRouting('revenues', targetTable, 'SELECT BY ID');
 
-    const result = await this.db.queryRow<RevenueData>`
-      SELECT * FROM ${this.db.exec(targetTable)} 
-      WHERE id = ${id} AND org_id = ${orgId}
-    `;
+    // Use read replica for this query
+    const db = this.getReadConnection({ preferReplica: true, orgId });
 
-    return result || null;
+    const row = await db.queryRow<RevenueData>`
+      SELECT * FROM ${(db as any).exec(targetTable)} WHERE id = ${id} AND org_id = ${orgId}
+    `;
+    return row || null;
   }
 
   /**
    * Update revenue status (approve/reject)
+   * Uses primary database for write operation
    */
   async updateRevenueStatus(
     id: number,
@@ -161,16 +150,19 @@ export class FinanceRepository extends BaseRepository {
     approvedByUserId: number,
     usePartitioned?: boolean
   ): Promise<RevenueData | null> {
-    const targetTable = this.getTableName({ 
-      tableName: 'revenues', 
-      usePartitioned 
+    const targetTable = this.getTableName({
+      tableName: 'revenues',
+      usePartitioned
     });
 
     this.logPartitionRouting('revenues', targetTable, 'UPDATE STATUS');
 
-    const result = await this.db.queryRow<RevenueData>`
-      UPDATE ${this.db.exec(targetTable)}
-      SET 
+    // Use primary database for write operation
+    const db = this.getWriteConnection(orgId);
+
+    const row = await db.queryRow<RevenueData>`
+      UPDATE ${(db as any).exec(targetTable)}
+      SET
         status = ${status},
         approved_by_user_id = ${approvedByUserId},
         approved_at = NOW(),
@@ -178,8 +170,7 @@ export class FinanceRepository extends BaseRepository {
       WHERE id = ${id} AND org_id = ${orgId}
       RETURNING *
     `;
-
-    return result || null;
+    return row || null;
   }
 
   /**
@@ -190,16 +181,15 @@ export class FinanceRepository extends BaseRepository {
     orgId: number,
     usePartitioned?: boolean
   ): Promise<boolean> {
-    const targetTable = this.getTableName({ 
-      tableName: 'revenues', 
-      usePartitioned 
+    const targetTable = this.getTableName({
+      tableName: 'revenues',
+      usePartitioned
     });
 
     this.logPartitionRouting('revenues', targetTable, 'DELETE');
 
     await this.db.exec`
-      DELETE FROM ${this.db.exec(targetTable)} 
-      WHERE id = ${id} AND org_id = ${orgId}
+      DELETE FROM ${(this.db as any).exec(targetTable)} WHERE id = ${id} AND org_id = ${orgId}
     `;
 
     return true;
@@ -207,6 +197,7 @@ export class FinanceRepository extends BaseRepository {
 
   /**
    * Get revenue sum for a date range
+   * Uses read replica for better performance
    */
   async getRevenueSumByDateRange(
     orgId: number,
@@ -215,35 +206,26 @@ export class FinanceRepository extends BaseRepository {
     endDate: string,
     usePartitioned?: boolean
   ): Promise<number> {
-    const targetTable = this.getTableName({ 
-      tableName: 'revenues', 
-      usePartitioned 
+    const targetTable = this.getTableName({
+      tableName: 'revenues',
+      usePartitioned
     });
 
     this.logPartitionRouting('revenues', targetTable, 'SUM');
 
-    if (propertyId) {
-      const result = await this.db.queryRow<{ total: number }>`
-        SELECT COALESCE(SUM(amount_cents), 0) as total
-        FROM ${this.db.exec(targetTable)}
-        WHERE org_id = ${orgId}
-          AND property_id = ${propertyId}
-          AND occurred_at >= ${startDate}
-          AND occurred_at <= ${endDate}
-          AND status = 'approved'
-      `;
-      return result?.total || 0;
-    } else {
-      const result = await this.db.queryRow<{ total: number }>`
-        SELECT COALESCE(SUM(amount_cents), 0) as total
-        FROM ${this.db.exec(targetTable)}
-        WHERE org_id = ${orgId}
-          AND occurred_at >= ${startDate}
-          AND occurred_at <= ${endDate}
-          AND status = 'approved'
-      `;
-      return result?.total || 0;
-    }
+    // Use read replica for this query
+    const db = this.getReadConnection({ preferReplica: true, orgId });
+
+    const row = await db.queryRow<{ total: number }>`
+      SELECT COALESCE(SUM(amount_cents), 0) as total
+      FROM ${(db as any).exec(targetTable)}
+      WHERE org_id = ${orgId}
+        AND (${propertyId ?? null} IS NULL OR property_id = ${propertyId ?? null})
+        AND occurred_at >= ${startDate}
+        AND occurred_at <= ${endDate}
+        AND status = 'approved'
+    `;
+    return row?.total ?? 0;
   }
 
   // ==================== EXPENSE METHODS ====================
@@ -252,29 +234,26 @@ export class FinanceRepository extends BaseRepository {
    * Insert a new expense record
    */
   async insertExpense(data: ExpenseData, usePartitioned?: boolean): Promise<ExpenseData> {
-    const targetTable = this.getTableName({ 
-      tableName: 'expenses', 
-      usePartitioned 
+    const targetTable = this.getTableName({
+      tableName: 'expenses',
+      usePartitioned
     });
 
     this.logPartitionRouting('expenses', targetTable, 'INSERT');
 
-    const result = await this.db.queryRow<ExpenseData>`
-      INSERT INTO ${this.db.exec(targetTable)} (
+    const row = await this.db.queryRow<ExpenseData>`
+      INSERT INTO ${(this.db as any).exec(targetTable)} (
         org_id, property_id, amount_cents, occurred_at, description,
         category, payment_method, vendor_name, reference_number, status,
         created_by_user_id, created_at, updated_at
       ) VALUES (
-        ${data.org_id}, ${data.property_id}, ${data.amount_cents}, 
-        ${data.occurred_at}, ${data.description},
-        ${data.category || null}, ${data.payment_method || null},
-        ${data.vendor_name || null}, ${data.reference_number || null}, ${data.status},
+        ${data.org_id}, ${data.property_id}, ${data.amount_cents}, ${data.occurred_at}, ${data.description},
+        ${data.category || null}, ${data.payment_method || null}, ${data.vendor_name || null}, ${data.reference_number || null}, ${data.status},
         ${data.created_by_user_id}, NOW(), NOW()
       )
       RETURNING *
     `;
-
-    return result!;
+    return row!;
   }
 
   /**
@@ -290,40 +269,25 @@ export class FinanceRepository extends BaseRepository {
     } = {},
     usePartitioned?: boolean
   ): Promise<ExpenseData[]> {
-    const targetTable = this.getTableName({ 
-      tableName: 'expenses', 
-      usePartitioned 
+    const targetTable = this.getTableName({
+      tableName: 'expenses',
+      usePartitioned
     });
 
     this.logPartitionRouting('expenses', targetTable, 'SELECT');
 
-    // Build query dynamically based on filters
-    const conditions = [`org_id = ${orgId}`];
-    const params: any[] = [orgId];
-    
-    if (filters.propertyId) {
-      conditions.push(`property_id = $${params.length + 1}`);
-      params.push(filters.propertyId);
-    }
-    
-    if (filters.startDate) {
-      conditions.push(`occurred_at >= $${params.length + 1}`);
-      params.push(filters.startDate);
-    }
-    
-    if (filters.endDate) {
-      conditions.push(`occurred_at <= $${params.length + 1}`);
-      params.push(filters.endDate);
-    }
-    
-    if (filters.status) {
-      conditions.push(`status = $${params.length + 1}`);
-      params.push(filters.status);
-    }
-    
-    const query = `SELECT * FROM ${targetTable} WHERE ${conditions.join(' AND ')} ORDER BY occurred_at DESC`;
-    const results = await this.db.query<ExpenseData>(query, params);
-    return results;
+    const rows: ExpenseData[] = [];
+    const cursor = await this.db.query<ExpenseData>`
+      SELECT * FROM ${(this.db as any).exec(targetTable)}
+      WHERE org_id = ${orgId}
+        AND (${filters.propertyId ?? null} IS NULL OR property_id = ${filters.propertyId ?? null})
+        AND (${filters.startDate ?? null} IS NULL OR occurred_at >= ${filters.startDate ?? null})
+        AND (${filters.endDate ?? null} IS NULL OR occurred_at <= ${filters.endDate ?? null})
+        AND (${filters.status ?? null} IS NULL OR status = ${filters.status ?? null})
+      ORDER BY occurred_at DESC
+    `;
+    for await (const r of cursor) rows.push(r);
+    return rows;
   }
 
   /**
@@ -334,19 +298,17 @@ export class FinanceRepository extends BaseRepository {
     orgId: number,
     usePartitioned?: boolean
   ): Promise<ExpenseData | null> {
-    const targetTable = this.getTableName({ 
-      tableName: 'expenses', 
-      usePartitioned 
+    const targetTable = this.getTableName({
+      tableName: 'expenses',
+      usePartitioned
     });
 
     this.logPartitionRouting('expenses', targetTable, 'SELECT BY ID');
 
-    const result = await this.db.queryRow<ExpenseData>`
-      SELECT * FROM ${this.db.exec(targetTable)} 
-      WHERE id = ${id} AND org_id = ${orgId}
+    const row = await this.db.queryRow<ExpenseData>`
+      SELECT * FROM ${(this.db as any).exec(targetTable)} WHERE id = ${id} AND org_id = ${orgId}
     `;
-
-    return result || null;
+    return row || null;
   }
 
   /**
@@ -359,15 +321,15 @@ export class FinanceRepository extends BaseRepository {
     approvedByUserId: number,
     usePartitioned?: boolean
   ): Promise<ExpenseData | null> {
-    const targetTable = this.getTableName({ 
-      tableName: 'expenses', 
-      usePartitioned 
+    const targetTable = this.getTableName({
+      tableName: 'expenses',
+      usePartitioned
     });
 
     this.logPartitionRouting('expenses', targetTable, 'UPDATE STATUS');
 
-    const result = await this.db.queryRow<ExpenseData>`
-      UPDATE ${this.db.exec(targetTable)}
+    const row = await this.db.queryRow<ExpenseData>`
+      UPDATE ${(this.db as any).exec(targetTable)}
       SET 
         status = ${status},
         approved_by_user_id = ${approvedByUserId},
@@ -376,8 +338,7 @@ export class FinanceRepository extends BaseRepository {
       WHERE id = ${id} AND org_id = ${orgId}
       RETURNING *
     `;
-
-    return result || null;
+    return row || null;
   }
 
   /**
@@ -388,16 +349,15 @@ export class FinanceRepository extends BaseRepository {
     orgId: number,
     usePartitioned?: boolean
   ): Promise<boolean> {
-    const targetTable = this.getTableName({ 
-      tableName: 'expenses', 
-      usePartitioned 
+    const targetTable = this.getTableName({
+      tableName: 'expenses',
+      usePartitioned
     });
 
     this.logPartitionRouting('expenses', targetTable, 'DELETE');
 
     await this.db.exec`
-      DELETE FROM ${this.db.exec(targetTable)} 
-      WHERE id = ${id} AND org_id = ${orgId}
+      DELETE FROM ${(this.db as any).exec(targetTable)} WHERE id = ${id} AND org_id = ${orgId}
     `;
 
     return true;
@@ -413,35 +373,22 @@ export class FinanceRepository extends BaseRepository {
     endDate: string,
     usePartitioned?: boolean
   ): Promise<number> {
-    const targetTable = this.getTableName({ 
-      tableName: 'expenses', 
-      usePartitioned 
+    const targetTable = this.getTableName({
+      tableName: 'expenses',
+      usePartitioned
     });
 
     this.logPartitionRouting('expenses', targetTable, 'SUM');
 
-    if (propertyId) {
-      const result = await this.db.queryRow<{ total: number }>`
-        SELECT COALESCE(SUM(amount_cents), 0) as total
-        FROM ${this.db.exec(targetTable)}
-        WHERE org_id = ${orgId}
-          AND property_id = ${propertyId}
-          AND occurred_at >= ${startDate}
-          AND occurred_at <= ${endDate}
-          AND status = 'approved'
-      `;
-      return result?.total || 0;
-    } else {
-      const result = await this.db.queryRow<{ total: number }>`
-        SELECT COALESCE(SUM(amount_cents), 0) as total
-        FROM ${this.db.exec(targetTable)}
-        WHERE org_id = ${orgId}
-          AND occurred_at >= ${startDate}
-          AND occurred_at <= ${endDate}
-          AND status = 'approved'
-      `;
-      return result?.total || 0;
-    }
+    const row = await this.db.queryRow<{ total: number }>`
+      SELECT COALESCE(SUM(amount_cents), 0) as total
+      FROM ${(this.db as any).exec(targetTable)}
+      WHERE org_id = ${orgId}
+        AND (${propertyId ?? null} IS NULL OR property_id = ${propertyId ?? null})
+        AND occurred_at >= ${startDate}
+        AND occurred_at <= ${endDate}
+        AND status = 'approved'
+    `;
+    return row?.total ?? 0;
   }
 }
-

@@ -32,16 +32,52 @@ async function refreshHandler(req: RefreshRequest): Promise<RefreshResponse> {
       `;
 
       let validSession: any = null;
+      const hashCheckResults: { sessionId: number; expiresAt: string; hashMatches: boolean }[] = [];
+      
       for (const session of sessions) {
         const isValid = await verifyRefreshTokenHash(refreshToken, session.refresh_token_hash);
+        hashCheckResults.push({
+          sessionId: Number(session.id),
+          expiresAt: session.expires_at instanceof Date ? session.expires_at.toISOString() : String(session.expires_at),
+          hashMatches: isValid,
+        });
         if (isValid) {
           validSession = session;
           break;
         }
       }
 
+      // DEBUG: Enhanced logging before throwing invalid session error
       if (!validSession) {
-        log.warn("Token refresh failed - invalid session", { userId });
+        log.warn("[SESSION_DEBUG] Token refresh failed - no valid session found", { 
+          userId,
+          sessionCount: sessions.length,
+          refreshTokenLength: refreshToken.length,
+          refreshTokenPrefix: refreshToken.substring(0, 20) + '...',
+          hashCheckResults,
+          serverTime: new Date().toISOString(),
+        });
+        
+        // Additional debug: Check if there are ANY sessions for this user (including expired)
+        const allSessions = await tx.queryAll<{ id: number; expires_at: Date; created_at: Date }>`
+          SELECT id, expires_at, created_at
+          FROM sessions
+          WHERE user_id = ${userId}
+          ORDER BY created_at DESC
+          LIMIT 10
+        `;
+        
+        log.warn("[SESSION_DEBUG] All sessions for user (including expired)", {
+          userId,
+          totalSessionsInDb: allSessions.length,
+          sessions: allSessions.map(s => ({
+            id: Number(s.id),
+            expiresAt: s.expires_at instanceof Date ? s.expires_at.toISOString() : String(s.expires_at),
+            createdAt: s.created_at instanceof Date ? s.created_at.toISOString() : String(s.created_at),
+            isExpired: s.expires_at <= new Date(),
+          })),
+        });
+        
         throw APIError.unauthenticated("Invalid refresh token");
       }
 

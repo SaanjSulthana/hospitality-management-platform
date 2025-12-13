@@ -18,6 +18,7 @@ import { useToast } from '@/components/ui/use-toast';
 import { getFlagBool } from '../lib/feature-flags';
 import { useRealtimeService } from '../hooks/useRealtimeService';
 import { setRealtimePropertyFilter } from '../lib/realtime-helpers';
+import { envUtils } from '@/src/utils/environment-detector';
 import { 
   UserCheck, 
   UserPlus,
@@ -296,7 +297,7 @@ export default function StaffPage() {
         lastInvalidateAtRef.current = Date.now();
 
         // 2% telemetry
-        if (Math.random() < 0.02) {
+        if (!envUtils.isProduction() && Math.random() < 0.02) {
           try {
             fetch(`/telemetry/client`, {
               method: 'POST',
@@ -314,7 +315,7 @@ export default function StaffPage() {
         }
 
         // Measure refetch latency when queries complete would need hooks; best-effort timing
-        if (Math.random() < 0.02) {
+        if (!envUtils.isProduction() && Math.random() < 0.02) {
           try {
             fetch(`/telemetry/client`, {
               method: 'POST',
@@ -899,9 +900,9 @@ export default function StaffPage() {
 
   return (
     <div className="w-full min-h-screen bg-gray-50">
-    <div className="space-y-6">
-        {/* Enhanced Live Status Indicator */}
-        <Card className=" shadow-sm hover:shadow-md transition-shadow duration-200">
+      <div className="px-6 pb-6 sm:py-6 space-y-6">
+        {/* Enhanced Live Status Indicator (hidden on mobile since title appears in app nav) */}
+        <Card className="hidden sm:block border-l-4 border-l-blue-500 shadow-sm hover:shadow-md transition-shadow duration-200">
           <CardContent className="p-4">
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
               <div className="flex items-center gap-3">
@@ -928,33 +929,38 @@ export default function StaffPage() {
         </Card>
 
         <FinanceTabs defaultValue="staff" theme={theme}>
-          <FinanceTabsList className="grid-cols-5" theme={theme}>
-            <FinanceTabsTrigger value="staff" theme={theme}>
-              <Users className="h-4 w-4 mr-2" />
-              Staff
-            </FinanceTabsTrigger>
-            <FinanceTabsTrigger value="schedules" theme={theme}>
-              <CalendarCheck className="h-4 w-4 mr-2" />
-              Schedules
-            </FinanceTabsTrigger>
-            <FinanceTabsTrigger value="attendance" theme={theme}>
-              <Clock4 className="h-4 w-4 mr-2" />
-              Attendance
-            </FinanceTabsTrigger>
-            <FinanceTabsTrigger value="salary" theme={theme}>
-              <Banknote className="h-4 w-4 mr-2" />
-              Salary
-            </FinanceTabsTrigger>
-            <FinanceTabsTrigger value="reports" theme={theme}>
-              <BarChart3 className="h-4 w-4 mr-2" />
-              Reports
-            </FinanceTabsTrigger>
-          </FinanceTabsList>
+          {/* Enhanced Sticky Tabs for mobile and desktop */}
+          <div className="sticky top-16 z-30 bg-white border-b border-gray-200 -mx-6 px-4 sm:px-6 py-3 shadow-sm">
+            <div className="overflow-x-auto no-scrollbar">
+              <FinanceTabsList className="grid w-full grid-cols-5 min-w-max bg-gray-100" theme={theme}>
+                <FinanceTabsTrigger value="staff" theme={theme}>
+                  <Users className="h-4 w-4 mr-2" />
+                  Staff
+                </FinanceTabsTrigger>
+                <FinanceTabsTrigger value="schedules" theme={theme}>
+                  <CalendarCheck className="h-4 w-4 mr-2" />
+                  Schedules
+                </FinanceTabsTrigger>
+                <FinanceTabsTrigger value="attendance" theme={theme}>
+                  <Clock4 className="h-4 w-4 mr-2" />
+                  Attendance
+                </FinanceTabsTrigger>
+                <FinanceTabsTrigger value="salary" theme={theme}>
+                  <Banknote className="h-4 w-4 mr-2" />
+                  Salary
+                </FinanceTabsTrigger>
+                <FinanceTabsTrigger value="reports" theme={theme}>
+                  <BarChart3 className="h-4 w-4 mr-2" />
+                  Reports
+                </FinanceTabsTrigger>
+              </FinanceTabsList>
+            </div>
+          </div>
 
           {/* Content Container */}
-          <div className="px-6 py-6">
+          <div className="py-6">
             <TabsContent value="staff" className="space-y-6 mt-0">
-              <Card className=" shadow-sm hover:shadow-md transition-shadow duration-200">
+              <Card className="border-l-4 border-l-blue-500 shadow-sm hover:shadow-md transition-shadow duration-200">
                 <CardHeader className="pb-4">
                   <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
                     <div className="flex items-center gap-3">
@@ -1013,7 +1019,7 @@ export default function StaffPage() {
               ) : (
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
                   {staff?.staff.map((member: any) => (
-                        <Card key={member.id} className="shadow-sm hover:shadow-md transition-all duration-200">
+                        <Card key={member.id} className="border-l-4 border-l-blue-500 shadow-sm hover:shadow-md transition-all duration-200">
                           <CardHeader className="pb-4">
                         <div className="flex items-start justify-between">
                               <div className="flex items-center gap-3">
@@ -1095,7 +1101,7 @@ export default function StaffPage() {
         </TabsContent>
 
             <TabsContent value="schedules" className="space-y-6 mt-0">
-              <Card className=" shadow-sm hover:shadow-md transition-shadow duration-200">
+              <Card className="border-l-4 border-l-green-500 shadow-sm hover:shadow-md transition-shadow duration-200">
                 <CardHeader className="pb-4">
                   <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
                     <div className="flex items-center gap-3">
@@ -1154,7 +1160,7 @@ export default function StaffPage() {
               ) : (
                 <div className="space-y-4">
                   {schedules?.schedules.map((schedule: any) => (
-                        <Card key={schedule.id} className=" shadow-sm hover:shadow-md transition-all duration-200">
+                        <Card key={schedule.id} className="border-l-4 border-l-green-500 shadow-sm hover:shadow-md transition-all duration-200">
                           <CardContent className="p-4">
                             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                               <div className="flex-1 min-w-0">
@@ -1193,7 +1199,7 @@ export default function StaffPage() {
         </TabsContent>
 
             <TabsContent value="leave" className="space-y-6 mt-0">
-              <Card className=" shadow-sm hover:shadow-md transition-shadow duration-200">
+              <Card className="border-l-4 border-l-orange-500 shadow-sm hover:shadow-md transition-shadow duration-200">
                 <CardHeader className="pb-4">
                   <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
                     <div className="flex items-center gap-3">
@@ -1248,7 +1254,7 @@ export default function StaffPage() {
               ) : (
                 <div className="space-y-4">
                   {leaveRequests?.leaveRequests.map((request: any) => (
-                        <Card key={request.id} className=" shadow-sm hover:shadow-md transition-all duration-200">
+                        <Card key={request.id} className="border-l-4 border-l-orange-500 shadow-sm hover:shadow-md transition-all duration-200">
                           <CardContent className="p-4">
                             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                               <div className="flex-1 min-w-0">
@@ -1310,7 +1316,7 @@ export default function StaffPage() {
         </TabsContent>
 
             <TabsContent value="attendance" className="space-y-6 mt-0">
-              <Card className=" shadow-sm hover:shadow-md transition-shadow duration-200">
+              <Card className="border-l-4 border-l-purple-500 shadow-sm hover:shadow-md transition-shadow duration-200">
                 <CardHeader className="pb-4">
               <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
                     <div className="flex items-center gap-3">
@@ -1381,7 +1387,7 @@ export default function StaffPage() {
               ) : (
                 <div className="space-y-4">
                   {attendance?.attendance.map((record: any) => (
-                        <Card key={record.id} className=" shadow-sm hover:shadow-md transition-all duration-200">
+                        <Card key={record.id} className="border-l-4 border-l-purple-500 shadow-sm hover:shadow-md transition-all duration-200">
                           <CardContent className="p-4">
                             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                               <div className="flex-1 min-w-0">
@@ -1419,7 +1425,7 @@ export default function StaffPage() {
         </TabsContent>
 
             <TabsContent value="salary" className="space-y-6 mt-0">
-              <Card className=" shadow-sm hover:shadow-md transition-shadow duration-200">
+              <Card className="border-l-4 border-l-green-500 shadow-sm hover:shadow-md transition-shadow duration-200">
                 <CardHeader className="pb-4">
               <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
                     <div className="flex items-center gap-3">
@@ -1494,7 +1500,7 @@ export default function StaffPage() {
               ) : (
                 <div className="space-y-4">
                   {salaryComponents?.salaryComponents.map((component: any) => (
-                        <Card key={component.id} className=" shadow-sm hover:shadow-md transition-all duration-200">
+                        <Card key={component.id} className="border-l-4 border-l-green-500 shadow-sm hover:shadow-md transition-all duration-200">
                           <CardContent className="p-4">
                             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                               <div className="flex-1 min-w-0">
@@ -1528,7 +1534,7 @@ export default function StaffPage() {
         </TabsContent>
 
             <TabsContent value="reports" className="space-y-6 mt-0">
-              <Card className=" shadow-sm hover:shadow-md transition-shadow duration-200">
+              <Card className="border-l-4 border-l-purple-500 shadow-sm hover:shadow-md transition-shadow duration-200">
                 <CardHeader className="pb-4">
               <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
                     <div className="flex items-center gap-3">
@@ -1578,7 +1584,7 @@ export default function StaffPage() {
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
                   {staffStatistics && (
                     <>
-                          <Card className=" shadow-sm hover:shadow-md transition-shadow duration-200">
+                          <Card className="border-l-4 border-l-blue-500 shadow-sm hover:shadow-md transition-shadow duration-200">
                             <CardHeader className="pb-4">
                               <CardTitle className="text-sm font-medium flex items-center gap-2">
                                 <div className="p-2 bg-blue-100 rounded-lg shadow-sm">
@@ -1595,7 +1601,7 @@ export default function StaffPage() {
                         </CardContent>
                       </Card>
                       
-                          <Card className=" shadow-sm hover:shadow-md transition-shadow duration-200">
+                          <Card className="border-l-4 border-l-green-500 shadow-sm hover:shadow-md transition-shadow duration-200">
                             <CardHeader className="pb-4">
                               <CardTitle className="text-sm font-medium flex items-center gap-2">
                                 <div className="p-2 bg-green-100 rounded-lg shadow-sm">
@@ -1612,7 +1618,7 @@ export default function StaffPage() {
                         </CardContent>
                       </Card>
                       
-                          <Card className=" shadow-sm hover:shadow-md transition-shadow duration-200">
+                          <Card className="border-l-4 border-l-orange-500 shadow-sm hover:shadow-md transition-shadow duration-200">
                             <CardHeader className="pb-4">
                               <CardTitle className="text-sm font-medium flex items-center gap-2">
                                 <div className="p-2 bg-orange-100 rounded-lg shadow-sm">

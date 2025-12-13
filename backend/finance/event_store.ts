@@ -103,38 +103,70 @@ export const getEventHistoryV1 = api<EventHistoryRequest, EventHistoryResponse>(
   getEventHistoryHandler
 );
 
+// Response type for event metrics
+interface EventMetricsResponse {
+  metrics: Array<{ event_type: string; count: number; hour: string }>;
+  realtime: {
+    buffers: Array<{ orgId: number; size: number }>;
+    totals: { orgs: number; totalDropped: number };
+    publishedByType: Record<string, number>;
+    deliveredByType: Record<string, number>;
+    maxBufferSize: number;
+    eventTtlMs: number;
+  };
+  timestamp: string;
+}
+
 // Shared handler for getting event metrics
-async function getEventMetricsHandler(): Promise<any> {
+async function getEventMetricsHandler(): Promise<EventMetricsResponse> {
   const authData = getAuthData();
   if (!authData) throw APIError.unauthenticated("Authentication required");
   requireRole("ADMIN")(authData);
   
-  const metrics = await financeDB.queryAll`
-    SELECT 
-      event_type,
-      COUNT(*) as count,
-      DATE_TRUNC('hour', created_at) as hour
-    FROM finance_event_store
-    WHERE org_id = ${authData.orgId}
-      AND created_at > NOW() - INTERVAL '24 hours'
-    GROUP BY event_type, hour
-    ORDER BY hour DESC
-  `;
+  let metrics: Array<{ event_type: string; count: number; hour: string }> = [];
+  
+  try {
+    const rows = await financeDB.queryAll`
+      SELECT 
+        event_type,
+        COUNT(*)::int as count,
+        DATE_TRUNC('hour', created_at)::text as hour
+      FROM finance_event_store
+      WHERE org_id = ${authData.orgId}
+        AND created_at > NOW() - INTERVAL '24 hours'
+      GROUP BY event_type, hour
+      ORDER BY hour DESC
+    `;
+    
+    // Ensure proper serialization
+    metrics = rows.map((r: any) => ({
+      event_type: String(r.event_type || ''),
+      count: Number(r.count) || 0,
+      hour: String(r.hour || ''),
+    }));
+  } catch (dbErr) {
+    console.error('[EventMetrics] Database query error:', dbErr);
+    // Return empty metrics on DB error rather than failing completely
+  }
 
   // Augment with realtime buffer metrics for visibility
   const realtime = getRealtimeBufferMetrics();
 
-  return { metrics, realtime, timestamp: new Date() };
+  return { 
+    metrics, 
+    realtime, 
+    timestamp: new Date().toISOString(),
+  };
 }
 
 // LEGACY: Get event metrics (keep for backward compatibility)
-export const getEventMetrics = api(
+export const getEventMetrics = api<void, EventMetricsResponse>(
   { auth: true, expose: true, method: "GET", path: "/finance/events/metrics" },
   getEventMetricsHandler
 );
 
 // V1: Get event metrics
-export const getEventMetricsV1 = api(
+export const getEventMetricsV1 = api<void, EventMetricsResponse>(
   { auth: true, expose: true, method: "GET", path: "/v1/finance/events/metrics" },
   getEventMetricsHandler
 );

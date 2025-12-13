@@ -3,20 +3,20 @@ import { Topic } from "encore.dev/pubsub";
 export interface FinanceEventPayload {
   eventId: string; // UUID
   eventVersion: 'v1';
-  eventType: 
-    | 'expense_added' | 'expense_updated' | 'expense_deleted' 
-    | 'expense_approved' | 'expense_rejected'
-    | 'revenue_added' | 'revenue_updated' | 'revenue_deleted'
-    | 'revenue_approved' | 'revenue_rejected'
-    | 'daily_approval_granted' | 'cash_balance_updated';
-  
+  eventType:
+  | 'expense_added' | 'expense_updated' | 'expense_deleted'
+  | 'expense_approved' | 'expense_rejected'
+  | 'revenue_added' | 'revenue_updated' | 'revenue_deleted'
+  | 'revenue_approved' | 'revenue_rejected'
+  | 'daily_approval_granted' | 'cash_balance_updated';
+
   orgId: number;
   propertyId: number;
   userId: number;
   timestamp: Date;
   entityId: number;
   entityType: 'expense' | 'revenue' | 'daily_approval' | 'cash_balance';
-  
+
   metadata: {
     previousStatus?: string;
     newStatus?: string;
@@ -29,6 +29,9 @@ export interface FinanceEventPayload {
     affectedReportDates?: string[]; // For cache invalidation
     notes?: string; // For approval notes
     propertyName?: string;
+    createdByName?: string; // Creator's display name
+    createdByUserId?: number; // Creator's user ID
+    description?: string; // Transaction description
   };
 }
 

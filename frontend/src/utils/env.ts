@@ -147,7 +147,7 @@ export function getApiUrl(): string {
   // For Capacitor native apps, always use production API
   // Native apps can't access localhost on the device
   if (isCapacitor()) {
-    return 'https://api.curat.ai';
+    return 'https://prod-hospitality-management-platform-cr8i.encr.app';
   }
   
   // Auto-detect based on current hostname for Encore Cloud

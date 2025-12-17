@@ -22,12 +22,12 @@ interface CreateTaskDialogProps {
   trigger?: React.ReactNode;
 }
 
-export function CreateTaskDialog({ 
-  isOpen, 
-  onOpenChange, 
+export function CreateTaskDialog({
+  isOpen,
+  onOpenChange,
   initialStatus = 'open',
   onTaskCreated,
-  trigger 
+  trigger
 }: CreateTaskDialogProps) {
   const { getAuthenticatedBackend } = useAuth();
   const { toast } = useToast();
@@ -85,7 +85,7 @@ export function CreateTaskDialog({
   const createTaskMutation = useMutation({
     mutationFn: async (taskData: any) => {
       console.log('Creating task with data:', taskData);
-      
+
       const backend = getAuthenticatedBackend();
       const newTask = await backend.tasks.create({
         propertyId: parseInt(taskData.propertyId),
@@ -97,28 +97,28 @@ export function CreateTaskDialog({
         estimatedHours: taskData.estimatedHours ? parseFloat(taskData.estimatedHours) : undefined,
         assigneeStaffId: taskData.assigneeStaffId && taskData.assigneeStaffId !== 'none' ? parseInt(taskData.assigneeStaffId) : undefined,
       });
-      
+
       // Upload images if any
       if (taskImages.length > 0) {
         const files = taskImages.map(img => img.file);
         // Note: In a real implementation, you would upload images here
         console.log('Images to upload:', files);
       }
-      
+
       return newTask;
     },
     onSuccess: (data: any) => {
       console.log('Task creation successful:', data);
-      
+
       queryClient.invalidateQueries({ queryKey: ['tasks'] });
       onOpenChange(false);
       setTaskImages([]);
-      
+
       // Call the callback if provided
       if (onTaskCreated) {
         onTaskCreated(data);
       }
-      
+
       toast({
         title: "Task created",
         description: "The task has been created successfully.",
@@ -143,7 +143,7 @@ export function CreateTaskDialog({
       });
       return;
     }
-    
+
     const taskData = {
       propertyId: parseInt(taskForm.propertyId),
       type: taskForm.type,
@@ -154,7 +154,7 @@ export function CreateTaskDialog({
       estimatedHours: taskForm.estimatedHours ? parseFloat(taskForm.estimatedHours) : undefined,
       assigneeStaffId: taskForm.assigneeStaffId && taskForm.assigneeStaffId !== 'none' ? parseInt(taskForm.assigneeStaffId) : undefined,
     };
-    
+
     try {
       await createTaskMutation.mutateAsync(taskData);
     } catch (error) {
@@ -287,7 +287,7 @@ export function CreateTaskDialog({
               />
             </div>
           </div>
-          
+
           {/* Reference Images Upload */}
           <div className="space-y-2">
             <Label className="text-sm font-medium text-gray-700">Reference Images</Label>
@@ -319,7 +319,7 @@ export function CreateTaskDialog({
           <Button variant="outline" onClick={() => onOpenChange(false)}>
             Cancel
           </Button>
-          <Button 
+          <Button
             onClick={handleCreateTask}
             disabled={createTaskMutation.isPending || !taskForm.propertyId || !taskForm.title}
             className="bg-blue-600 hover:bg-blue-700"

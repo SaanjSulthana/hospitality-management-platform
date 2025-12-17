@@ -58,8 +58,8 @@ export const RETRY_CONFIG = {
   RETRY_CONDITION: (failureCount: number, error: any) => {
     // Don't retry on client errors (4xx) except 408 and 429
     if (error instanceof ApiError) {
-      if (error.status >= 400 && error.status < 500 && 
-          error.status !== 408 && error.status !== 429) {
+      if (error.status >= 400 && error.status < 500 &&
+        error.status !== 408 && error.status !== 429) {
         return false;
       }
     }
@@ -114,7 +114,7 @@ export interface StandardQueryOptions {
  * Standardized mutation options
  */
 export interface StandardMutationOptions<TData = any, TVariables = any> {
-  onSuccess?: (data: TData) => void;
+  onSuccess?: (data: TData, variables: TVariables, context: unknown) => void;
   onError?: (error: ApiError) => void;
   invalidateQueries?: string[][];
   refetchQueries?: string[][];
@@ -190,7 +190,7 @@ export function useStandardMutation<TData = any, TVariables = any>(
         const { id, ...bodyWithoutId } = variables as any;
         variables = bodyWithoutId as TVariables;
       }
-      
+
       const response = await apiClient.request<TData>(finalEndpoint, {
         method,
         body: variables,
@@ -198,7 +198,7 @@ export function useStandardMutation<TData = any, TVariables = any>(
       });
       return response.data;
     },
-    onSuccess: (data) => {
+    onSuccess: (data, variables, context) => {
       // Invalidate specified queries
       invalidateQueries.forEach(queryKey => {
         queryClient.invalidateQueries({ queryKey });
@@ -218,7 +218,7 @@ export function useStandardMutation<TData = any, TVariables = any>(
       }
 
       // Call custom success handler
-      onSuccess?.(data);
+      onSuccess?.(data, variables, context);
     },
     onError: (error: ApiError) => {
       // Show error toast
@@ -262,7 +262,7 @@ export function useStandardFileUpload(
       });
       return response.data;
     },
-    onSuccess: (data) => {
+    onSuccess: (data, variables, context) => {
       // Invalidate specified queries
       invalidateQueries.forEach(queryKey => {
         queryClient.invalidateQueries({ queryKey });
@@ -277,7 +277,7 @@ export function useStandardFileUpload(
       }
 
       // Call custom success handler
-      onSuccess?.(data);
+      onSuccess?.(data, variables, context);
     },
     onError: (error: ApiError) => {
       // Show error toast
@@ -358,26 +358,26 @@ export function refetchStandardQueries(
  */
 export const DataTransformers = {
   formatDateForAPI: (date: Date): string => date.toISOString().split('T')[0],
-  
+
   formatCurrency: (amount: number): string => `$${(amount / 100).toFixed(2)}`,
-  
+
   formatFileSize: (bytes: number): string => {
     const sizes = ['Bytes', 'KB', 'MB', 'GB'];
     if (bytes === 0) return '0 Bytes';
     const i = Math.floor(Math.log(bytes) / Math.log(1024));
     return Math.round(bytes / Math.pow(1024, i) * 100) / 100 + ' ' + sizes[i];
   },
-  
+
   sanitizeInput: (input: string): string => input.trim().replace(/[<>]/g, ''),
-  
+
   validateEmail: (email: string): boolean => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email),
-  
+
   validatePhone: (phone: string): boolean => /^\+?[\d\s-()]+$/.test(phone),
-  
-  validateRequired: (value: any): boolean => 
+
+  validateRequired: (value: any): boolean =>
     value !== null && value !== undefined && value !== '',
-  
-  validateNumber: (value: any): boolean => 
+
+  validateNumber: (value: any): boolean =>
     !isNaN(Number(value)) && Number(value) > 0,
 };
 
@@ -388,20 +388,20 @@ export const FileValidators = {
   validateFileType: (file: File, allowedTypes: string[]): boolean => {
     return allowedTypes.includes(file.type);
   },
-  
+
   validateFileSize: (file: File, maxSize: number): boolean => {
     return file.size <= maxSize;
   },
-  
+
   validateFileCount: (files: File[], maxCount: number): boolean => {
     return files.length <= maxCount;
   },
-  
+
   validateImageFile: (file: File): boolean => {
     const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'];
     return FileValidators.validateFileType(file, allowedTypes);
   },
-  
+
   validateDocumentFile: (file: File): boolean => {
     const allowedTypes = ['application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'];
     return FileValidators.validateFileType(file, allowedTypes);
@@ -422,7 +422,7 @@ export const PerformanceUtils = {
       timeoutId = setTimeout(() => func(...args), delay);
     };
   },
-  
+
   throttle: <T extends (...args: any[]) => any>(
     func: T,
     delay: number
@@ -468,7 +468,7 @@ export const API_ENDPOINTS = {
   PROPERTY_UPDATE: (id: number) => `/v1/properties/${id}`,
   PROPERTY_DELETE: (id: number) => `/v1/properties/${id}`,
   PROPERTY_OCCUPANCY: (id: number) => `/v1/properties/${id}/occupancy`,
-  
+
   // Tasks - All V1 Endpoints ✅ (12/12 = 100%)
   TASKS: '/v1/tasks',
   TASKS_CREATE: '/v1/tasks',
@@ -484,13 +484,13 @@ export const API_ENDPOINTS = {
   TASK_IMAGE_BY_ID: (taskId: number, imageId: number) => `/v1/tasks/${taskId}/images/${imageId}`,
   TASK_IMAGE_DELETE: (taskId: number, imageId: number) => `/v1/tasks/${taskId}/images/${imageId}`,
   TASK_IMAGE_SET_PRIMARY: (taskId: number, imageId: number) => `/v1/tasks/${taskId}/images/${imageId}/primary`,
-  
+
   // Finance - CRUD Operations
   EXPENSES: '/v1/finance/expenses',
   EXPENSE_BY_ID: (id: number) => `/v1/finance/expenses/${id}`,
   REVENUES: '/v1/finance/revenues',
   REVENUE_BY_ID: (id: number) => `/v1/finance/revenues/${id}`,
-  
+
   // Finance - Approval Management
   PENDING_APPROVALS: '/v1/finance/pending-approvals',
   GRANT_APPROVAL: '/v1/finance/grant-daily-approval',
@@ -502,7 +502,7 @@ export const API_ENDPOINTS = {
   BULK_APPROVE: '/v1/finance/bulk-approve',
   CHECK_DAILY_APPROVAL: '/v1/finance/check-daily-approval',
   RESET_APPROVAL_STATUS: '/v1/finance/reset-approval-status',
-  
+
   // Finance - Realtime & Events
   FINANCE_REALTIME_SUBSCRIBE: '/v1/finance/realtime/subscribe',
   FINANCE_REALTIME_METRICS: '/v1/finance/realtime/metrics',
@@ -511,29 +511,29 @@ export const API_ENDPOINTS = {
   FINANCE_EVENT_METRICS: '/v1/finance/events/metrics',
   FINANCE_EVENT_MONITORING: '/v1/finance/events/monitoring',
   FINANCE_SUMMARY: '/v1/finance/summary',
-  
+
   // Finance - Bank Integration
   BANK_ACCOUNTS: '/v1/finance/bank-accounts',
   BANK_SYNC: '/v1/finance/bank-sync',
   RECONCILE_TRANSACTION: '/v1/finance/reconcile',
-  
+
   // Finance - Notifications
   FINANCE_NOTIFICATIONS: '/v1/finance/notifications',
   FINANCE_NOTIFICATIONS_MARK_READ: '/v1/finance/notifications/mark-read',
-  
+
   // Guest Check-in - CRUD Operations
   GUEST_CHECKINS: '/v1/guest-checkin/list',
   GUEST_CHECKIN_CREATE: '/v1/guest-checkin/create',
   GUEST_CHECKIN_BY_ID: (id: number) => `/v1/guest-checkin/${id}`,
   GUEST_CHECKIN_UPDATE: (id: number) => `/v1/guest-checkin/${id}/update`,
   GUEST_CHECKIN_DELETE: (id: number) => `/v1/guest-checkin/${id}`,
-  
+
   // Guest Check-in - Management
   GUEST_CHECKIN_CHECKOUT: (id: number) => `/v1/guest-checkin/${id}/checkout`,
   GUEST_CHECKIN_CREATE_WITH_DOCS: '/v1/guest-checkin/create-with-documents',
   GUEST_CHECKIN_GENERATE_C_FORM: (id: number) => `/v1/guest-checkin/${id}/generate-c-form`,
   GUEST_CHECKIN_STATS: '/v1/guest-checkin/stats',
-  
+
   // Guest Check-in - Documents
   GUEST_DOCUMENT_UPLOAD: '/v1/guest-checkin/documents/upload',
   GUEST_DOCUMENT_LIST: (checkInId: number) => `/v1/guest-checkin/${checkInId}/documents`,
@@ -545,7 +545,7 @@ export const API_ENDPOINTS = {
   GUEST_DOCUMENT_DOWNLOAD: (documentId: number) => `/v1/guest-checkin/documents/${documentId}/download`,
   GUEST_DOCUMENT_STATS: '/v1/guest-checkin/documents/stats',
   GUEST_DOCUMENT_EXTRACT_ONLY: '/v1/guest-checkin/documents/extract-only',
-  
+
   // Guest Check-in - Audit
   GUEST_AUDIT_LOG_VIEW_DOCUMENTS: '/v1/guest-checkin/audit/view-documents',
   GUEST_AUDIT_LOG_VIEW_DETAILS: '/v1/guest-checkin/audit/view-guest-details',
@@ -553,14 +553,14 @@ export const API_ENDPOINTS = {
   GUEST_AUDIT_LOG_DETAIL: (logId: number) => `/v1/guest-checkin/audit-logs/${logId}`,
   GUEST_AUDIT_SUMMARY: '/v1/guest-checkin/audit-logs/summary',
   GUEST_AUDIT_EXPORT: '/v1/guest-checkin/audit-logs/export',
-  
+
   // Guest Check-in - Real-time Events
   GUEST_EVENTS_SUBSCRIBE: '/v1/guest-checkin/events/subscribe',
   GUEST_EVENTS_REALTIME_SUBSCRIBE: '/v1/guest-checkin/realtime/subscribe',
   GUEST_EVENTS_METRICS: '/v1/guest-checkin/events/metrics',
   GUEST_AUDIT_EVENTS_SUBSCRIBE: '/v1/guest-checkin/audit-events/subscribe',
   GUEST_AUDIT_EVENTS_SUBSCRIBE_SIMPLE: '/v1/guest-checkin/audit-events/subscribe-simple',
-  
+
   // Staff - Core Management
   STAFF: '/v1/staff',
   STAFF_CREATE: '/v1/staff',
@@ -572,7 +572,7 @@ export const API_ENDPOINTS = {
   STAFF_BY_USER: (userId: number) => `/v1/staff/user/${userId}`,
   STAFF_BY_PROPERTY: (propertyId: number) => `/v1/staff/property/${propertyId}`,
   STAFF_BY_DEPARTMENT: '/v1/staff/department',
-  
+
   // Staff - Attendance
   STAFF_ATTENDANCE: '/v1/staff/attendance',
   STAFF_ATTENDANCE_CREATE: '/v1/staff/attendance/create',
@@ -581,7 +581,7 @@ export const API_ENDPOINTS = {
   STAFF_ATTENDANCE_BY_STAFF: (staffId: number) => `/v1/staff/${staffId}/attendance`,
   STAFF_ATTENDANCE_MARK: '/v1/staff/attendance/mark',
   STAFF_ATTENDANCE_BULK_MARK: '/v1/staff/attendance/bulk-mark',
-  
+
   // Staff - Leave Requests
   LEAVE_REQUESTS: '/v1/staff/leave-requests',
   LEAVE_REQUEST_CREATE: '/v1/staff/leave-requests/create',
@@ -592,7 +592,7 @@ export const API_ENDPOINTS = {
   LEAVE_REQUEST_REJECT: (id: number) => `/v1/staff/leave-requests/${id}/reject`,
   LEAVE_REQUEST_CANCEL: (id: number) => `/v1/staff/leave-requests/${id}/cancel`,
   LEAVE_REQUEST_BY_STAFF: (staffId: number) => `/v1/staff/${staffId}/leave-requests`,
-  
+
   // Staff - Schedules
   STAFF_SCHEDULES: '/v1/staff/schedules',
   STAFF_SCHEDULE_CREATE: '/v1/staff/schedules/create',
@@ -602,13 +602,13 @@ export const API_ENDPOINTS = {
   STAFF_SCHEDULE_BY_STAFF: (staffId: number) => `/v1/staff/${staffId}/schedules`,
   STAFF_SCHEDULE_BULK_CREATE: '/v1/staff/schedules/bulk-create',
   STAFF_SCHEDULE_COPY: '/v1/staff/schedules/copy',
-  
+
   // Staff - Schedule Change Requests
   SCHEDULE_CHANGE_REQUESTS: '/v1/staff/schedule-change-requests',
   SCHEDULE_CHANGE_REQUEST_CREATE: '/v1/staff/schedule-change-requests/create',
   SCHEDULE_CHANGE_REQUEST_APPROVE: (id: number) => `/v1/staff/schedule-change-requests/${id}/approve`,
   SCHEDULE_CHANGE_REQUEST_REJECT: (id: number) => `/v1/staff/schedule-change-requests/${id}/reject`,
-  
+
   // Staff - Payslips & Salary
   STAFF_PAYSLIPS: '/v1/staff/payslips',
   STAFF_PAYSLIP_CREATE: '/v1/staff/payslips/create',
@@ -618,40 +618,40 @@ export const API_ENDPOINTS = {
   STAFF_PAYSLIP_BY_STAFF: (staffId: number) => `/v1/staff/${staffId}/payslips`,
   STAFF_PAYSLIP_GENERATE: '/v1/staff/payslips/generate',
   STAFF_SALARY_CALCULATION: '/v1/staff/salary/calculate',
-  
+
   // Staff - Performance
   STAFF_PERFORMANCE_REVIEWS: '/v1/staff/performance-reviews',
   STAFF_PERFORMANCE_REVIEW_CREATE: '/v1/staff/performance-reviews/create',
   STAFF_PERFORMANCE_REVIEW_BY_ID: (id: number) => `/v1/staff/performance-reviews/${id}`,
   STAFF_PERFORMANCE_REVIEW_UPDATE: (id: number) => `/v1/staff/performance-reviews/${id}`,
-  
+
   // Staff - Statistics
   STAFF_STATISTICS: '/v1/staff/statistics',
   STAFF_ATTENDANCE_STATISTICS: '/v1/staff/attendance/statistics',
   STAFF_LEAVE_STATISTICS: '/v1/staff/leave/statistics',
   STAFF_SCHEDULE_STATISTICS: '/v1/staff/schedules/statistics',
   STAFF_SALARY_STATISTICS: '/v1/staff/salary/statistics',
-  
+
   // Staff - Validation
   STAFF_LEAVE_VALIDATE: '/v1/staff/leave/validate',
   STAFF_SCHEDULE_VALIDATE: '/v1/staff/schedules/validate',
-  
+
   // Organizations - All V1 Endpoints ✅ (2/2 = 100%)
   ORGS_CREATE: '/v1/orgs',
   ORGS_INVITE: '/v1/orgs/invite',
-  
+
   // Uploads
   UPLOAD: '/v1/uploads/upload',
   FILE_BY_ID: (id: number) => `/v1/uploads/file/${id}`,
   FILE_INFO: (id: number) => `/v1/uploads/file/${id}/info`,
-  
+
   // Branding - All V1 Endpoints ✅ (5/5 = 100%)
   BRANDING_THEME: '/v1/branding/theme',
   BRANDING_THEME_UPDATE: '/v1/branding/theme',
   BRANDING_THEME_CLEANUP: '/v1/branding/cleanup-theme',
   BRANDING_LOGO_UPLOAD: '/v1/branding/logo',
   BRANDING_LOGO_SERVE: (orgId: string, filename: string) => `/v1/branding/logo/${orgId}/${filename}`,
-  
+
   // Documents - All V1 Endpoints ✅ (6/6 = 100%)
   DOCUMENTS_CREATE_EXPORT: '/v1/documents/exports/create',
   DOCUMENTS_LIST_EXPORTS: '/v1/documents/exports',
@@ -659,10 +659,10 @@ export const API_ENDPOINTS = {
   DOCUMENTS_EXPORT_DOWNLOAD: (exportId: string) => `/v1/documents/exports/${exportId}/download`,
   DOCUMENTS_EXPORT_DELETE: (exportId: string) => `/v1/documents/exports/${exportId}`,
   DOCUMENTS_EXPORT_RETRY: (exportId: string) => `/v1/documents/exports/${exportId}/retry`,
-  
+
   // Analytics - All V1 Endpoints ✅ (1/1 = 100%)
   ANALYTICS_OVERVIEW: '/v1/analytics/overview',
-  
+
   // Uploads - All V1 Endpoints ✅ (8/8 = 100%)
   UPLOAD_FILE: '/v1/uploads/file',
   UPLOAD_FILE_UPDATE: (fileId: number) => `/v1/uploads/file/${fileId}`,
@@ -672,60 +672,60 @@ export const API_ENDPOINTS = {
   UPLOAD_TASK_IMAGE: (imageId: number) => `/v1/uploads/tasks/${imageId}`,
   UPLOADS_CHECK_FILES_TABLE: '/v1/uploads/check-files-table',
   UPLOADS_CLEANUP_ORPHANED: '/v1/uploads/cleanup-orphaned',
-  
+
   // Reports - Daily Reports
   REPORTS: '/v1/reports',
   REPORTS_DAILY_REPORT: '/v1/reports/daily-report',
   REPORTS_DAILY_REPORTS_LIST: '/v1/reports/daily-reports',
   REPORTS_MONTHLY_REPORT: '/v1/reports/monthly-report',
-  
+
   // Reports - Cash Balance Management
   REPORTS_UPDATE_CASH_BALANCE_SMART: '/v1/reports/update-daily-cash-balance-smart',
   REPORTS_UPDATE_CASH_BALANCE: '/v1/reports/update-daily-cash-balance',
   REPORTS_RECONCILE_CASH_BALANCE: '/v1/reports/reconcile-daily-cash-balance',
-  
+
   // Reports - Monthly/Yearly Summary
   REPORTS_MONTHLY_YEARLY: '/v1/reports/monthly-yearly-report',
   REPORTS_MONTHLY_SUMMARY: '/v1/reports/monthly-summary',
   REPORTS_YEARLY_SUMMARY: '/v1/reports/yearly-summary',
   REPORTS_QUARTERLY_SUMMARY: '/v1/reports/quarterly-summary',
-  
+
   // Reports - Export Functions
   EXPORT_PDF: '/v1/reports/export-daily-pdf',
   EXPORT_EXCEL: '/v1/reports/export-daily-excel',
   EXPORT_MONTHLY_PDF: '/v1/reports/export-monthly-pdf',
   EXPORT_MONTHLY_EXCEL: '/v1/reports/export-monthly-excel',
   REPORTS_GENERATE_PDF: '/v1/reports/generate-pdf',
-  
+
   // Reports - Real-time Updates
   REPORTS_REALTIME_POLL: '/v1/reports/realtime/poll',
-  
+
   // Reports - Cache & Audit Utilities
   REPORTS_CACHE_METRICS: '/v1/reports/cache/metrics',
   REPORTS_CACHE_CLEAR: '/v1/reports/cache/clear',
   REPORTS_AUDIT_BALANCES: '/v1/reports/audit-balances',
   REPORTS_DATE_TRANSACTIONS: '/v1/reports/date-transactions',
-  
+
   // Cache - System Cache Management
   CACHE_WARM_HIGH_TRAFFIC: '/v1/system/cache/warm-high-traffic',
   CACHE_WARM_SPECIFIC_ORG: '/v1/system/cache/warm-specific-org',
   CACHE_COLLECT_STATS: '/v1/system/cache/collect-stats',
   CACHE_STATUS: '/v1/system/cache/status',
   CACHE_METRICS: '/v1/system/cache/metrics',
-  
+
   // Communication Gateway - Service Communication & Health
   GATEWAY_ROUTE: '/v1/system/gateway/route',
   GATEWAY_SERVICE_HEALTH: (service: string) => `/v1/system/gateway/health/${service}`,
   GATEWAY_ALL_SERVICES_HEALTH: '/v1/system/gateway/health',
   GATEWAY_STATUS: '/v1/system/gateway/status',
   GATEWAY_RESET_CIRCUIT_BREAKER: '/v1/system/gateway/reset-circuit-breaker',
-  
+
   // Config - System Configuration & Health
   CONFIG_HEALTH: '/v1/system/config/health',
   CONFIG_VALIDATE: '/v1/system/config/validate',
   CONFIG_ENVIRONMENT: '/v1/system/config/environment',
   CONFIG_TEST_DATABASE: '/v1/system/config/test-database',
-  
+
   // Cron - Scheduled Job Management
   CRON_CLEANUP_ORPHANED_DOCUMENTS: '/v1/system/cron/cleanup-orphaned-documents',
   CRON_CLEANUP_STATS: '/v1/system/cron/cleanup-stats',
@@ -735,13 +735,13 @@ export const API_ENDPOINTS = {
   CRON_TASK_REMINDERS: '/v1/system/cron/task-reminders',
   CRON_NIGHT_AUDIT: '/v1/system/cron/night-audit',
   CRON_OTA_SYNC: '/v1/system/cron/ota-sync',
-  
+
   // Database - Replica & Connection Pool Monitoring
   DATABASE_REPLICA_STATUS: '/v1/system/database/replicas/status',
   DATABASE_REPLICA_HEALTH: '/v1/system/database/replicas/health',
   DATABASE_REPLICA_LAG: '/v1/system/database/replicas/lag',
   DATABASE_CONNECTION_POOL_STATS: '/v1/system/database/connection-pool/stats',
-  
+
   // Monitoring - System Monitoring & Metrics
   MONITORING_ACTIVE_ALERTS: '/v1/system/monitoring/alerts/active',
   MONITORING_ALERT_HISTORY: '/v1/system/monitoring/alerts/history',
@@ -764,10 +764,10 @@ export const API_ENDPOINTS = {
   MONITORING_CACHE_INVALIDATION_METRICS: '/v1/system/monitoring/cache/invalidation-metrics',
   MONITORING_CACHE_RESET_METRICS: '/v1/system/monitoring/cache/reset-metrics',
   MONITORING_CACHE_KEY_STATS: '/v1/system/monitoring/cache/key-stats',
-  
+
   // Telemetry - Client Telemetry Collection
   TELEMETRY_INGEST_CLIENT: '/v1/system/telemetry/client',
-  
+
   // Validation - Data Consistency Validation & Repair
   VALIDATION_CHECK_CONSISTENCY: '/v1/system/validation/check-consistency',
   VALIDATION_AUTO_REPAIR: '/v1/system/validation/auto-repair',
@@ -785,7 +785,7 @@ export const STANDARD_QUERY_CONFIGS = {
     refetchOnWindowFocus: true,
     refetchOnMount: true,
   },
-  
+
   // Frequent updates (every 5 seconds)
   FREQUENT: {
     refetchInterval: REFETCH_INTERVALS.FREQUENT,
@@ -794,7 +794,7 @@ export const STANDARD_QUERY_CONFIGS = {
     refetchOnWindowFocus: true,
     refetchOnMount: true,
   },
-  
+
   // Normal updates (every 30 seconds)
   NORMAL: {
     refetchInterval: REFETCH_INTERVALS.NORMAL,
@@ -803,7 +803,7 @@ export const STANDARD_QUERY_CONFIGS = {
     refetchOnWindowFocus: true,
     refetchOnMount: true,
   },
-  
+
   // Slow updates (every minute)
   SLOW: {
     refetchInterval: REFETCH_INTERVALS.SLOW,
@@ -812,7 +812,7 @@ export const STANDARD_QUERY_CONFIGS = {
     refetchOnWindowFocus: true,
     refetchOnMount: true,
   },
-  
+
   // Static data (no automatic refetch)
   STATIC: {
     refetchInterval: false,

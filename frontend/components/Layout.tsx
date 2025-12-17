@@ -11,15 +11,17 @@ import { useWelcomePopup } from '@/hooks/use-welcome-popup';
 import { WelcomePopup } from '@/components/ui/welcome-popup';
 import { API_CONFIG } from '../src/config/api';
 import { GlobalAuthBanner } from './GlobalAuthBanner';
+import { MobileHeader } from './layout/MobileHeader';
 import RealtimeProviderV2Fixed from '../providers/RealtimeProviderV2_Fixed';
 import RealtimeInvalidateBridge from './RealtimeInvalidateBridge';
-import { 
-  LayoutDashboard, 
-  Building2, 
-  CheckSquare, 
-  Users, 
-  BarChart3, 
-  Settings, 
+import { BottomNav } from './layout/BottomNav';
+import {
+  LayoutDashboard,
+  Building2,
+  CheckSquare,
+  Users,
+  BarChart3,
+  Settings,
   Menu,
   LogOut,
   User,
@@ -76,7 +78,7 @@ export default function Layout({ children }: LayoutProps) {
       });
     }
   }, [showLogoutProgress, isLoggingOut, user]);
-  
+
   useEffect(() => {
     if (process.env.NODE_ENV === 'development' && showLogoutProgress) {
       console.log('🔄 Layout render - props validation:', {
@@ -119,7 +121,7 @@ export default function Layout({ children }: LayoutProps) {
 
       // @ts-ignore - navigator.connection is not in TypeScript types but exists in modern browsers
       const connection = navigator.connection || navigator.mozConnection || navigator.webkitConnection;
-      
+
       if (connection) {
         const { effectiveType, downlink } = connection;
         if (effectiveType === '4g' && downlink > 10) {
@@ -203,7 +205,7 @@ export default function Layout({ children }: LayoutProps) {
     window.addEventListener('themeUpdated', handleThemeUpdate as EventListener);
     window.addEventListener('themeReloaded', handleThemeReload as EventListener);
     window.addEventListener('logoLoadFailed', handleLogoLoadFailed);
-    
+
     return () => {
       window.removeEventListener('themeChanged', handleThemeChange as EventListener);
       window.removeEventListener('themeUpdated', handleThemeUpdate as EventListener);
@@ -217,17 +219,17 @@ export default function Layout({ children }: LayoutProps) {
       console.log('🚪 Logout already in progress, ignoring click');
       return;
     }
-    
+
     console.log('🚪 Starting logout process...');
     setIsLoggingOut(true);
-    
+
     try {
       // Start progress dialog immediately (like login does)
       setShowLogoutProgress(true);
-      
+
       // Add a small delay to let the progress dialog appear
       await new Promise(resolve => setTimeout(resolve, 100));
-      
+
       console.log('🚪 Calling logout function...');
       await logout();
       console.log('🚪 Logout function completed');
@@ -275,9 +277,9 @@ export default function Layout({ children }: LayoutProps) {
       isOpen: logoutProgressProps.isOpen,
       onComplete: typeof logoutProgressProps.onComplete,
       onCancel: typeof logoutProgressProps.onCancel,
-      allPropsValid: typeof logoutProgressProps.onComplete === 'function' && 
-                     typeof logoutProgressProps.onCancel === 'function' &&
-                     typeof logoutProgressProps.isOpen === 'boolean'
+      allPropsValid: typeof logoutProgressProps.onComplete === 'function' &&
+        typeof logoutProgressProps.onCancel === 'function' &&
+        typeof logoutProgressProps.isOpen === 'boolean'
     });
   }, [logoutProgressProps.isOpen]);
 
@@ -368,145 +370,144 @@ export default function Layout({ children }: LayoutProps) {
 
   const Sidebar = ({ mobile = false }: { mobile?: boolean }) => (
     <div className="flex flex-col h-full">
-      <div className="flex items-center px-4 h-20 border-b">
-        <Link 
-          to="/dashboard" 
+      <div className={`flex items-center px-4 h-20 border-b border-gray-200/50 bg-white/80 backdrop-blur-xl supports-[backdrop-filter]:bg-white/60 ${!mobile ? 'lg:border-r-0 lg:border-b-0' : ''}`}>
+        <Link
+          to="/dashboard"
           className="flex items-center space-x-3 hover:opacity-80 transition-opacity duration-200"
           onClick={() => mobile && setSidebarOpen(false)}
           title={`Go to Dashboard - ${theme.brandName}`}
         >
           {(() => {
-             try {
-               // Check if logo has failed to load
-               const logoFailed = theme.logoUrl && document.querySelector(`img[data-load-failed="true"][src*="${theme.logoUrl}"]`);
-               
-               if (theme.logoUrl && theme.logoUrl.trim() !== '' && !logoFailed) {
-                 return (
-                   <img 
-                     src={theme.logoUrl.startsWith('http') ? theme.logoUrl : `${API_CONFIG.BASE_URL}${theme.logoUrl}`} 
-                     alt={theme.brandName} 
-                     className="h-8 w-8 object-contain" 
-                     onError={async (e) => {
-                       try {
-                         // Check if currentTarget exists before proceeding
-                         if (!e.currentTarget) {
-                           console.error('Logo error handler: currentTarget is null');
-                           return;
-                         }
-                         
-                         // Check if we've already failed to load this logo
-                         if (e.currentTarget.getAttribute('data-load-failed') === 'true') {
-                           console.log('Logo already failed to load, skipping retry');
-                           return;
-                         }
-                         
-                         console.error('Logo failed to load:', theme.logoUrl);
-                         
-                         // Try to fetch the logo using the serve_logo API
-                         if (theme.logoUrl && !theme.logoUrl.startsWith('http')) {
-                           console.log('Attempting to fetch logo via API:', theme.logoUrl);
-                           
-                           // Handle different URL formats
-                           let orgId, filename;
-                           if (theme.logoUrl.includes('/uploads/logos/')) {
-                             const urlParts = theme.logoUrl.split('/uploads/logos/');
-                             if (urlParts.length > 1) {
-                               const pathParts = urlParts[1].split('/');
-                               orgId = pathParts[0];
-                               filename = pathParts[1];
-                             }
-                           } else if (theme.logoUrl.startsWith('/uploads/logos/')) {
-                             const urlParts = theme.logoUrl.split('/');
-                             orgId = urlParts[3];
-                             filename = urlParts[4];
-                           }
-                           
-                           console.log('Parsed logo path:', { orgId, filename, originalUrl: theme.logoUrl });
-                           
-                           if (orgId && filename) {
-                             const response = await fetch(`${API_CONFIG.BASE_URL}/uploads/logos/${orgId}/${filename}`, {
-                               headers: {
-                                 'Authorization': `Bearer ${localStorage.getItem('accessToken')}`,
-                               },
-                             });
-                             
-                             if (response.ok) {
-                               const result = await response.json();
-                               const dataUrl = `data:${result.mimeType};base64,${result.fileData}`;
-                               // Double-check currentTarget still exists before using it
-                               if (e.currentTarget) {
-                                 e.currentTarget.src = dataUrl;
-                                 console.log('Logo loaded successfully via API in Layout');
-                                 return;
-                               }
-                             } else {
-                               console.error('Logo API response not ok:', response.status, response.statusText);
-                             }
-                           } else {
-                             console.error('Could not parse logo URL:', theme.logoUrl);
-                           }
-                         }
-                       } catch (error) {
-                         console.error('Failed to fetch logo via API:', error);
-                       }
-                       
-                       // Set a flag to prevent further attempts - double-check currentTarget exists
-                       if (e.currentTarget) {
-                         e.currentTarget.setAttribute('data-load-failed', 'true');
-                         // Force re-render to show fallback icon
-                         const event = new CustomEvent('logoLoadFailed');
-                         window.dispatchEvent(event);
-                       }
-                     }}
-                     onLoad={() => console.log('Logo loaded successfully in Layout')}
-                   />
-                 );
-               }
-               
-               // Show fallback icon if no logo or logo failed
-               return (
-                 <Building2 className="h-8 w-8" style={{ color: theme.primaryColor }} />
-               );
-             } catch (error) {
-               console.error('Error rendering logo:', error);
-               // Fallback to building icon on any error
-               return (
-                 <Building2 className="h-8 w-8" style={{ color: theme.primaryColor }} />
-               );
-             }
-           })()}
+            try {
+              // Check if logo has failed to load
+              const logoFailed = theme.logoUrl && document.querySelector(`img[data-load-failed="true"][src*="${theme.logoUrl}"]`);
+
+              if (theme.logoUrl && theme.logoUrl.trim() !== '' && !logoFailed) {
+                return (
+                  <img
+                    src={theme.logoUrl.startsWith('http') ? theme.logoUrl : `${API_CONFIG.BASE_URL}${theme.logoUrl}`}
+                    alt={theme.brandName}
+                    className="h-8 w-8 object-contain"
+                    onError={async (e) => {
+                      try {
+                        // Check if currentTarget exists before proceeding
+                        if (!e.currentTarget) {
+                          console.error('Logo error handler: currentTarget is null');
+                          return;
+                        }
+
+                        // Check if we've already failed to load this logo
+                        if (e.currentTarget.getAttribute('data-load-failed') === 'true') {
+                          console.log('Logo already failed to load, skipping retry');
+                          return;
+                        }
+
+                        console.error('Logo failed to load:', theme.logoUrl);
+
+                        // Try to fetch the logo using the serve_logo API
+                        if (theme.logoUrl && !theme.logoUrl.startsWith('http')) {
+                          console.log('Attempting to fetch logo via API:', theme.logoUrl);
+
+                          // Handle different URL formats
+                          let orgId, filename;
+                          if (theme.logoUrl.includes('/uploads/logos/')) {
+                            const urlParts = theme.logoUrl.split('/uploads/logos/');
+                            if (urlParts.length > 1) {
+                              const pathParts = urlParts[1].split('/');
+                              orgId = pathParts[0];
+                              filename = pathParts[1];
+                            }
+                          } else if (theme.logoUrl.startsWith('/uploads/logos/')) {
+                            const urlParts = theme.logoUrl.split('/');
+                            orgId = urlParts[3];
+                            filename = urlParts[4];
+                          }
+
+                          console.log('Parsed logo path:', { orgId, filename, originalUrl: theme.logoUrl });
+
+                          if (orgId && filename) {
+                            const response = await fetch(`${API_CONFIG.BASE_URL}/uploads/logos/${orgId}/${filename}`, {
+                              headers: {
+                                'Authorization': `Bearer ${localStorage.getItem('accessToken')}`,
+                              },
+                            });
+
+                            if (response.ok) {
+                              const result = await response.json();
+                              const dataUrl = `data:${result.mimeType};base64,${result.fileData}`;
+                              // Double-check currentTarget still exists before using it
+                              if (e.currentTarget) {
+                                e.currentTarget.src = dataUrl;
+                                console.log('Logo loaded successfully via API in Layout');
+                                return;
+                              }
+                            } else {
+                              console.error('Logo API response not ok:', response.status, response.statusText);
+                            }
+                          } else {
+                            console.error('Could not parse logo URL:', theme.logoUrl);
+                          }
+                        }
+                      } catch (error) {
+                        console.error('Failed to fetch logo via API:', error);
+                      }
+
+                      // Set a flag to prevent further attempts - double-check currentTarget exists
+                      if (e.currentTarget) {
+                        e.currentTarget.setAttribute('data-load-failed', 'true');
+                        // Force re-render to show fallback icon
+                        const event = new CustomEvent('logoLoadFailed');
+                        window.dispatchEvent(event);
+                      }
+                    }}
+                    onLoad={() => console.log('Logo loaded successfully in Layout')}
+                  />
+                );
+              }
+
+              // Show fallback icon if no logo or logo failed
+              return (
+                <Building2 className="h-8 w-8" style={{ color: theme.primaryColor }} />
+              );
+            } catch (error) {
+              console.error('Error rendering logo:', error);
+              // Fallback to building icon on any error
+              return (
+                <Building2 className="h-8 w-8" style={{ color: theme.primaryColor }} />
+              );
+            }
+          })()}
           <span className="text-xl font-bold" style={{ color: theme.textColor }}>
             {theme.brandName}
           </span>
         </Link>
       </div>
 
-      <nav className="flex-1 px-4 py-6 space-y-2">
-                        {filteredNavigation.map((item: any) => {
+      <nav className={`flex-1 px-4 py-6 space-y-2 ${!mobile ? 'border-r border-gray-200/50' : ''}`}>
+        {filteredNavigation.map((item: any) => {
           const Icon = item.icon;
           const isActive = location.pathname === item.href;
-          
+
           return (
             <Link
               key={item.name}
               to={item.href}
               onClick={() => mobile && setSidebarOpen(false)}
-              className={`flex items-center px-3 py-2 rounded-lg text-sm font-medium transition-colors group ${
-                isActive
-                  ? 'text-white'
-                  : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'
-              }`}
+              className={`flex items-center px-3 py-2 rounded-lg text-sm font-medium transition-all duration-200 group relative ${isActive
+                ? 'text-white shadow-md shadow-blue-500/20'
+                : 'text-gray-600 hover:text-gray-900 hover:bg-black/5 hover:translate-x-1'
+                }`}
               style={isActive ? { backgroundColor: theme.primaryColor } : {}}
               title={item.name}
             >
-              <Icon className="mr-2 h-4 w-4 flex-shrink-0" />
+              <Icon className={`mr-2 h-4 w-4 flex-shrink-0 transition-transform duration-200 ${!isActive && 'group-hover:scale-110'}`} />
               <span className="truncate">{item.name}</span>
             </Link>
           );
         })}
       </nav>
 
-      <div className="px-4 py-4 border-t">
+      <div className={`px-4 py-4 border-t border-gray-200/50 bg-white/80 backdrop-blur-xl supports-[backdrop-filter]:bg-white/60 ${!mobile ? 'border-r border-gray-200/50' : ''}`}>
         <div className="flex items-center space-x-2 px-3 py-2 mb-2">
           {React.createElement(getRoleIcon(user?.role || ''), { className: "h-4 w-4 text-gray-500 flex-shrink-0" })}
           <div className="flex-1 min-w-0">
@@ -523,34 +524,30 @@ export default function Layout({ children }: LayoutProps) {
           size="sm"
           onClick={handleLogout}
           disabled={isLoggingOut || showLogoutProgress}
-          className={`w-full justify-start ${
-            isLoggingOut || showLogoutProgress 
-              ? 'text-gray-400 cursor-not-allowed' 
-              : 'text-gray-600 hover:text-gray-900'
-          }`}
+          className={`w-full justify-start ${isLoggingOut || showLogoutProgress
+            ? 'text-gray-400 cursor-not-allowed'
+            : 'text-gray-600 hover:text-gray-900'
+            }`}
           title={isLoggingOut || showLogoutProgress ? 'Signing out...' : 'Sign out'}
         >
           <LogOut className="mr-2 h-4 w-4 flex-shrink-0" />
           <span className="truncate">{isLoggingOut || showLogoutProgress ? 'Signing out...' : 'Sign out'}</span>
         </Button>
-        
+
       </div>
     </div>
   );
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-gray-50 lg:bg-[#F5F7FA]">
       {/* WebSocket-based realtime is always enabled via RealtimeProviderV2Fixed */}
       <RealtimeProviderV2Fixed />
       <RealtimeInvalidateBridge />
       <AuthBanner />
       {/* Desktop sidebar */}
-      <div className="hidden lg:fixed lg:inset-y-0 lg:flex lg:w-60 lg:flex-col">
-        <div 
-          className="flex flex-col flex-grow bg-white border-r border-gray-200 overflow-y-auto"
-          style={{ 
-            boxShadow: `2px 0 4px 0 ${theme.primaryColor}20, 1px 0 2px 0 ${theme.primaryColor}10`
-          }}
+      <div className="hidden lg:fixed lg:inset-y-0 lg:flex lg:w-60 lg:flex-col z-30">
+        <div
+          className="flex flex-col flex-grow bg-white/80 backdrop-blur-xl supports-[backdrop-filter]:bg-white/60 overflow-y-auto lg:shadow-[4px_0_24px_rgba(0,0,0,0.02)]"
         >
           <Sidebar />
         </div>
@@ -558,10 +555,10 @@ export default function Layout({ children }: LayoutProps) {
 
       {/* Mobile sidebar */}
       <Sheet open={sidebarOpen} onOpenChange={setSidebarOpen}>
-        <SheetContent 
-          side="left" 
+        <SheetContent
+          side="left"
           className="p-0 w-60"
-          style={{ 
+          style={{
             boxShadow: `2px 0 4px 0 ${theme.primaryColor}20, 1px 0 2px 0 ${theme.primaryColor}10`
           }}
         >
@@ -575,12 +572,12 @@ export default function Layout({ children }: LayoutProps) {
 
       {/* Main content */}
       <div className="lg:pl-60 flex flex-col flex-1">
-        {/* Top bar */}
-        <div 
-          className="sticky top-0 z-10 flex-shrink-0 flex h-20 bg-white border-b border-gray-200"
-          style={{ 
-            boxShadow: `0 1px 3px 0 ${theme.primaryColor}20, 0 1px 2px 0 ${theme.primaryColor}10`
-          }}
+        {/* Mobile Header (sticky) */}
+        <MobileHeader />
+
+        {/* Desktop Header */}
+        <div
+          className="hidden lg:flex sticky top-0 z-40 flex-shrink-0 h-20 bg-white/80 backdrop-blur-xl border-b border-gray-200/50 supports-[backdrop-filter]:bg-white/60 lg:shadow-[0_4px_24px_rgba(0,0,0,0.02)]"
         >
           <div className="lg:hidden ml-4 flex items-center">
             <Button
@@ -591,7 +588,7 @@ export default function Layout({ children }: LayoutProps) {
               <Menu className="h-6 w-6" />
             </Button>
           </div>
-          
+
           <div className="flex-1 px-4 flex items-center justify-between relative h-20">
             {/* Left side - Welcome */}
             <div className="flex items-center gap-4 min-w-0 flex-shrink-0 z-10 h-full">
@@ -642,7 +639,7 @@ export default function Layout({ children }: LayoutProps) {
               {/* User Info */}
               <div className="flex items-center space-x-3 h-full">
                 <div className="hidden sm:flex items-center space-x-2 px-3 py-1 rounded-full bg-gray-100 h-8">
-                  {React.createElement(getRoleIcon(user?.role || ''), { 
+                  {React.createElement(getRoleIcon(user?.role || ''), {
                     className: "h-4 w-4",
                     style: { color: theme.primaryColor }
                   })}
@@ -650,14 +647,14 @@ export default function Layout({ children }: LayoutProps) {
                     {getRoleDisplayName(user?.role || '')}
                   </span>
                 </div>
-                
+
                 <Button
                   variant="ghost"
                   size="sm"
                   onClick={handleLogout}
                   disabled={isLoggingOut || showLogoutProgress}
                   className="text-gray-600 hover:text-gray-900"
-                  style={{ 
+                  style={{
                     backgroundColor: isLoggingOut || showLogoutProgress ? theme.primaryColor + '20' : undefined,
                     color: isLoggingOut || showLogoutProgress ? theme.primaryColor : undefined
                   }}
@@ -669,13 +666,13 @@ export default function Layout({ children }: LayoutProps) {
                 </Button>
 
 
-                
+
               </div>
             </div>
           </div>
         </div>
 
-        
+
 
         {/* Page content */}
         <main className="flex-1">
@@ -687,19 +684,19 @@ export default function Layout({ children }: LayoutProps) {
               onRetry={() => window.location.reload()}
             />
           )}
-          <div className="py-6">
-            <div className={`w-full px-0 sm:px-4 lg:max-w-7xl lg:mx-auto lg:px-8 ${bannerMode ? 'pointer-events-none select-none opacity-95' : ''}`}>
+          <div className="py-6 pb-20 lg:pb-6">
+            <div className={`w-full px-4 sm:px-6 lg:max-w-7xl lg:mx-auto lg:px-8 ${bannerMode ? 'pointer-events-none select-none opacity-95' : ''}`}>
               {children}
             </div>
           </div>
         </main>
       </div>
-      
-        {/* Logout Progress Dialog */}
-        <LogoutProgress
-          {...logoutProgressProps}
-        />
-      
+
+      {/* Logout Progress Dialog */}
+      <LogoutProgress
+        {...logoutProgressProps}
+      />
+
       {/* Welcome Popup - Global */}
       <WelcomePopup
         isOpen={showWelcomePopup}
@@ -709,7 +706,9 @@ export default function Layout({ children }: LayoutProps) {
         onboardingSteps={onboardingSteps}
         markStepCompleted={markStepCompleted}
       />
-      {/* Realtime debug panel removed */}
+
+      {/* Mobile Bottom Navigation */}
+      <BottomNav onMenuClick={() => setSidebarOpen(true)} />
     </div>
   );
 }

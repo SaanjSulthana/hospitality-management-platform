@@ -15,6 +15,9 @@ export default {
         // Additional tiny breakpoint for very small devices (e.g., 360px wide)
         xs: '360px',
       },
+      fontFamily: {
+        sans: ['"Barlow Condensed"', 'sans-serif'],
+      },
       width: {
         '50': '200px',
         '60': '240px',

@@ -27,13 +27,16 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { useToast } from '@/components/ui/use-toast';
 import { ReceiptViewer } from '@/components/ui/receipt-viewer';
 import { DailyApprovalManager } from '@/components/ui/daily-approval-manager';
-import { 
-  Plus, 
-  TrendingUp, 
-  TrendingDown, 
-  Receipt, 
+import { StatsCard } from '@/components/ui/stats-card';
+import {
+  Plus,
+  TrendingUp,
+  TrendingDown,
+  Receipt,
   Calendar,
+  CalendarDays,
   Building2,
+  Hotel,
   Upload,
   Check,
   X,
@@ -41,12 +44,20 @@ import {
   RefreshCw,
   BarChart3,
   Banknote,
+  Wallet,
   CreditCard,
   Edit,
-  Trash2
+  Trash2,
+  ChevronDown,
+  ChevronUp,
+  Filter,
+  SlidersHorizontal,
+  IndianRupee,
+  Landmark,
+  AlertCircle
 } from 'lucide-react';
 import { setRealtimePropertyFilter } from '../lib/realtime-helpers';
-
+import { FinanceFilters } from '@/components/finance/FinanceFilters';
 // Development flag (use Vite's dev indicator consistently across this module)
 const __DEV__ = import.meta.env.DEV;
 
@@ -71,6 +82,8 @@ export default function FinancePage() {
 
   // Subscribe to real-time finance events (transport handled globally by RealtimeProvider)
   const [selectedPropertyId, setSelectedPropertyId] = useState<string>('all');
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+
   const queryClient = useQueryClient();
   const processedEventIdsRef = useRef<Set<string>>(new Set());
   // Soft refresh timer to backstop any missed cache patches
@@ -106,8 +119,8 @@ export default function FinancePage() {
         },
         body: JSON.stringify({ events: normalized }),
         keepalive: true,
-      }).catch(() => {});
-    } catch {}
+      }).catch(() => { });
+    } catch { }
   };
 
   // Propagate current property filter to the realtime provider (for scoped WS fanout)
@@ -115,7 +128,7 @@ export default function FinancePage() {
     try {
       const pid = selectedPropertyId === 'all' ? null : Number(selectedPropertyId);
       setRealtimePropertyFilter(pid);
-    } catch {}
+    } catch { }
   }, [selectedPropertyId]);
   const isFinanceEvent = (ev: any): ev is {
     eventId: string; eventType: string; entityId: number; timestamp: string | Date; metadata?: any; propertyId: number; orgId: number; userId: number; entityType: string;
@@ -150,8 +163,8 @@ export default function FinancePage() {
         eventPropertyId == null
           ? true
           : (!propFilter ||
-             propFilter === 'all' ||
-             String(eventPropertyId) === String(propFilter));
+            propFilter === 'all' ||
+            String(eventPropertyId) === String(propFilter));
       let dateMatches = true;
       if (dr && (dr.startDate || dr.endDate) && eventDateISO) {
         const d = new Date(eventDateISO);
@@ -170,7 +183,7 @@ export default function FinancePage() {
     const delta = maxMs - minMs;
     return Math.floor(minMs + Math.random() * (delta <= 0 ? 0 : delta));
   };
-  
+
   // Incremental aggregates for summary cards
   const [totals, setTotals] = useState<{
     cashRevenue: number;
@@ -203,7 +216,7 @@ export default function FinancePage() {
       if (pending.todayPending) queryClient.invalidateQueries({ queryKey: ['today-pending-transactions'] });
     }, Math.max(50, debounceMs));
   };
-  
+
   // ROW-LEVEL cache patching: update specific items instead of invalidating entire lists
   useEffect(() => {
     const onFinanceEvents = (e: any) => {
@@ -223,7 +236,7 @@ export default function FinancePage() {
           if (ta !== tb) return ta - tb;
           return String(a.eventId).localeCompare(String(b.eventId));
         });
-      
+
         // Incremental totals update for immediate UI response
         setTotals(prev => {
           let next = { ...prev };
@@ -232,15 +245,15 @@ export default function FinancePage() {
             const amount: number | undefined = ev?.metadata?.amountCents;
             const mode: string | undefined = ev?.metadata?.paymentMode;
             if (!type || typeof amount !== 'number' || !mode) continue;
-            
+
             const isRevenue = type.startsWith('revenue_');
             const isExpense = type.startsWith('expense_');
             const isApproved = type.endsWith('_approved');
             const isDeleted = type.endsWith('_deleted');
-            
-            const bucket = (isRevenue ? (mode === 'cash' ? 'cashRevenue' : 'bankRevenue') 
-                                      : (mode === 'cash' ? 'cashExpense' : 'bankExpense')) as keyof typeof prev;
-            
+
+            const bucket = (isRevenue ? (mode === 'cash' ? 'cashRevenue' : 'bankRevenue')
+              : (mode === 'cash' ? 'cashExpense' : 'bankExpense')) as keyof typeof prev;
+
             if (isApproved) {
               next[bucket] = Math.max(0, (next[bucket] || 0) + amount);
             } else if (isDeleted) {
@@ -249,38 +262,38 @@ export default function FinancePage() {
           }
           return next;
         });
-      
+
         // Row-level cache updates for each event
         let hasExpenseChange = false;
         let hasRevenueChange = false;
         let hasApprovalChange = false;
-      
+
         for (const ev of safeEvents) {
           try {
             const { eventType, entityId, entityType, metadata, propertyId } = ev;
             if (!eventType || !entityId || !entityType) continue;
             const eventDateISO: string | undefined = metadata?.transactionDate || (typeof ev.timestamp === 'string' ? ev.timestamp : undefined);
-        
+
             const isExpense = entityType === 'expense';
             const isRevenue = entityType === 'revenue';
             const cacheKey = isExpense ? 'expenses' : isRevenue ? 'revenues' : null;
-        
+
             if (!cacheKey) {
               // Handle special events
               if (eventType === 'daily_approval_granted') {
                 hasApprovalChange = true;
-                
+
                 // Patch individual items if transaction IDs are provided
                 const transactionIds = metadata?.transactionIds as number[] | undefined;
                 const newStatus = metadata?.newStatus || 'approved';
-                
-                console.log('[Finance] daily_approval_granted received', { 
-                  transactionIds, 
-                  newStatus, 
+
+                console.log('[Finance] daily_approval_granted received', {
+                  transactionIds,
+                  newStatus,
                   userId: ev.userId,
-                  metadata 
+                  metadata
                 });
-                
+
                 if (transactionIds && transactionIds.length > 0) {
                   // Update revenues list - use setQueriesData for partial key matching
                   queryClient.setQueriesData(
@@ -295,14 +308,14 @@ export default function FinancePage() {
                             : r
                         ),
                       };
-                      console.log('[Finance] Updated revenues cache', { 
+                      console.log('[Finance] Updated revenues cache', {
                         affected: transactionIds.length,
-                        newStatus 
+                        newStatus
                       });
                       return updated;
                     }
                   );
-                  
+
                   // Update expenses list
                   queryClient.setQueriesData(
                     { queryKey: ['expenses'] },
@@ -316,14 +329,14 @@ export default function FinancePage() {
                             : e
                         ),
                       };
-                      console.log('[Finance] Updated expenses cache', { 
+                      console.log('[Finance] Updated expenses cache', {
                         affected: transactionIds.length,
-                        newStatus 
+                        newStatus
                       });
                       return updated;
                     }
                   );
-                  
+
                   hasExpenseChange = true;
                   hasRevenueChange = true;
                 } else {
@@ -337,14 +350,14 @@ export default function FinancePage() {
               }
               continue;
             }
-        
+
             // Track which types changed for derived queries
             if (isExpense) hasExpenseChange = true;
             if (isRevenue) hasRevenueChange = true;
             if (eventType.includes('approved') || eventType.includes('rejected')) {
               hasApprovalChange = true;
             }
-        
+
             // Update cache based on event type
             if (eventType.endsWith('_added')) {
               // Treat newly added pending transactions as approval-list affecting
@@ -398,13 +411,13 @@ export default function FinancePage() {
                     return (
                       item.category === newRow.category &&
                       String(item.expenseDate).slice(0, 10) ===
-                        String(newRow.expenseDate).slice(0, 10)
+                      String(newRow.expenseDate).slice(0, 10)
                     );
                   } else {
                     return (
                       item.source === newRow.source &&
                       String(item.occurredAt).slice(0, 10) ===
-                        String(newRow.occurredAt).slice(0, 10)
+                      String(newRow.occurredAt).slice(0, 10)
                     );
                   }
                 });
@@ -415,8 +428,8 @@ export default function FinancePage() {
                 }
                 return { ...old, [cacheKey]: [newRow, ...list] };
               });
-            } 
-        
+            }
+
             else if (eventType.endsWith('_updated')) {
               // Patch existing row with new values
               applyToMatchingQueries(cacheKey, propertyId, eventDateISO, (old: any) => {
@@ -424,7 +437,7 @@ export default function FinancePage() {
                 const list = old[cacheKey];
                 const idx = list.findIndex((item: any) => item.id === entityId);
                 if (idx === -1) return old; // Not in cache, skip
-                
+
                 // Merge metadata into existing row
                 const updated = {
                   ...list[idx],
@@ -434,7 +447,7 @@ export default function FinancePage() {
                   status: metadata?.newStatus ?? list[idx].status,
                   updatedAt: new Date().toISOString(),
                 };
-                
+
                 if (isExpense && metadata?.category) {
                   updated.category = metadata.category;
                 }
@@ -445,13 +458,13 @@ export default function FinancePage() {
                   if (isExpense) updated.expenseDate = metadata.transactionDate;
                   else updated.occurredAt = metadata.transactionDate;
                 }
-                
+
                 const newList = [...list];
                 newList[idx] = updated;
                 return { ...old, [cacheKey]: newList };
               });
-            } 
-        
+            }
+
             else if (eventType.endsWith('_approved') || eventType.endsWith('_rejected')) {
               // Patch status and approval fields
               applyToMatchingQueries(cacheKey, propertyId, eventDateISO, (old: any) => {
@@ -459,20 +472,20 @@ export default function FinancePage() {
                 const list = old[cacheKey];
                 const idx = list.findIndex((item: any) => item.id === entityId);
                 if (idx === -1) return old;
-                
+
                 const updated = {
                   ...list[idx],
                   status: metadata?.newStatus || (eventType.endsWith('_approved') ? 'approved' : 'rejected'),
                   approvedByUserId: ev.userId,
                   approvedAt: ev.timestamp || new Date().toISOString(),
                 };
-                
+
                 const newList = [...list];
                 newList[idx] = updated;
                 return { ...old, [cacheKey]: newList };
               });
-            } 
-        
+            }
+
             else if (eventType.endsWith('_deleted')) {
               // Remove row from cache
               applyToMatchingQueries(cacheKey, propertyId, eventDateISO, (old: any) => {
@@ -487,7 +500,7 @@ export default function FinancePage() {
             console.error('[Finance] Event processing error', innerErr);
           }
         }
-        
+
         // Only invalidate DERIVED queries (not the lists themselves)
         scheduleDerivedInvalidations({
           profitLoss: hasExpenseChange || hasRevenueChange,
@@ -530,7 +543,7 @@ export default function FinancePage() {
     if (sec <= 0) return 'now';
     return `${sec}s ago`;
   };
-  
+
   // Helper function to invalidate all expense-related queries
   const invalidateAllExpenseQueries = () => {
     if (!getFlagBool('REALTIME_PATCH_MODE', true)) {
@@ -543,7 +556,7 @@ export default function FinancePage() {
       todayPending: true,
     });
   };
-  
+
   // Helper function to invalidate all revenue-related queries
   const invalidateAllRevenueQueries = () => {
     if (!getFlagBool('REALTIME_PATCH_MODE', true)) {
@@ -557,7 +570,7 @@ export default function FinancePage() {
       todayPending: true,
     });
   };
-  
+
   const [isExpenseDialogOpen, setIsExpenseDialogOpen] = useState(false);
   const [isRevenueDialogOpen, setIsRevenueDialogOpen] = useState(false);
   const [isEditExpenseDialogOpen, setIsEditExpenseDialogOpen] = useState(false);
@@ -622,29 +635,29 @@ export default function FinancePage() {
       console.log('Value:', value);
       console.log('Current dateRange:', dateRange);
     }
-    
+
     const newDateRange = { ...dateRange, [field]: value };
-    
+
     // If only start date is provided, set end date to the same date for full day filtering
     if (field === 'startDate' && value && !newDateRange.endDate) {
       newDateRange.endDate = value;
       if (__DEV__) console.log('Auto-setting endDate to:', value);
     }
-    
+
     // If only end date is provided, set start date to the same date for full day filtering
     if (field === 'endDate' && value && !newDateRange.startDate) {
       newDateRange.startDate = value;
       if (__DEV__) console.log('Auto-setting startDate to:', value);
     }
-    
+
     if (field === 'startDate' && newDateRange.endDate && value > newDateRange.endDate) {
       // Auto-adjust end date if it's before start date
       newDateRange.endDate = value;
       if (__DEV__) console.log('Auto-adjusting endDate to:', value);
     }
-    
+
     if (__DEV__) console.log('New dateRange:', newDateRange);
-    
+
     if (validateDateRange(newDateRange.startDate, newDateRange.endDate)) {
       setDateRange(newDateRange);
       if (__DEV__) console.log('Date range updated successfully');
@@ -674,6 +687,7 @@ export default function FinancePage() {
     paymentMode: 'cash' as 'cash' | 'bank',
     bankReference: '',
   });
+  const [formError, setFormError] = useState<string | null>(null);
 
   const { data: properties } = useQuery({
     queryKey: ['properties'],
@@ -699,14 +713,14 @@ export default function FinancePage() {
         const found = (data as any)?.revenues?.find((r: any) => r.propertyId === propertyId);
         if (found?.propertyName) return found.propertyName;
       }
-    } catch {}
+    } catch { }
     try {
       const candidates = queryClient.getQueriesData({ queryKey: ['expenses'] });
       for (const [, data] of candidates) {
         const found = (data as any)?.expenses?.find((e: any) => e.propertyId === propertyId);
         if (found?.propertyName) return found.propertyName;
       }
-    } catch {}
+    } catch { }
     return `Property #${propertyId}`;
   };
 
@@ -726,7 +740,7 @@ export default function FinancePage() {
         limit: 100,
         offset: 0
       });
-      
+
       // Debug logging for approval information
       if (__DEV__ && result?.expenses) {
         console.log('Expenses with approval info:', result.expenses.map((expense: any) => ({
@@ -737,7 +751,7 @@ export default function FinancePage() {
           createdByName: expense.createdByName
         })));
       }
-      
+
       return result;
     },
     enabled: routeActive,
@@ -754,19 +768,19 @@ export default function FinancePage() {
         console.log('Start date:', dateRange.startDate);
         console.log('End date:', dateRange.endDate);
         console.log('Will send to backend:', {
-        propertyId: selectedPropertyId && selectedPropertyId !== 'all' ? parseInt(selectedPropertyId) : undefined,
-        startDate: dateRange.startDate || undefined,
-        endDate: dateRange.endDate || undefined,
+          propertyId: selectedPropertyId && selectedPropertyId !== 'all' ? parseInt(selectedPropertyId) : undefined,
+          startDate: dateRange.startDate || undefined,
+          endDate: dateRange.endDate || undefined,
         });
       }
-      
+
       const backend = getAuthenticatedBackend();
       const result = await backend.finance.listRevenues({
         propertyId: selectedPropertyId && selectedPropertyId !== 'all' ? parseInt(selectedPropertyId) : undefined,
         startDate: dateRange.startDate || undefined,
         endDate: dateRange.endDate || undefined,
       });
-      
+
       // Debug logging for approval information
       if (__DEV__ && result?.revenues) {
         console.log('Revenues with approval info:', result.revenues.map((revenue: any) => ({
@@ -777,7 +791,7 @@ export default function FinancePage() {
           createdByName: revenue.createdByName
         })));
       }
-      
+
       return result;
     },
     enabled: routeActive,
@@ -834,7 +848,7 @@ export default function FinancePage() {
         console.log('=== ADD EXPENSE MUTATION ===');
         console.log('Input data:', data);
       }
-      
+
       const backend = getAuthenticatedBackend();
       const result = await backend.finance.addExpense({
         ...data,
@@ -845,20 +859,20 @@ export default function FinancePage() {
         paymentMode: data.paymentMode || 'cash',
         bankReference: data.bankReference || undefined,
       });
-      
+
       if (__DEV__) console.log('Add expense result:', result);
       return result;
     },
     onMutate: async (newExpense) => {
       // Cancel any outgoing refetches
       await queryClient.cancelQueries({ queryKey: ['expenses'] });
-      
+
       // Snapshot the previous value
       const previousExpenses = queryClient.getQueryData(['expenses']);
-      
+
       // Generate a unique temporary ID for optimistic update
       const tempId = `temp_${Date.now()}_${Math.random()}`;
-      
+
       // Optimistically update the cache across matching queries
       applyToMatchingQueries(
         'expenses',
@@ -889,15 +903,15 @@ export default function FinancePage() {
           };
         }
       );
-      
+
       // Store temp ID for later removal
       (newExpense as any).tempId = tempId;
-      
+
       return { previousExpenses };
     },
     onSuccess: (data, variables) => {
       if (__DEV__) console.log('Expense added successfully:', data);
-      
+
       // Update the cache with real data from the server across matching queries
       applyToMatchingQueries(
         'expenses',
@@ -941,7 +955,7 @@ export default function FinancePage() {
           };
         }
       );
-      
+
       // Clear form and show success
       setIsExpenseDialogOpen(false);
       setExpenseForm({
@@ -965,9 +979,9 @@ export default function FinancePage() {
       if (context?.previousExpenses) {
         queryClient.setQueryData(['expenses'], context.previousExpenses);
       }
-      
+
       console.error('Add expense error:', error);
-      
+
       // Check if this is an authentication error
       if (error.message?.includes('Invalid token') || error.message?.includes('Unauthorized') || error.message?.includes('401')) {
         toast({
@@ -975,15 +989,15 @@ export default function FinancePage() {
           title: "Session Expired",
           description: "Your session has expired. Please log in again to continue.",
         });
-        
+
         // Redirect to login after a short delay
         setTimeout(() => {
           window.location.href = '/login';
         }, 2000);
-        
+
         return;
       }
-      
+
       // Handle other errors
       toast({
         variant: "destructive",
@@ -999,7 +1013,7 @@ export default function FinancePage() {
         console.log('=== ADD REVENUE MUTATION ===');
         console.log('Input data:', data);
       }
-      
+
       const backend = getAuthenticatedBackend();
       const result = await backend.finance.addRevenue({
         ...data,
@@ -1010,17 +1024,17 @@ export default function FinancePage() {
         paymentMode: data.paymentMode || 'cash',
         bankReference: data.bankReference || undefined,
       });
-      
+
       if (__DEV__) console.log('Add revenue result:', result);
       return result;
     },
     onMutate: async (newRevenue) => {
       // Cancel any outgoing refetches
       await queryClient.cancelQueries({ queryKey: ['revenues'] });
-      
+
       // Snapshot the previous value
       const previousRevenues = queryClient.getQueryData(['revenues']);
-      
+
       // Optimistically update the cache across matching queries
       applyToMatchingQueries(
         'revenues',
@@ -1050,7 +1064,7 @@ export default function FinancePage() {
           };
         }
       );
-      
+
       return { previousRevenues };
     },
     onSuccess: (data) => {
@@ -1122,7 +1136,7 @@ export default function FinancePage() {
       if (context?.previousRevenues) {
         queryClient.setQueryData(['revenues'], context.previousRevenues);
       }
-      
+
       console.error('Add revenue error:', error);
       toast({
         variant: "destructive",
@@ -1138,7 +1152,7 @@ export default function FinancePage() {
       if (!backend) {
         throw new Error('Not authenticated');
       }
-      
+
       try {
         const response = await backend.finance.approveExpenseById(id, { approved });
         return response;
@@ -1150,47 +1164,47 @@ export default function FinancePage() {
     onMutate: async ({ id, approved }) => {
       // Cancel any outgoing refetches
       await queryClient.cancelQueries({ queryKey: ['expenses'] });
-      
+
       // Snapshot the previous value
       const previousExpenses = queryClient.getQueryData(['expenses']);
-      
+
       // Optimistically update the cache across matching queries
       applyToMatchingQueries('expenses', undefined, undefined, (old: any) => {
         if (!old?.expenses) return old;
         return {
           ...old,
-          expenses: old.expenses.map((expense: any) => 
-            expense.id === id 
+          expenses: old.expenses.map((expense: any) =>
+            expense.id === id
               ? { ...expense, status: approved ? 'approved' : 'rejected' }
               : expense
           )
         };
       });
-      
+
       return { previousExpenses };
     },
     onSuccess: (data, variables) => {
       if (__DEV__) console.log('Expense approval successful:', data);
-      
+
       // Update cache with server response across matching queries
       applyToMatchingQueries('expenses', data.propertyId, data.expenseDate ? new Date(data.expenseDate as any).toISOString() : undefined, (old: any) => {
         if (!old?.expenses) return old;
         return {
           ...old,
-          expenses: old.expenses.map((expense: any) => 
-            expense.id === variables.id 
-              ? { 
-                  ...expense, 
-                  status: variables.approved ? 'approved' : 'rejected',
-                  approvedByUserId: data.approvedByUserId,
-                  approvedByName: data.approvedByName,
-                  approvedAt: data.approvedAt
-                }
+          expenses: old.expenses.map((expense: any) =>
+            expense.id === variables.id
+              ? {
+                ...expense,
+                status: variables.approved ? 'approved' : 'rejected',
+                approvedByUserId: data.approvedByUserId,
+                approvedByName: data.approvedByName,
+                approvedAt: data.approvedAt
+              }
               : expense
           )
         };
       });
-      
+
       toast({
         title: "Expense updated",
         description: "The expense status has been updated.",
@@ -1201,7 +1215,7 @@ export default function FinancePage() {
       if (context?.previousExpenses) {
         queryClient.setQueryData(['expenses'], context.previousExpenses);
       }
-      
+
       console.error('Approve expense error:', error);
       toast({
         variant: "destructive",
@@ -1217,7 +1231,7 @@ export default function FinancePage() {
       if (!backend) {
         throw new Error('Not authenticated');
       }
-      
+
       try {
         const response = await backend.finance.approveRevenueById(id, { approved });
         return response;
@@ -1229,28 +1243,28 @@ export default function FinancePage() {
     onMutate: async ({ id, approved }) => {
       // Cancel any outgoing refetches
       await queryClient.cancelQueries({ queryKey: ['revenues'] });
-      
+
       // Snapshot the previous value
       const previousRevenues = queryClient.getQueryData(['revenues']);
-      
+
       // Optimistically update the cache across matching queries
       applyToMatchingQueries('revenues', undefined, undefined, (old: any) => {
         if (!old?.revenues) return old;
         return {
           ...old,
-          revenues: old.revenues.map((revenue: any) => 
-            revenue.id === id 
+          revenues: old.revenues.map((revenue: any) =>
+            revenue.id === id
               ? { ...revenue, status: approved ? 'approved' : 'rejected' }
               : revenue
           )
         };
       });
-      
+
       return { previousRevenues };
     },
     onSuccess: () => {
       if (__DEV__) console.log('Revenue approval successful');
-      
+
       toast({
         title: "Revenue updated",
         description: "The revenue status has been updated.",
@@ -1261,7 +1275,7 @@ export default function FinancePage() {
       if (context?.previousRevenues) {
         queryClient.setQueryData(['revenues'], context.previousRevenues);
       }
-      
+
       console.error('Approve revenue error:', error);
       toast({
         variant: "destructive",
@@ -1279,7 +1293,7 @@ export default function FinancePage() {
       if (isNaN(expenseId) || expenseId <= 0) {
         throw new Error('Invalid expense ID');
       }
-      
+
       return backend.finance.updateExpense(expenseId, {
         propertyId: parseInt(data.propertyId),
         category: data.category,
@@ -1295,56 +1309,56 @@ export default function FinancePage() {
     onMutate: async (data) => {
       // Cancel any outgoing refetches
       await queryClient.cancelQueries({ queryKey: ['expenses'] });
-      
+
       // Snapshot the previous value
       const previousExpenses = queryClient.getQueryData(['expenses']);
-      
+
       // Optimistically update the expense in the cache across matching queries
       applyToMatchingQueries('expenses', parseInt(data.propertyId), data.expenseDate, (old: any) => {
         if (!old?.expenses) return old;
         const expenseId = parseInt(data.id);
         const oldExpense = old.expenses.find((expense: any) => expense.id === expenseId);
         if (!oldExpense) return old;
-        const updatedExpenses = old.expenses.map((expense: any) => 
-          expense.id === expenseId 
+        const updatedExpenses = old.expenses.map((expense: any) =>
+          expense.id === expenseId
             ? {
-                ...expense,
-                propertyId: parseInt(data.propertyId),
-                category: data.category,
-                amountCents: parseInt(data.amountCents),
-                description: data.description,
-                receiptUrl: data.receiptUrl,
-                receiptFileId: data.receiptFile?.fileId || expense.receiptFileId,
-                expenseDate: new Date(data.expenseDate),
-                paymentMode: data.paymentMode || 'cash',
-                bankReference: data.bankReference || expense.bankReference,
-                status: user?.role === 'MANAGER' ? 'pending' : expense.status,
-                updatedAt: new Date().toISOString(),
-              }
+              ...expense,
+              propertyId: parseInt(data.propertyId),
+              category: data.category,
+              amountCents: parseInt(data.amountCents),
+              description: data.description,
+              receiptUrl: data.receiptUrl,
+              receiptFileId: data.receiptFile?.fileId || expense.receiptFileId,
+              expenseDate: new Date(data.expenseDate),
+              paymentMode: data.paymentMode || 'cash',
+              bankReference: data.bankReference || expense.bankReference,
+              status: user?.role === 'MANAGER' ? 'pending' : expense.status,
+              updatedAt: new Date().toISOString(),
+            }
             : expense
         );
         const newTotalAmount = updatedExpenses.reduce((sum: number, expense: any) => sum + expense.amountCents, 0);
         return { ...old, expenses: updatedExpenses, totalAmount: newTotalAmount };
       });
-      
+
       return { previousExpenses };
     },
     onSuccess: (data) => {
       // Update with real server data across matching queries
       applyToMatchingQueries('expenses', data.propertyId, data.expenseDate ? new Date(data.expenseDate as any).toISOString() : undefined, (old: any) => {
         if (!old?.expenses) return old;
-        const updatedExpenses = old.expenses.map((expense: any) => 
+        const updatedExpenses = old.expenses.map((expense: any) =>
           expense.id === data.id ? { ...expense, ...data } : expense
         );
         const newTotalAmount = updatedExpenses.reduce((sum: number, expense: any) => sum + expense.amountCents, 0);
         return { ...old, expenses: updatedExpenses, totalAmount: newTotalAmount };
       });
-      
+
       setIsEditExpenseDialogOpen(false);
       setEditingExpense(null);
       toast({
         title: "Expense updated",
-        description: user?.role === 'MANAGER' 
+        description: user?.role === 'MANAGER'
           ? "The expense has been updated and is pending approval."
           : "The expense has been updated successfully.",
       });
@@ -1354,7 +1368,7 @@ export default function FinancePage() {
       if (context?.previousExpenses) {
         queryClient.setQueryData(['expenses'], context.previousExpenses);
       }
-      
+
       console.error('Update expense error:', error);
       toast({
         variant: "destructive",
@@ -1372,7 +1386,7 @@ export default function FinancePage() {
       if (isNaN(revenueId) || revenueId <= 0) {
         throw new Error('Invalid revenue ID');
       }
-      
+
       return backend.finance.updateRevenue(revenueId, {
         propertyId: parseInt(data.propertyId),
         source: data.source,
@@ -1396,7 +1410,7 @@ export default function FinancePage() {
       setEditingRevenue(null);
       toast({
         title: "Revenue updated",
-        description: user?.role === 'MANAGER' 
+        description: user?.role === 'MANAGER'
           ? "The revenue has been updated and is pending approval."
           : "The revenue has been updated successfully.",
       });
@@ -1417,7 +1431,7 @@ export default function FinancePage() {
       if (!backend) {
         throw new Error('Not authenticated');
       }
-      
+
       try {
         const response = await backend.finance.deleteExpense(id);
         return response;
@@ -1429,17 +1443,17 @@ export default function FinancePage() {
     onMutate: async (deletedId) => {
       // Cancel any outgoing refetches
       await queryClient.cancelQueries({ queryKey: ['expenses'] });
-      
+
       // Snapshot the previous value
       const previousExpenses = queryClient.getQueryData(['expenses']);
-      
+
       // Optimistically update to remove the expense immediately
       queryClient.setQueryData(['expenses'], (old: any) => {
         if (!old?.expenses) return old;
-        
+
         const expenseToDelete = old.expenses.find((expense: any) => expense.id === deletedId);
         const updatedExpenses = old.expenses.filter((expense: any) => expense.id !== deletedId);
-        
+
         return {
           ...old,
           expenses: updatedExpenses,
@@ -1447,21 +1461,21 @@ export default function FinancePage() {
           totalAmount: expenseToDelete ? (old.totalAmount || 0) - expenseToDelete.amountCents : old.totalAmount
         };
       });
-      
+
       // Return a context object with the snapshotted value
       return { previousExpenses };
     },
     onSuccess: (data) => {
       // Fallback: ensure lists revalidate quickly even if realtime is delayed
-      try { queryClient.invalidateQueries({ queryKey: ['expenses'] }); } catch {}
+      try { queryClient.invalidateQueries({ queryKey: ['expenses'] }); } catch { }
       // Keep optimistic removal; nothing else to do for list
       try {
         const payload = { type: 'expense_deleted', id: (data as any)?.id ?? null, ts: new Date().toISOString() };
         sendTelemetry(1.0, [payload]);
-      } catch {}
+      } catch { }
       toast({
         title: data.deleted ? "Expense deleted" : "Deletion requested",
-        description: data.deleted 
+        description: data.deleted
           ? "The expense has been deleted successfully."
           : "Expense deletion has been requested and is pending approval.",
       });
@@ -1471,7 +1485,7 @@ export default function FinancePage() {
       if (context?.previousExpenses) {
         queryClient.setQueryData(['expenses'], context.previousExpenses);
       }
-      
+
       console.error('Delete expense error:', error);
       toast({
         variant: "destructive",
@@ -1487,7 +1501,7 @@ export default function FinancePage() {
       if (!backend) {
         throw new Error('Not authenticated');
       }
-      
+
       try {
         const response = await backend.finance.deleteRevenue(id);
         return response;
@@ -1499,10 +1513,10 @@ export default function FinancePage() {
     onMutate: async (deletedId) => {
       // Cancel any outgoing refetches
       await queryClient.cancelQueries({ queryKey: ['revenues'] });
-      
+
       // Snapshot the previous value
       const previousRevenues = queryClient.getQueryData(['revenues']);
-      
+
       // Optimistically update to remove the revenue immediately
       queryClient.setQueryData(['revenues'], (old: any) => {
         if (!old?.revenues) return old;
@@ -1511,21 +1525,21 @@ export default function FinancePage() {
           revenues: old.revenues.filter((revenue: any) => revenue.id !== deletedId)
         };
       });
-      
+
       // Return a context object with the snapshotted value
       return { previousRevenues };
     },
     onSuccess: (data) => {
       // Fallback: ensure lists revalidate quickly even if realtime is delayed
-      try { queryClient.invalidateQueries({ queryKey: ['revenues'] }); } catch {}
+      try { queryClient.invalidateQueries({ queryKey: ['revenues'] }); } catch { }
       // Keep optimistic removal; avoid broad invalidations
       try {
         const payload = { type: 'revenue_deleted', id: (data as any)?.id ?? null, ts: new Date().toISOString() };
         sendTelemetry(1.0, [payload]);
-      } catch {}
+      } catch { }
       toast({
         title: data.deleted ? "Revenue deleted" : "Deletion requested",
-        description: data.deleted 
+        description: data.deleted
           ? "The revenue has been deleted successfully."
           : "Revenue deletion has been requested and is pending approval.",
       });
@@ -1535,7 +1549,7 @@ export default function FinancePage() {
       if (context?.previousRevenues) {
         queryClient.setQueryData(['revenues'], context.previousRevenues);
       }
-      
+
       console.error('Delete revenue error:', error);
       toast({
         variant: "destructive",
@@ -1553,17 +1567,17 @@ export default function FinancePage() {
   const formatPeriodLabel = (startDate: Date, endDate: Date) => {
     const start = new Date(startDate);
     const end = new Date(endDate);
-    
+
     const monthNames = [
       'January', 'February', 'March', 'April', 'May', 'June',
       'July', 'August', 'September', 'October', 'November', 'December'
     ];
-    
+
     // If same month and year, show just the month
     if (start.getMonth() === end.getMonth() && start.getFullYear() === end.getFullYear()) {
       return `${monthNames[start.getMonth()]} ${start.getFullYear()}`;
     }
-    
+
     // If different months, show the range
     return `${monthNames[start.getMonth()]} ${start.getFullYear()} - ${monthNames[end.getMonth()]} ${end.getFullYear()}`;
   };
@@ -1573,29 +1587,29 @@ export default function FinancePage() {
     if (isUploading) {
       throw new Error('Upload in progress, please wait...');
     }
-    
+
     setIsUploading(true);
-    
+
     try {
       if (__DEV__) console.log(`Starting revenue file upload: ${file.name} (${(file.size / 1024 / 1024).toFixed(2)}MB)`);
-      
+
       // Compress image if needed (only for images > 10MB)
       const compressionResult = await compressImageIfNeeded(file, {
         maxSize: 10 * 1024 * 1024, // 10MB
         quality: 0.8
       });
-      
+
       if (__DEV__ && compressionResult.wasCompressed) {
         console.log(`Image compressed: ${(compressionResult.originalSize / 1024 / 1024).toFixed(2)}MB → ${(compressionResult.compressedSize / 1024 / 1024).toFixed(2)}MB`);
       }
-      
+
       // Convert compressed/original file to base64 using chunked approach
       const arrayBuffer = await compressionResult.file.arrayBuffer();
       const buffer = new Uint8Array(arrayBuffer);
       const base64String = bufferToBase64(buffer);
-      
+
       if (__DEV__) console.log(`Base64 encoding complete, sending to API...`);
-      
+
       // Direct API call since uploads service isn't in generated client yet
       const response = await fetch(`${API_CONFIG.BASE_URL}/uploads/file`, {
         method: 'POST',
@@ -1609,25 +1623,25 @@ export default function FinancePage() {
           mimeType: compressionResult.file.type,
         }),
       });
-      
+
       if (!response.ok) {
         throw new Error(`Upload failed: ${response.statusText}`);
       }
-      
+
       const uploadResult = await response.json();
-      
+
       const result = {
         fileId: uploadResult.fileId,
         filename: uploadResult.filename,
         url: uploadResult.url,
       };
-      
+
       // Update revenue form state
-      setRevenueForm(prev => ({ 
-        ...prev, 
+      setRevenueForm(prev => ({
+        ...prev,
         receiptFile: { fileId: result.fileId, filename: result.filename }
       }));
-      
+
       if (__DEV__) console.log(`Revenue file upload successful: ${result.filename}`);
       return result;
     } catch (error) {
@@ -1643,29 +1657,29 @@ export default function FinancePage() {
     if (isUploading) {
       throw new Error('Upload in progress, please wait...');
     }
-    
+
     setIsUploading(true);
-    
+
     try {
       if (__DEV__) console.log(`Starting expense file upload: ${file.name} (${(file.size / 1024 / 1024).toFixed(2)}MB)`);
-      
+
       // Compress image if needed (only for images > 10MB)
       const compressionResult = await compressImageIfNeeded(file, {
         maxSize: 10 * 1024 * 1024, // 10MB
         quality: 0.8
       });
-      
+
       if (__DEV__ && compressionResult.wasCompressed) {
         console.log(`Image compressed: ${(compressionResult.originalSize / 1024 / 1024).toFixed(2)}MB → ${(compressionResult.compressedSize / 1024 / 1024).toFixed(2)}MB`);
       }
-      
+
       // Convert compressed/original file to base64 using chunked approach
       const arrayBuffer = await compressionResult.file.arrayBuffer();
       const buffer = new Uint8Array(arrayBuffer);
       const base64String = bufferToBase64(buffer);
-      
+
       if (__DEV__) console.log(`Base64 encoding complete, sending to API...`);
-      
+
       // Direct API call since uploads service isn't in generated client yet
       const response = await fetch(`${API_CONFIG.BASE_URL}/uploads/file`, {
         method: 'POST',
@@ -1679,25 +1693,25 @@ export default function FinancePage() {
           mimeType: compressionResult.file.type,
         }),
       });
-      
+
       if (!response.ok) {
         throw new Error(`Upload failed: ${response.statusText}`);
       }
-      
+
       const uploadResult = await response.json();
-      
+
       const result = {
         fileId: uploadResult.fileId,
         filename: uploadResult.filename,
         url: uploadResult.url,
       };
-      
+
       // Update expense form state
-      setExpenseForm(prev => ({ 
-        ...prev, 
+      setExpenseForm(prev => ({
+        ...prev,
         receiptFile: { fileId: result.fileId, filename: result.filename }
       }));
-      
+
       if (__DEV__) console.log(`Expense file upload successful: ${result.filename}`);
       return result;
     } catch (error) {
@@ -1727,24 +1741,29 @@ export default function FinancePage() {
   };
 
   const handleExpenseSubmit = () => {
-    if (!expenseForm.propertyId || !expenseForm.category || !expenseForm.amountCents) {
-      toast({
-        variant: "destructive",
-        title: "Missing fields",
-        description: "Please fill in all required fields.",
-      });
+    setFormError(null);
+    const missingFields: string[] = [];
+    if (!expenseForm.propertyId) missingFields.push("Property");
+    if (!expenseForm.category) missingFields.push("Category");
+    if (!expenseForm.amountCents) missingFields.push("Amount");
+    if (!expenseForm.expenseDate) missingFields.push("Date");
+
+    if (missingFields.length > 0) {
+      setFormError(`Missing required fields: ${missingFields.join(', ')}`);
       return;
     }
     addExpenseMutation.mutate(expenseForm);
   };
 
   const handleRevenueSubmit = () => {
-    if (!revenueForm.propertyId || !revenueForm.amountCents) {
-      toast({
-        variant: "destructive",
-        title: "Missing fields",
-        description: "Please fill in all required fields.",
-      });
+    setFormError(null);
+    const missingFields: string[] = [];
+    if (!revenueForm.propertyId) missingFields.push("Property");
+    if (!revenueForm.amountCents) missingFields.push("Amount");
+    if (!revenueForm.occurredAt) missingFields.push("Date");
+
+    if (missingFields.length > 0) {
+      setFormError(`Missing required fields: ${missingFields.join(', ')}`);
       return;
     }
     addRevenueMutation.mutate(revenueForm);
@@ -1755,7 +1774,7 @@ export default function FinancePage() {
     console.log('Expense object:', expense);
     console.log('Expense ID:', expense.id, 'Type:', typeof expense.id);
     console.log('Expense ID parsed:', parseInt(expense.id), 'Is NaN:', isNaN(parseInt(expense.id)));
-    
+
     // Comprehensive validation of expense object
     if (!expense) {
       console.error('Expense object is null or undefined');
@@ -1792,7 +1811,7 @@ export default function FinancePage() {
     // Convert to string first, then parse to number
     const expenseIdString = String(expense.id);
     const expenseId = parseInt(expenseIdString);
-    
+
     console.log('Expense ID conversion:', {
       original: expense.id,
       stringified: expenseIdString,
@@ -1831,13 +1850,13 @@ export default function FinancePage() {
     }
 
     console.log('Expense validation passed, proceeding with edit');
-    
+
     // Ensure the expense object has a proper numeric ID
     const validatedExpense = {
       ...expense,
       id: expenseId // Ensure ID is a number
     };
-    
+
     setEditingExpense(validatedExpense);
     setExpenseForm({
       propertyId: expense.propertyId.toString(),
@@ -1860,7 +1879,7 @@ export default function FinancePage() {
     console.log('Revenue ID parsed:', parseInt(revenue.id), 'Is NaN:', isNaN(parseInt(revenue.id)));
     console.log('Revenue occurredAt:', revenue.occurredAt, 'Type:', typeof revenue.occurredAt);
     console.log('Formatted for input:', formatDateForInput(revenue.occurredAt));
-    
+
     if (!revenue || !revenue.id) {
       console.error('Invalid revenue object or missing ID:', revenue);
       toast({
@@ -1870,7 +1889,7 @@ export default function FinancePage() {
       });
       return;
     }
-    
+
     setEditingRevenue(revenue);
     setRevenueForm({
       propertyId: revenue.propertyId.toString(),
@@ -1890,7 +1909,7 @@ export default function FinancePage() {
     console.log('=== UPDATE EXPENSE SUBMIT DEBUG ===');
     console.log('Expense form:', expenseForm);
     console.log('Editing expense:', editingExpense);
-    
+
     // Validate form fields
     if (!expenseForm.propertyId || !expenseForm.category || !expenseForm.amountCents) {
       toast({
@@ -1930,7 +1949,7 @@ export default function FinancePage() {
     // Convert to string first, then parse to number
     const expenseIdString = String(editingExpense.id);
     const expenseId = parseInt(expenseIdString);
-    
+
     console.log('Update expense ID conversion:', {
       original: editingExpense.id,
       stringified: expenseIdString,
@@ -1976,7 +1995,7 @@ export default function FinancePage() {
     }
 
     console.log('All validations passed, submitting expense update with ID:', expenseId);
-    
+
     const updateData = {
       id: expenseId,
       propertyId: propertyId,
@@ -1998,7 +2017,7 @@ export default function FinancePage() {
     console.log('=== UPDATE REVENUE SUBMIT DEBUG ===');
     console.log('Revenue form:', revenueForm);
     console.log('Editing revenue:', editingRevenue);
-    
+
     // Validate form fields
     if (!revenueForm.propertyId || !revenueForm.amountCents) {
       toast({
@@ -2064,10 +2083,10 @@ export default function FinancePage() {
 
     const revenueId = parseInt(editingRevenue.id);
     if (isNaN(revenueId)) {
-      console.error('Revenue ID is not a valid number:', { 
-        editingRevenue, 
+      console.error('Revenue ID is not a valid number:', {
+        editingRevenue,
         revenueId: editingRevenue.id,
-        type: typeof editingRevenue.id 
+        type: typeof editingRevenue.id
       });
       toast({
         variant: "destructive",
@@ -2100,7 +2119,7 @@ export default function FinancePage() {
     }
 
     console.log('All validations passed, submitting revenue update with ID:', revenueId);
-    
+
     // Validate and format the date properly
     const formattedDate = formatDateForAPI(revenueForm.occurredAt);
     console.log('Date formatting debug:', {
@@ -2108,7 +2127,7 @@ export default function FinancePage() {
       formattedDate: formattedDate,
       isValidDate: !isNaN(new Date(formattedDate).getTime())
     });
-    
+
     // Validate the formatted date
     if (!formattedDate || isNaN(new Date(formattedDate).getTime())) {
       toast({
@@ -2118,7 +2137,7 @@ export default function FinancePage() {
       });
       return;
     }
-    
+
     const updateData = {
       id: revenueId,
       propertyId: propertyId,
@@ -2149,63 +2168,404 @@ export default function FinancePage() {
   };
 
   return (
-    <div className="w-full min-h-screen bg-gray-50">
-      <div className="space-y-6 pb-20 sm:pb-0">
+    <div className="w-full min-h-screen bg-gray-50 pt-safe pb-safe">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-6 pb-20 sm:pb-0 lg:bg-[#F5F7FA]">
+        {/* Desktop Header Actions - Sticky on Desktop only */}
+        <div className="hidden sm:flex items-center justify-between bg-white/50 backdrop-blur-sm sticky top-14 lg:top-20 z-10 p-2 -mx-2 mb-4 rounded-xl border border-gray-100/50 shadow-sm">
+          <div className="flex items-center gap-2 px-2">
+            <div className="h-8 w-1 bg-blue-600 rounded-full"></div>
+            <h2 className="text-xl font-bold tracking-tight text-gray-900">Financial Overview</h2>
+          </div>
+          <div className="flex gap-2">
+            {/* Add Revenue Dialog */}
+            <Dialog open={isRevenueDialogOpen} onOpenChange={setIsRevenueDialogOpen}>
+              <DialogTrigger asChild>
+                <Button className="bg-green-600 hover:bg-green-700 shadow-sm hover:shadow text-white transition-all duration-200">
+                  <IndianRupee className="mr-2 h-4 w-4" />
+                  Add Revenue
+                </Button>
+              </DialogTrigger>
+              <DialogContent className="w-screen h-screen max-w-none m-0 rounded-none border-0 sm:h-auto sm:max-w-lg sm:rounded-2xl flex flex-col overflow-hidden bg-white">
+                <DialogHeader className="pb-4">
+                  <DialogTitle className="text-xl font-bold text-gray-900 flex items-center gap-2">
+                    <div className="p-2 bg-green-100 rounded-lg shadow-sm">
+                      <IndianRupee className="h-5 w-5 text-green-600" />
+                    </div>
+                    Add Revenue
+                  </DialogTitle>
+                  <DialogDescription className="text-sm text-gray-600">
+                    Record new revenue for your property
+                  </DialogDescription>
+                  {formError && (
+                    <div className="mt-4 bg-red-50 border border-red-200 text-red-600 px-4 py-3 rounded-xl text-sm font-medium flex items-center gap-2 animate-in fade-in slide-in-from-top-2">
+                      <AlertCircle className="h-4 w-4 shrink-0" />
+                      {formError}
+                    </div>
+                  )}
+                </DialogHeader>
+                <div className="flex-1 overflow-y-auto overflow-x-hidden px-0">
+                  <div className="space-y-6 px-6">
+                    <div className="space-y-2">
+                      <Label htmlFor="revenue-property" className="text-sm font-medium text-gray-700">Property *</Label>
+                      <Select value={revenueForm.propertyId} onValueChange={(value) => setRevenueForm(prev => ({ ...prev, propertyId: value }))}>
+                        <SelectTrigger className="h-14 text-base bg-gray-50/50 border-gray-200 focus:bg-white focus:border-blue-500 rounded-xl transition-all shadow-sm">
+                          <SelectValue placeholder="Select property" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {properties?.properties.map((property: any) => (
+                            <SelectItem key={property.id} value={property.id.toString()}>
+                              {property.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="revenue-source" className="text-sm font-medium text-gray-700">Source</Label>
+                        <Select value={revenueForm.source} onValueChange={(value: any) => setRevenueForm(prev => ({ ...prev, source: value }))}>
+                          <SelectTrigger className="h-14 text-base bg-gray-50/50 border-gray-200 focus:bg-white focus:border-blue-500 rounded-xl transition-all shadow-sm">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="room">Room Revenue</SelectItem>
+                            <SelectItem value="addon">Add-on Services</SelectItem>
+                            <SelectItem value="other">Other Revenue</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label htmlFor="revenue-payment-mode" className="text-sm font-medium text-gray-700">Payment Mode *</Label>
+                        <Select value={revenueForm.paymentMode} onValueChange={(value: any) => setRevenueForm(prev => ({ ...prev, paymentMode: value }))}>
+                          <SelectTrigger className="h-14 text-base bg-gray-50/50 border-gray-200 focus:bg-white focus:border-blue-500 rounded-xl transition-all shadow-sm">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="cash">Cash</SelectItem>
+                            <SelectItem value="bank">Bank (UPI/Net Banking/Online)</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+
+                    {revenueForm.paymentMode === 'bank' && (
+                      <div className="space-y-2 w-full">
+                        <FileUpload
+                          label="Receipt Upload"
+                          description="Upload receipt images (JPG, PNG, GIF, WebP) or PDF files. Max size: 100MB"
+                          onFileUpload={handleRevenueFileUpload}
+                          value={revenueForm.receiptFile}
+                          onClear={() => setRevenueForm(prev => ({ ...prev, receiptFile: null }))}
+                        />
+                      </div>
+                    )}
+
+                    <div className="space-y-2">
+                      <Label htmlFor="revenue-amount" className="text-sm font-medium text-gray-700">Amount *</Label>
+                      <Input
+                        id="revenue-amount"
+                        type="number"
+                        step="0.01"
+                        value={revenueForm.amountCents ? (parseInt(revenueForm.amountCents) / 100).toString() : ''}
+                        onChange={(e) => setRevenueForm(prev => ({ ...prev, amountCents: (parseFloat(e.target.value) * 100).toString() }))}
+                        placeholder="0.00"
+                        className="h-14 text-lg font-medium bg-gray-50/50 border-gray-200 focus:bg-white focus:border-blue-500 rounded-xl transition-all shadow-sm"
+                      />
+                    </div>
+
+                    {revenueForm.paymentMode === 'bank' && (
+                      <div className="space-y-2">
+                        <Label htmlFor="revenue-bank-reference" className="text-sm font-medium text-gray-700">Bank Reference</Label>
+                        <Input
+                          id="revenue-bank-reference"
+                          value={revenueForm.bankReference}
+                          onChange={(e) => setRevenueForm(prev => ({ ...prev, bankReference: e.target.value }))}
+                          placeholder="Transaction ID, UPI reference, etc."
+                          className="h-14 text-base bg-gray-50/50 border-gray-200 focus:bg-white focus:border-blue-500 rounded-xl transition-all shadow-sm"
+                        />
+                      </div>
+                    )}
+
+                    <div className="space-y-2">
+                      <Label htmlFor="revenue-description" className="text-sm font-medium text-gray-700">Description</Label>
+                      <Textarea
+                        id="revenue-description"
+                        value={revenueForm.description}
+                        onChange={(e) => setRevenueForm(prev => ({ ...prev, description: e.target.value }))}
+                        placeholder="Revenue description"
+                        className="min-h-[100px] text-base bg-gray-50/50 border-gray-200 focus:bg-white focus:border-blue-500 rounded-xl transition-all shadow-sm resize-none"
+                      />
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="revenue-date" className="text-sm font-medium text-gray-700">Date</Label>
+                      <Input
+                        id="revenue-date"
+                        type="date"
+                        value={revenueForm.occurredAt}
+                        onChange={(e) => setRevenueForm(prev => ({ ...prev, occurredAt: e.target.value }))}
+                        className="h-14 text-base bg-gray-50/50 border-gray-200 focus:bg-white focus:border-blue-500 rounded-xl transition-all shadow-sm"
+                      />
+                    </div>
+                  </div>
+                </div>
+                <DialogFooter className="border-t border-gray-100 bg-white/80 backdrop-blur p-4 sm:p-6 sm:bg-gray-50 sticky bottom-0 z-10">
+                  <div className="flex items-center justify-between w-full">
+                    <Button
+                      variant="outline"
+                      onClick={() => {
+                        setIsRevenueDialogOpen(false);
+                        setFormError(null);
+                      }}
+                      className="transition-all duration-200 hover:scale-105 hover:shadow-md"
+                    >
+                      Cancel
+                    </Button>
+                    <Button
+                      onClick={handleRevenueSubmit}
+                      disabled={addRevenueMutation.isPending}
+                      className="bg-green-600 hover:bg-green-700 transition-all duration-200 hover:scale-105 hover:shadow-md"
+                    >
+                      {addRevenueMutation.isPending ? (
+                        <>
+                          <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
+                          Adding...
+                        </>
+                      ) : (
+                        <>
+                          <IndianRupee className="mr-2 h-4 w-4" />
+                          Add Revenue
+                        </>
+                      )}
+                    </Button>
+                  </div>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
+
+            {/* Add Expense Dialog */}
+            <Dialog open={isExpenseDialogOpen} onOpenChange={setIsExpenseDialogOpen}>
+              <DialogTrigger asChild>
+                <Button className="bg-red-600 hover:bg-red-700 shadow-sm hover:shadow text-white transition-all duration-200">
+                  <Plus className="mr-2 h-4 w-4" />
+                  Add Expense
+                </Button>
+              </DialogTrigger>
+              <DialogContent className="w-screen h-screen max-w-none m-0 rounded-none border-0 sm:h-auto sm:max-w-lg sm:rounded-2xl flex flex-col overflow-hidden bg-white">
+                <DialogHeader className="pb-4">
+                  <DialogTitle className="text-xl font-bold text-gray-900 flex items-center gap-2">
+                    <div className="p-2 bg-red-100 rounded-lg shadow-sm">
+                      <Plus className="h-5 w-5 text-red-600" />
+                    </div>
+                    Add Expense
+                  </DialogTitle>
+                  <DialogDescription className="text-sm text-gray-600">
+                    Record a new expense for your property
+                  </DialogDescription>
+                  {formError && (
+                    <div className="mt-4 bg-red-50 border border-red-200 text-red-600 px-4 py-3 rounded-xl text-sm font-medium flex items-center gap-2 animate-in fade-in slide-in-from-top-2">
+                      <AlertCircle className="h-4 w-4 shrink-0" />
+                      {formError}
+                    </div>
+                  )}
+                </DialogHeader>
+                <div className="flex-1 overflow-y-auto overflow-x-hidden px-0">
+                  <div className="space-y-6 px-6">
+                    <div className="space-y-2">
+                      <Label htmlFor="expense-property" className="text-sm font-medium text-gray-700">Property *</Label>
+                      <Select value={expenseForm.propertyId} onValueChange={(value) => setExpenseForm(prev => ({ ...prev, propertyId: value }))}>
+                        <SelectTrigger className="h-14 text-base bg-gray-50/50 border-gray-200 focus:bg-white focus:border-blue-500 rounded-xl transition-all shadow-sm">
+                          <SelectValue placeholder="Select property" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {properties?.properties.map((property: any) => (
+                            <SelectItem key={property.id} value={property.id.toString()}>
+                              {property.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="expense-category" className="text-sm font-medium text-gray-700">Category *</Label>
+                        <Select value={expenseForm.category} onValueChange={(value) => setExpenseForm(prev => ({ ...prev, category: value }))}>
+                          <SelectTrigger className="h-12 text-base border-gray-300 focus:border-blue-500 focus:ring-blue-500">
+                            <SelectValue placeholder="Select category" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="supplies">Supplies</SelectItem>
+                            <SelectItem value="maintenance">Maintenance</SelectItem>
+                            <SelectItem value="utilities">Utilities</SelectItem>
+                            <SelectItem value="marketing">Marketing</SelectItem>
+                            <SelectItem value="staff">Staff</SelectItem>
+                            <SelectItem value="insurance">Insurance</SelectItem>
+                            <SelectItem value="other">Other</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label htmlFor="expense-payment-mode" className="text-sm font-medium text-gray-700">Payment Mode *</Label>
+                        <Select value={expenseForm.paymentMode} onValueChange={(value: any) => setExpenseForm(prev => ({ ...prev, paymentMode: value }))}>
+                          <SelectTrigger className="h-14 text-base bg-gray-50/50 border-gray-200 focus:bg-white focus:border-blue-500 rounded-xl transition-all shadow-sm">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="cash">Cash</SelectItem>
+                            <SelectItem value="bank">Bank (UPI/Net Banking/Online)</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+
+                    <div className="space-y-2 w-full">
+                      <FileUpload
+                        label="Receipt Upload"
+                        description="Upload receipt images (JPG, PNG, GIF, WebP) or PDF files. Max size: 100MB"
+                        onFileUpload={handleExpenseFileUpload}
+                        value={expenseForm.receiptFile}
+                        onClear={() => setExpenseForm(prev => ({ ...prev, receiptFile: null }))}
+                      />
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="expense-amount" className="text-sm font-medium text-gray-700">Amount *</Label>
+                      <Input
+                        id="expense-amount"
+                        type="number"
+                        step="0.01"
+                        value={expenseForm.amountCents ? (parseInt(expenseForm.amountCents) / 100).toString() : ''}
+                        onChange={(e) => setExpenseForm(prev => ({ ...prev, amountCents: (parseFloat(e.target.value) * 100).toString() }))}
+                        placeholder="0.00"
+                        className="h-14 text-lg font-medium bg-gray-50/50 border-gray-200 focus:bg-white focus:border-blue-500 rounded-xl transition-all shadow-sm"
+                      />
+                    </div>
+
+                    {expenseForm.paymentMode === 'bank' && (
+                      <div className="space-y-2">
+                        <Label htmlFor="expense-bank-reference" className="text-sm font-medium text-gray-700">Bank Reference</Label>
+                        <Input
+                          id="expense-bank-reference"
+                          value={expenseForm.bankReference}
+                          onChange={(e) => setExpenseForm(prev => ({ ...prev, bankReference: e.target.value }))}
+                          placeholder="Transaction ID, UPI reference, etc."
+                          className="h-14 text-base bg-gray-50/50 border-gray-200 focus:bg-white focus:border-blue-500 rounded-xl transition-all shadow-sm"
+                        />
+                      </div>
+                    )}
+
+                    <div className="space-y-2">
+                      <Label htmlFor="expense-description" className="text-sm font-medium text-gray-700">Description</Label>
+                      <Textarea
+                        id="expense-description"
+                        value={expenseForm.description}
+                        onChange={(e) => setExpenseForm(prev => ({ ...prev, description: e.target.value }))}
+                        placeholder="Expense description"
+                        className="min-h-[100px] text-base bg-gray-50/50 border-gray-200 focus:bg-white focus:border-blue-500 rounded-xl transition-all shadow-sm resize-none"
+                      />
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="expense-date" className="text-sm font-medium text-gray-700">Date</Label>
+                      <Input
+                        id="expense-date"
+                        type="date"
+                        value={expenseForm.expenseDate}
+                        onChange={(e) => setExpenseForm(prev => ({ ...prev, expenseDate: e.target.value }))}
+                        className="h-14 text-base bg-gray-50/50 border-gray-200 focus:bg-white focus:border-blue-500 rounded-xl transition-all shadow-sm"
+                      />
+                    </div>
+                  </div>
+                </div>
+                <DialogFooter className="border-t border-gray-100 bg-white/80 backdrop-blur p-4 sm:p-6 sm:bg-gray-50 sticky bottom-0 z-10">
+                  <div className="flex items-center justify-between w-full">
+                    <Button
+                      variant="outline"
+                      onClick={() => {
+                        setIsExpenseDialogOpen(false);
+                        setFormError(null);
+                      }}
+                      className="transition-all duration-200 hover:scale-105 hover:shadow-md"
+                    >
+                      Cancel
+                    </Button>
+                    <Button
+                      onClick={handleExpenseSubmit}
+                      disabled={addExpenseMutation.isPending}
+                      className="bg-red-600 hover:bg-red-700 transition-all duration-200 hover:scale-105 hover:shadow-md"
+                    >
+                      {addExpenseMutation.isPending ? (
+                        <>
+                          <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
+                          Adding...
+                        </>
+                      ) : (
+                        <>
+                          <Plus className="mr-2 h-4 w-4" />
+                          Add Expense
+                        </>
+                      )}
+                    </Button>
+                  </div>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
+          </div>
+        </div>
         {/* Daily Approval Status Banner for Managers */}
         {user?.role === 'MANAGER' && approvalStatus && (
-          <Card className={`border-l-4 ${
-            !approvalStatus.canAddTransactions 
-              ? 'border-l-red-500 bg-red-50 border-red-200' 
-              : approvalStatus.hasUnapprovedTransactions 
+          <Card className={`border-l-4 ${!approvalStatus.canAddTransactions
+            ? 'border-l-red-500 bg-red-50 border-red-200'
+            : approvalStatus.hasUnapprovedTransactions
               ? 'border-l-yellow-500 bg-yellow-50 border-yellow-200'
               : 'border-l-green-500 bg-green-50 border-green-200'
-          } shadow-sm hover:shadow-md transition-shadow duration-200`}>
+            } shadow-sm hover:shadow-md transition-shadow duration-200`}>
             <CardContent className="p-4">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
-                  <div className={`p-2 rounded-full ${
-                    !approvalStatus.canAddTransactions 
-                      ? 'bg-red-100' 
-                      : approvalStatus.hasUnapprovedTransactions 
+                  <div className={`p-2 rounded-full ${!approvalStatus.canAddTransactions
+                    ? 'bg-red-100'
+                    : approvalStatus.hasUnapprovedTransactions
                       ? 'bg-yellow-100'
                       : 'bg-green-100'
-                  }`}>
-                    <Calendar className={`h-5 w-5 ${
-                      !approvalStatus.canAddTransactions 
-                        ? 'text-red-600' 
-                        : approvalStatus.hasUnapprovedTransactions 
+                    }`}>
+                    <Calendar className={`h-5 w-5 ${!approvalStatus.canAddTransactions
+                      ? 'text-red-600'
+                      : approvalStatus.hasUnapprovedTransactions
                         ? 'text-yellow-600'
                         : 'text-green-600'
-                    }`} />
+                      }`} />
                   </div>
                   <div>
-                    <h3 className={`text-lg font-bold ${
-                      !approvalStatus.canAddTransactions 
-                        ? 'text-red-800' 
-                        : approvalStatus.hasUnapprovedTransactions 
+                    <h3 className={`text-lg font-bold ${!approvalStatus.canAddTransactions
+                      ? 'text-red-800'
+                      : approvalStatus.hasUnapprovedTransactions
                         ? 'text-yellow-800'
                         : 'text-green-800'
-                    }`}>
-                      {!approvalStatus.canAddTransactions 
-                        ? 'Approval Required' 
-                        : approvalStatus.hasUnapprovedTransactions 
-                        ? 'Pending Approval'
-                        : 'Approved'}
+                      }`}>
+                      {!approvalStatus.canAddTransactions
+                        ? 'Approval Required'
+                        : approvalStatus.hasUnapprovedTransactions
+                          ? 'Pending Approval'
+                          : 'Approved'}
                     </h3>
                     {approvalStatus.message && (
-                      <p className={`text-sm mt-1 ${
-                        !approvalStatus.canAddTransactions 
-                          ? 'text-red-700' 
-                          : approvalStatus.hasUnapprovedTransactions 
+                      <p className={`text-sm mt-1 ${!approvalStatus.canAddTransactions
+                        ? 'text-red-700'
+                        : approvalStatus.hasUnapprovedTransactions
                           ? 'text-yellow-700'
                           : 'text-green-700'
-                      }`}>
+                        }`}>
                         {approvalStatus.message}
                       </p>
                     )}
                   </div>
                 </div>
-                
+
                 {/* Live stream health badge (from global RealtimeProvider) */}
                 <div className="flex items-center gap-2">
                   <div className={`w-2 h-2 rounded-full ${realtimeHealth?.isLive ? 'bg-green-500 animate-pulse' : 'bg-gray-400'}`}></div>
@@ -2218,814 +2578,376 @@ export default function FinancePage() {
           </Card>
         )}
 
-        {/* Enhanced Search and Filter Section */}
-        <Card className="border-l-4 border-l-blue-500 shadow-sm">
-          <CardHeader className="pb-4">
-            <CardTitle className="text-lg flex items-center gap-2">
-              <div className="w-3 h-3 bg-blue-500 rounded-full animate-pulse"></div>
-              Financial Filters
-              <span className="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded-full font-medium">Live</span>
-            </CardTitle>
-            <CardDescription className="text-sm text-gray-600">
-              Filter transactions by property and date range
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-6">
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-              {/* Property Filter */}
-              <div className="space-y-2">
-                <Label htmlFor="property-filter" className="text-sm font-medium text-gray-700">Property</Label>
-                <Select value={selectedPropertyId} onValueChange={setSelectedPropertyId}>
-                  <SelectTrigger className="h-11 border-gray-300 focus:border-blue-500 focus:ring-blue-500">
-                    <SelectValue placeholder="All properties" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All properties</SelectItem>
-                    {properties?.properties.map((property: any) => (
-                      <SelectItem key={property.id} value={property.id.toString()}>
-                        {property.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              {/* Start Date Filter */}
-              <div className="space-y-2">
-                <Label htmlFor="start-date" className="text-sm font-medium text-gray-700">Start Date</Label>
-                <Input
-                  id="start-date"
-                  type="date"
-                  value={dateRange.startDate}
-                  onChange={(e) => handleDateRangeChange('startDate', e.target.value)}
-                  className="h-11 border-gray-300 focus:border-blue-500 focus:ring-blue-500"
-                />
-              </div>
-
-              {/* End Date Filter */}
-              <div className="space-y-2">
-                <Label htmlFor="end-date" className="text-sm font-medium text-gray-700">End Date</Label>
-                <Input
-                  id="end-date"
-                  type="date"
-                  value={dateRange.endDate}
-                  onChange={(e) => handleDateRangeChange('endDate', e.target.value)}
-                  className="h-11 border-gray-300 focus:border-blue-500 focus:ring-blue-500"
-                />
-              </div>
-
-              {/* Clear Filters Button */}
-              <div className="space-y-2">
-                <Label className="text-sm font-medium text-gray-700 opacity-0">Actions</Label>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => {
-                    setSelectedPropertyId('all');
-                    setDateRange({ startDate: '', endDate: '' });
-                  }}
-                  className="h-11 w-full transition-all duration-200 hover:scale-105 hover:shadow-md"
-                >
-                  <RefreshCw className="h-4 w-4 mr-2" />
-                  <span className="hidden sm:inline">Clear Filters</span>
-                  <span className="sm:hidden">Clear</span>
-                </Button>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+        {/* Responsive Financial Filters */}
+        <FinanceFilters
+          selectedPropertyId={selectedPropertyId}
+          onPropertyChange={setSelectedPropertyId}
+          dateRange={dateRange}
+          onDateRangeChange={handleDateRangeChange}
+          properties={properties?.properties || []}
+          onReset={() => {
+            setSelectedPropertyId('all');
+            setDateRange({ startDate: '', endDate: '' });
+          }}
+        />
 
         {/* Enhanced Action Buttons Section (desktop and tablet only) */}
-        <Card className="hidden sm:block border-l-4 border-l-green-500 shadow-sm">
-          <CardContent className="pt-6">
-            <div className="hidden sm:flex flex-wrap items-center gap-3">
-              <Dialog open={isRevenueDialogOpen} onOpenChange={setIsRevenueDialogOpen}>
-                <DialogTrigger asChild>
-                  <Button 
-                    className="bg-green-600 hover:bg-green-700 transition-all duration-200 hover:scale-105 hover:shadow-md"
-                    disabled={user?.role === 'MANAGER' && approvalStatus && !approvalStatus.canAddTransactions}
-                  >
-                    <TrendingUp className="mr-2 h-4 w-4" />
-                    <span className="hidden sm:inline">Add Revenue</span>
-                    <span className="sm:hidden">Revenue</span>
-                  </Button>
-                </DialogTrigger>
-            <DialogContent className="max-w-2xl max-h-[95vh] overflow-hidden flex flex-col w-full mx-4">
-              <DialogHeader className="pb-4">
-                <DialogTitle className="text-xl font-bold text-gray-900 flex items-center gap-2">
-                  <div className="p-2 bg-green-100 rounded-lg shadow-sm">
-                    <TrendingUp className="h-5 w-5 text-green-600" />
-                  </div>
-                  Add Revenue
-                </DialogTitle>
-                <DialogDescription className="text-sm text-gray-600">
-                  Record new revenue for your property
-                </DialogDescription>
-              </DialogHeader>
-              <div className="flex-1 overflow-y-auto overflow-x-hidden px-0">
-                <div className="space-y-6 px-6">
-                  <div className="space-y-2">
-                    <Label htmlFor="revenue-property" className="text-sm font-medium text-gray-700">Property *</Label>
-                    <Select value={revenueForm.propertyId} onValueChange={(value) => setRevenueForm(prev => ({ ...prev, propertyId: value }))}>
-                      <SelectTrigger className="h-11 border-gray-300 focus:border-blue-500 focus:ring-blue-500">
-                        <SelectValue placeholder="Select property" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {properties?.properties.map((property: any) => (
-                          <SelectItem key={property.id} value={property.id.toString()}>
-                            {property.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="revenue-source" className="text-sm font-medium text-gray-700">Source</Label>
-                      <Select value={revenueForm.source} onValueChange={(value: any) => setRevenueForm(prev => ({ ...prev, source: value }))}>
-                        <SelectTrigger className="h-11 border-gray-300 focus:border-blue-500 focus:ring-blue-500">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="room">Room Revenue</SelectItem>
-                          <SelectItem value="addon">Add-on Services</SelectItem>
-                          <SelectItem value="other">Other Revenue</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    
-                    <div className="space-y-2">
-                      <Label htmlFor="revenue-payment-mode" className="text-sm font-medium text-gray-700">Payment Mode *</Label>
-                      <Select value={revenueForm.paymentMode} onValueChange={(value: any) => setRevenueForm(prev => ({ ...prev, paymentMode: value }))}>
-                        <SelectTrigger className="h-11 border-gray-300 focus:border-blue-500 focus:ring-blue-500">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="cash">Cash</SelectItem>
-                          <SelectItem value="bank">Bank (UPI/Net Banking/Online)</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  </div>
-                  
-                  {revenueForm.paymentMode === 'bank' && (
-                    <div className="space-y-2 w-full">
-                      <FileUpload
-                        label="Receipt Upload"
-                        description="Upload receipt images (JPG, PNG, GIF, WebP) or PDF files. Max size: 100MB"
-                        onFileUpload={handleRevenueFileUpload}
-                        value={revenueForm.receiptFile}
-                        onClear={() => setRevenueForm(prev => ({ ...prev, receiptFile: null }))}
-                      />
-                    </div>
-                  )}
-                  
-                  <div className="space-y-2">
-                    <Label htmlFor="revenue-amount" className="text-sm font-medium text-gray-700">Amount *</Label>
-                    <Input
-                      id="revenue-amount"
-                      type="number"
-                      step="0.01"
-                      value={revenueForm.amountCents ? (parseInt(revenueForm.amountCents) / 100).toString() : ''}
-                      onChange={(e) => setRevenueForm(prev => ({ ...prev, amountCents: (parseFloat(e.target.value) * 100).toString() }))}
-                      placeholder="0.00"
-                      className="h-11 border-gray-300 focus:border-blue-500 focus:ring-blue-500"
-                    />
-                  </div>
-                  
-                  {revenueForm.paymentMode === 'bank' && (
-                    <div className="space-y-2">
-                      <Label htmlFor="revenue-bank-reference" className="text-sm font-medium text-gray-700">Bank Reference</Label>
-                      <Input
-                        id="revenue-bank-reference"
-                        value={revenueForm.bankReference}
-                        onChange={(e) => setRevenueForm(prev => ({ ...prev, bankReference: e.target.value }))}
-                        placeholder="Transaction ID, UPI reference, etc."
-                        className="h-11 border-gray-300 focus:border-blue-500 focus:ring-blue-500"
-                      />
-                    </div>
-                  )}
-                  
-                  <div className="space-y-2">
-                    <Label htmlFor="revenue-description" className="text-sm font-medium text-gray-700">Description</Label>
-                    <Textarea
-                      id="revenue-description"
-                      value={revenueForm.description}
-                      onChange={(e) => setRevenueForm(prev => ({ ...prev, description: e.target.value }))}
-                      placeholder="Revenue description"
-                      className="border-gray-300 focus:border-blue-500 focus:ring-blue-500"
-                    />
-                  </div>
-                  
-                  <div className="space-y-2">
-                    <Label htmlFor="revenue-date" className="text-sm font-medium text-gray-700">Date</Label>
-                    <Input
-                      id="revenue-date"
-                      type="date"
-                      value={revenueForm.occurredAt}
-                      onChange={(e) => setRevenueForm(prev => ({ ...prev, occurredAt: e.target.value }))}
-                      className="h-11 border-gray-300 focus:border-blue-500 focus:ring-blue-500"
-                    />
-                  </div>
-                </div>
-              </div>
-              <DialogFooter className="border-t pt-4 mt-6 bg-gray-50 -mx-6 -mb-6 px-6 py-4">
-                <div className="flex items-center justify-between w-full">
-                  <Button 
-                    variant="outline" 
-                    onClick={() => setIsRevenueDialogOpen(false)}
-                    className="transition-all duration-200 hover:scale-105 hover:shadow-md"
-                  >
-                    Cancel
-                  </Button>
-                  <Button 
-                    onClick={handleRevenueSubmit} 
-                    disabled={addRevenueMutation.isPending}
-                    className="bg-green-600 hover:bg-green-700 transition-all duration-200 hover:scale-105 hover:shadow-md"
-                  >
-                    {addRevenueMutation.isPending ? (
-                      <>
-                        <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
-                        Adding...
-                      </>
-                    ) : (
-                      <>
-                        <TrendingUp className="mr-2 h-4 w-4" />
-                        Add Revenue
-                      </>
-                    )}
-                  </Button>
-                </div>
-              </DialogFooter>
-            </DialogContent>
-          </Dialog>
-
-              <Dialog open={isExpenseDialogOpen} onOpenChange={setIsExpenseDialogOpen}>
-                <DialogTrigger asChild>
-                  <Button
-                    className="bg-red-600 hover:bg-red-700 transition-all duration-200 hover:scale-105 hover:shadow-md"
-                    disabled={user?.role === 'MANAGER' && approvalStatus && !approvalStatus.canAddTransactions}
-                  >
-                    <Plus className="mr-2 h-4 w-4" />
-                    <span className="hidden sm:inline">Add Expense</span>
-                    <span className="sm:hidden">Expense</span>
-                  </Button>
-                </DialogTrigger>
-            <DialogContent className="max-w-2xl max-h-[95vh] overflow-hidden flex flex-col w-full mx-4">
-              <DialogHeader className="pb-4">
-                <DialogTitle className="text-xl font-bold text-gray-900 flex items-center gap-2">
-                  <div className="p-2 bg-red-100 rounded-lg shadow-sm">
-                    <Plus className="h-5 w-5 text-red-600" />
-                  </div>
-                  Add Expense
-                </DialogTitle>
-                <DialogDescription className="text-sm text-gray-600">
-                  Record a new expense for your property
-                </DialogDescription>
-              </DialogHeader>
-              <div className="flex-1 overflow-y-auto overflow-x-hidden px-0">
-                <div className="space-y-6 px-6">
-                  <div className="space-y-2">
-                    <Label htmlFor="expense-property" className="text-sm font-medium text-gray-700">Property *</Label>
-                    <Select value={expenseForm.propertyId} onValueChange={(value) => setExpenseForm(prev => ({ ...prev, propertyId: value }))}>
-                      <SelectTrigger className="h-11 border-gray-300 focus:border-blue-500 focus:ring-blue-500">
-                        <SelectValue placeholder="Select property" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {properties?.properties.map((property: any) => (
-                          <SelectItem key={property.id} value={property.id.toString()}>
-                            {property.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="expense-category" className="text-sm font-medium text-gray-700">Category *</Label>
-                      <Select value={expenseForm.category} onValueChange={(value) => setExpenseForm(prev => ({ ...prev, category: value }))}>
-                        <SelectTrigger className="h-11 border-gray-300 focus:border-blue-500 focus:ring-blue-500">
-                          <SelectValue placeholder="Select category" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="supplies">Supplies</SelectItem>
-                          <SelectItem value="maintenance">Maintenance</SelectItem>
-                          <SelectItem value="utilities">Utilities</SelectItem>
-                          <SelectItem value="marketing">Marketing</SelectItem>
-                          <SelectItem value="staff">Staff</SelectItem>
-                          <SelectItem value="insurance">Insurance</SelectItem>
-                          <SelectItem value="other">Other</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    
-                    <div className="space-y-2">
-                      <Label htmlFor="expense-payment-mode" className="text-sm font-medium text-gray-700">Payment Mode *</Label>
-                      <Select value={expenseForm.paymentMode} onValueChange={(value: any) => setExpenseForm(prev => ({ ...prev, paymentMode: value }))}>
-                        <SelectTrigger className="h-11 border-gray-300 focus:border-blue-500 focus:ring-blue-500">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="cash">Cash</SelectItem>
-                          <SelectItem value="bank">Bank (UPI/Net Banking/Online)</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  </div>
-                  
-                  <div className="space-y-2 w-full">
-                    <FileUpload
-                      label="Receipt Upload"
-                      description="Upload receipt images (JPG, PNG, GIF, WebP) or PDF files. Max size: 100MB"
-                      onFileUpload={handleExpenseFileUpload}
-                      value={expenseForm.receiptFile}
-                      onClear={() => setExpenseForm(prev => ({ ...prev, receiptFile: null }))}
-                    />
-                  </div>
-                  
-                  <div className="space-y-2">
-                    <Label htmlFor="expense-amount" className="text-sm font-medium text-gray-700">Amount *</Label>
-                    <Input
-                      id="expense-amount"
-                      type="number"
-                      step="0.01"
-                      value={expenseForm.amountCents ? (parseInt(expenseForm.amountCents) / 100).toString() : ''}
-                      onChange={(e) => setExpenseForm(prev => ({ ...prev, amountCents: (parseFloat(e.target.value) * 100).toString() }))}
-                      placeholder="0.00"
-                      className="h-11 border-gray-300 focus:border-blue-500 focus:ring-blue-500"
-                    />
-                  </div>
-                  
-                  {expenseForm.paymentMode === 'bank' && (
-                    <div className="space-y-2">
-                      <Label htmlFor="expense-bank-reference" className="text-sm font-medium text-gray-700">Bank Reference</Label>
-                      <Input
-                        id="expense-bank-reference"
-                        value={expenseForm.bankReference}
-                        onChange={(e) => setExpenseForm(prev => ({ ...prev, bankReference: e.target.value }))}
-                        placeholder="Transaction ID, UPI reference, etc."
-                        className="h-11 border-gray-300 focus:border-blue-500 focus:ring-blue-500"
-                      />
-                    </div>
-                  )}
-                  
-                  <div className="space-y-2">
-                    <Label htmlFor="expense-description" className="text-sm font-medium text-gray-700">Description</Label>
-                    <Textarea
-                      id="expense-description"
-                      value={expenseForm.description}
-                      onChange={(e) => setExpenseForm(prev => ({ ...prev, description: e.target.value }))}
-                      placeholder="Expense description"
-                      className="border-gray-300 focus:border-blue-500 focus:ring-blue-500"
-                    />
-                  </div>
-                  
-                  <div className="space-y-2">
-                    <Label htmlFor="expense-date" className="text-sm font-medium text-gray-700">Date</Label>
-                    <Input
-                      id="expense-date"
-                      type="date"
-                      value={expenseForm.expenseDate}
-                      onChange={(e) => setExpenseForm(prev => ({ ...prev, expenseDate: e.target.value }))}
-                      className="h-11 border-gray-300 focus:border-blue-500 focus:ring-blue-500"
-                    />
-                  </div>
-                </div>
-              </div>
-              <DialogFooter className="border-t pt-4 mt-6 bg-gray-50 -mx-6 -mb-6 px-6 py-4">
-                <div className="flex items-center justify-between w-full">
-                  <Button 
-                    variant="outline" 
-                    onClick={() => setIsExpenseDialogOpen(false)}
-                    className="transition-all duration-200 hover:scale-105 hover:shadow-md"
-                  >
-                    Cancel
-                  </Button>
-                  <Button 
-                    onClick={handleExpenseSubmit} 
-                    disabled={addExpenseMutation.isPending}
-                    className="bg-red-600 hover:bg-red-700 transition-all duration-200 hover:scale-105 hover:shadow-md"
-                  >
-                    {addExpenseMutation.isPending ? (
-                      <>
-                        <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
-                        Adding...
-                      </>
-                    ) : (
-                      <>
-                        <Plus className="mr-2 h-4 w-4" />
-                        Add Expense
-                      </>
-                    )}
-                  </Button>
-                </div>
-              </DialogFooter>
-            </DialogContent>
-          </Dialog>
-
-          {/* Edit Expense Dialog */}
-          <Dialog open={isEditExpenseDialogOpen} onOpenChange={setIsEditExpenseDialogOpen}>
-            <DialogContent className="max-w-2xl max-h-[95vh] overflow-hidden flex flex-col">
-              <DialogHeader className="pb-4">
-                <DialogTitle className="text-xl font-bold text-gray-900 flex items-center gap-2">
-                  <div className="p-2 bg-orange-100 rounded-lg shadow-sm">
-                    <Edit className="h-5 w-5 text-orange-600" />
-                  </div>
-                  Edit Expense
-                </DialogTitle>
-                <DialogDescription className="text-sm text-gray-600">
-                  Update the expense details
-                </DialogDescription>
-              </DialogHeader>
-              <div className="flex-1 overflow-y-auto px-1">
-                <div className="space-y-6">
-                  <div className="space-y-2">
-                    <Label htmlFor="edit-expense-property" className="text-sm font-medium text-gray-700">Property *</Label>
-                    <Select value={expenseForm.propertyId} onValueChange={(value) => setExpenseForm(prev => ({ ...prev, propertyId: value }))}>
-                      <SelectTrigger className="h-11 border-gray-300 focus:border-blue-500 focus:ring-blue-500">
-                        <SelectValue placeholder="Select property" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {properties?.properties.map((property: any) => (
-                          <SelectItem key={property.id} value={property.id.toString()}>
-                            {property.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  
-                  <div className="space-y-2">
-                    <Label htmlFor="edit-expense-category" className="text-sm font-medium text-gray-700">Category *</Label>
-                    <Select value={expenseForm.category} onValueChange={(value) => setExpenseForm(prev => ({ ...prev, category: value }))}>
-                      <SelectTrigger className="h-11 border-gray-300 focus:border-blue-500 focus:ring-blue-500">
-                        <SelectValue placeholder="Select category" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="supplies">Supplies</SelectItem>
-                        <SelectItem value="maintenance">Maintenance</SelectItem>
-                        <SelectItem value="utilities">Utilities</SelectItem>
-                        <SelectItem value="marketing">Marketing</SelectItem>
-                        <SelectItem value="staff">Staff</SelectItem>
-                        <SelectItem value="insurance">Insurance</SelectItem>
-                        <SelectItem value="other">Other</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  
-                  <div className="space-y-2">
-                    <Label htmlFor="edit-expense-amount" className="text-sm font-medium text-gray-700">Amount *</Label>
-                    <Input
-                      id="edit-expense-amount"
-                      type="number"
-                      step="0.01"
-                      value={expenseForm.amountCents ? (parseInt(expenseForm.amountCents) / 100).toString() : ''}
-                      onChange={(e) => setExpenseForm(prev => ({ ...prev, amountCents: (parseFloat(e.target.value) * 100).toString() }))}
-                      placeholder="0.00"
-                      className="h-11 border-gray-300 focus:border-blue-500 focus:ring-blue-500"
-                    />
-                  </div>
-                  
-                  <div className="space-y-2">
-                    <Label htmlFor="edit-expense-description" className="text-sm font-medium text-gray-700">Description</Label>
-                    <Textarea
-                      id="edit-expense-description"
-                      value={expenseForm.description}
-                      onChange={(e) => setExpenseForm(prev => ({ ...prev, description: e.target.value }))}
-                      placeholder="Expense description"
-                      className="border-gray-300 focus:border-blue-500 focus:ring-blue-500"
-                    />
-                  </div>
-                  
-                  <div className="space-y-2">
-                    <FileUpload
-                      label="Receipt Upload"
-                      description="Upload receipt images (JPG, PNG, GIF, WebP) or PDF files. Max size: 100MB"
-                      onFileUpload={handleExpenseFileUpload}
-                      value={expenseForm.receiptFile}
-                      onClear={() => setExpenseForm(prev => ({ ...prev, receiptFile: null }))}
-                    />
-                  </div>
-                  
-                  <div className="space-y-2">
-                    <Label htmlFor="edit-expense-payment-mode" className="text-sm font-medium text-gray-700">Payment Mode *</Label>
-                    <Select value={expenseForm.paymentMode} onValueChange={(value: any) => setExpenseForm(prev => ({ ...prev, paymentMode: value }))}>
-                      <SelectTrigger className="h-11 border-gray-300 focus:border-blue-500 focus:ring-blue-500">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="cash">Cash</SelectItem>
-                        <SelectItem value="bank">Bank (UPI/Net Banking/Online)</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  
-                  {expenseForm.paymentMode === 'bank' && (
-                    <div className="space-y-2">
-                      <Label htmlFor="edit-expense-bank-reference" className="text-sm font-medium text-gray-700">Bank Reference</Label>
-                      <Input
-                        id="edit-expense-bank-reference"
-                        value={expenseForm.bankReference}
-                        onChange={(e) => setExpenseForm(prev => ({ ...prev, bankReference: e.target.value }))}
-                        placeholder="Transaction ID, UPI reference, etc."
-                        className="h-11 border-gray-300 focus:border-blue-500 focus:ring-blue-500"
-                      />
-                    </div>
-                  )}
-                  
-                  <div className="space-y-2">
-                    <Label htmlFor="edit-expense-date" className="text-sm font-medium text-gray-700">Date</Label>
-                    <Input
-                      id="edit-expense-date"
-                      type="date"
-                      value={expenseForm.expenseDate}
-                      onChange={(e) => setExpenseForm(prev => ({ ...prev, expenseDate: e.target.value }))}
-                      className="h-11 border-gray-300 focus:border-blue-500 focus:ring-blue-500"
-                    />
-                  </div>
-                </div>
-              </div>
-              <DialogFooter className="border-t pt-4 mt-6 bg-gray-50 -mx-6 -mb-6 px-6 py-4">
-                <div className="flex items-center justify-between w-full">
-                  <Button 
-                    variant="outline" 
-                    onClick={() => setIsEditExpenseDialogOpen(false)}
-                    className="transition-all duration-200 hover:scale-105 hover:shadow-md"
-                  >
-                    Cancel
-                  </Button>
-                  <Button 
-                    onClick={handleUpdateExpenseSubmit} 
-                    disabled={updateExpenseMutation.isPending}
-                    className="bg-orange-600 hover:bg-orange-700 transition-all duration-200 hover:scale-105 hover:shadow-md"
-                  >
-                    {updateExpenseMutation.isPending ? (
-                      <>
-                        <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
-                        Updating...
-                      </>
-                    ) : (
-                      <>
-                        <Edit className="mr-2 h-4 w-4" />
-                        Update Expense
-                      </>
-                    )}
-                  </Button>
-                </div>
-              </DialogFooter>
-            </DialogContent>
-          </Dialog>
-
-          {/* Edit Revenue Dialog */}
-          <Dialog open={isEditRevenueDialogOpen} onOpenChange={setIsEditRevenueDialogOpen}>
-            <DialogContent className="max-w-2xl max-h-[95vh] overflow-hidden flex flex-col">
-              <DialogHeader className="pb-4">
-                <DialogTitle className="text-xl font-bold text-gray-900 flex items-center gap-2">
-                  <div className="p-2 bg-blue-100 rounded-lg shadow-sm">
-                    <Edit className="h-5 w-5 text-blue-600" />
-                  </div>
-                  Edit Revenue
-                </DialogTitle>
-                <DialogDescription className="text-sm text-gray-600">
-                  Update the revenue details
-                </DialogDescription>
-              </DialogHeader>
-              <div className="flex-1 overflow-y-auto px-1">
-                <div className="space-y-6">
-                  <div className="space-y-2">
-                    <Label htmlFor="edit-revenue-property" className="text-sm font-medium text-gray-700">Property *</Label>
-                    <Select value={revenueForm.propertyId} onValueChange={(value) => setRevenueForm(prev => ({ ...prev, propertyId: value }))}>
-                      <SelectTrigger className="h-11 border-gray-300 focus:border-blue-500 focus:ring-blue-500">
-                        <SelectValue placeholder="Select property" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {properties?.properties.map((property: any) => (
-                          <SelectItem key={property.id} value={property.id.toString()}>
-                            {property.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  
-                  <div className="space-y-2">
-                    <Label htmlFor="edit-revenue-source" className="text-sm font-medium text-gray-700">Source</Label>
-                    <Select value={revenueForm.source} onValueChange={(value: any) => setRevenueForm(prev => ({ ...prev, source: value }))}>
-                      <SelectTrigger className="h-11 border-gray-300 focus:border-blue-500 focus:ring-blue-500">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="room">Room Revenue</SelectItem>
-                        <SelectItem value="addon">Add-on Services</SelectItem>
-                        <SelectItem value="other">Other Revenue</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  
-                  <div className="space-y-2">
-                    <Label htmlFor="edit-revenue-amount" className="text-sm font-medium text-gray-700">Amount *</Label>
-                    <Input
-                      id="edit-revenue-amount"
-                      type="number"
-                      step="0.01"
-                      value={revenueForm.amountCents ? (parseInt(revenueForm.amountCents) / 100).toString() : ''}
-                      onChange={(e) => setRevenueForm(prev => ({ ...prev, amountCents: (parseFloat(e.target.value) * 100).toString() }))}
-                      placeholder="0.00"
-                      className="h-11 border-gray-300 focus:border-blue-500 focus:ring-blue-500"
-                    />
-                  </div>
-                  
-                  <div className="space-y-2">
-                    <Label htmlFor="edit-revenue-description" className="text-sm font-medium text-gray-700">Description</Label>
-                    <Textarea
-                      id="edit-revenue-description"
-                      value={revenueForm.description}
-                      onChange={(e) => setRevenueForm(prev => ({ ...prev, description: e.target.value }))}
-                      placeholder="Revenue description"
-                      className="border-gray-300 focus:border-blue-500 focus:ring-blue-500"
-                    />
-                  </div>
-                  
-                  <div className="space-y-2">
-                    <FileUpload
-                      label="Receipt Upload"
-                      description="Upload receipt images (JPG, PNG, GIF, WebP) or PDF files. Max size: 100MB"
-                      onFileUpload={handleRevenueFileUpload}
-                      value={revenueForm.receiptFile}
-                      onClear={() => setRevenueForm(prev => ({ ...prev, receiptFile: null }))}
-                    />
-                  </div>
-                  
-                  <div className="space-y-2">
-                    <Label htmlFor="edit-revenue-payment-mode" className="text-sm font-medium text-gray-700">Payment Mode *</Label>
-                    <Select value={revenueForm.paymentMode} onValueChange={(value: any) => setRevenueForm(prev => ({ ...prev, paymentMode: value }))}>
-                      <SelectTrigger className="h-11 border-gray-300 focus:border-blue-500 focus:ring-blue-500">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="cash">Cash</SelectItem>
-                        <SelectItem value="bank">Bank (UPI/Net Banking/Online)</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  
-                  {revenueForm.paymentMode === 'bank' && (
-                    <div className="space-y-2">
-                      <Label htmlFor="edit-revenue-bank-reference" className="text-sm font-medium text-gray-700">Bank Reference</Label>
-                      <Input
-                        id="edit-revenue-bank-reference"
-                        value={revenueForm.bankReference}
-                        onChange={(e) => setRevenueForm(prev => ({ ...prev, bankReference: e.target.value }))}
-                        placeholder="Transaction ID, UPI reference, etc."
-                        className="h-11 border-gray-300 focus:border-blue-500 focus:ring-blue-500"
-                      />
-                    </div>
-                  )}
-                  
-                  <div className="space-y-2">
-                    <Label htmlFor="edit-revenue-date" className="text-sm font-medium text-gray-700">Date</Label>
-                    <Input
-                      id="edit-revenue-date"
-                      type="date"
-                      value={revenueForm.occurredAt}
-                      onChange={(e) => setRevenueForm(prev => ({ ...prev, occurredAt: e.target.value }))}
-                      className="h-11 border-gray-300 focus:border-blue-500 focus:ring-blue-500"
-                    />
-                  </div>
-                </div>
-              </div>
-              <DialogFooter className="border-t pt-4 mt-6 bg-gray-50 -mx-6 -mb-6 px-6 py-4">
-                <div className="flex items-center justify-between w-full">
-                  <Button 
-                    variant="outline" 
-                    onClick={() => setIsEditRevenueDialogOpen(false)}
-                    className="transition-all duration-200 hover:scale-105 hover:shadow-md"
-                  >
-                    Cancel
-                  </Button>
-                  <Button 
-                    onClick={handleUpdateRevenueSubmit} 
-                    disabled={updateRevenueMutation.isPending}
-                    className="bg-blue-600 hover:bg-blue-700 transition-all duration-200 hover:scale-105 hover:shadow-md"
-                  >
-                    {updateRevenueMutation.isPending ? (
-                      <>
-                        <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
-                        Updating...
-                      </>
-                    ) : (
-                      <>
-                        <Edit className="mr-2 h-4 w-4" />
-                        Update Revenue
-                      </>
-                    )}
-                  </Button>
-                </div>
-              </DialogFooter>
-            </DialogContent>
-          </Dialog>
-            </div>
-          </CardContent>
-        </Card>
-
-      {/* Daily Approval Manager (Admin Only) */}
-      {user?.role === 'ADMIN' && (
-        <DailyApprovalManager 
-          className="mt-6" 
-          propertyId={selectedPropertyId}
-          startDate={dateRange.startDate}
-          endDate={dateRange.endDate}
-        />
-      )}
-
-
-        {/* Enhanced Financial Summary */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
-          <Card className="border-l-4 border-l-green-500 shadow-sm hover:shadow-md transition-shadow duration-200">
-            <CardHeader className="pb-4">
-              <CardTitle className="text-sm font-medium flex items-center gap-2">
-                <div className="p-2 bg-green-100 rounded-lg shadow-sm">
-                  <Banknote className="h-4 w-4 text-green-600" />
-                </div>
-                Cash Revenue
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold text-green-600">
-                {formatCurrency(totals.cashRevenue || 0)}
-              </div>
-              <p className="text-xs text-gray-600 mt-1">
-                {selectedPropertyId !== 'all' || dateRange.startDate || dateRange.endDate 
-                  ? 'Filtered approved cash transactions' 
-                  : 'All approved cash transactions'}
-              </p>
-            </CardContent>
-          </Card>
-
-          <Card className="border-l-4 border-l-blue-500 shadow-sm hover:shadow-md transition-shadow duration-200">
-            <CardHeader className="pb-4">
-              <CardTitle className="text-sm font-medium flex items-center gap-2">
-                <div className="p-2 bg-blue-100 rounded-lg shadow-sm">
-                  <CreditCard className="h-4 w-4 text-blue-600" />
-                </div>
-                Bank/UPI Revenue
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold text-blue-600">
-                {formatCurrency(totals.bankRevenue || 0)}
-              </div>
-              <p className="text-xs text-gray-600 mt-1">
-                {selectedPropertyId !== 'all' || dateRange.startDate || dateRange.endDate 
-                  ? 'Filtered approved bank/UPI transactions' 
-                  : 'All approved bank/UPI transactions'}
-              </p>
-            </CardContent>
-          </Card>
-
-          <Card className="border-l-4 border-l-red-500 shadow-sm hover:shadow-md transition-shadow duration-200">
-            <CardHeader className="pb-4">
-              <CardTitle className="text-sm font-medium flex items-center gap-2">
-                <div className="p-2 bg-red-100 rounded-lg shadow-sm">
-                  <Banknote className="h-4 w-4 text-red-600" />
-                </div>
-                Cash Expenses
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold text-red-600">
-                {formatCurrency(totals.cashExpense || 0)}
-              </div>
-              <p className="text-xs text-gray-600 mt-1">
-                {selectedPropertyId !== 'all' || dateRange.startDate || dateRange.endDate 
-                  ? 'Filtered approved cash expenses' 
-                  : 'All approved cash expenses'}
-              </p>
-            </CardContent>
-          </Card>
-
-          <Card className="border-l-4 border-l-orange-500 shadow-sm hover:shadow-md transition-shadow duration-200">
-            <CardHeader className="pb-4">
-              <CardTitle className="text-sm font-medium flex items-center gap-2">
+        {/* Edit Review Dialog - Kept in DOM for functionality */}
+        <Dialog open={isEditExpenseDialogOpen} onOpenChange={setIsEditExpenseDialogOpen}>
+          <DialogContent className="max-w-2xl max-h-[95vh] overflow-hidden flex flex-col">
+            <DialogHeader className="pb-4">
+              <DialogTitle className="text-xl font-bold text-gray-900 flex items-center gap-2">
                 <div className="p-2 bg-orange-100 rounded-lg shadow-sm">
-                  <CreditCard className="h-4 w-4 text-orange-600" />
+                  <Edit className="h-5 w-5 text-orange-600" />
                 </div>
-                Bank/UPI Expenses
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold text-orange-600">
-                {formatCurrency(totals.bankExpense || 0)}
+                Edit Expense
+              </DialogTitle>
+              <DialogDescription className="text-sm text-gray-600">
+                Update the expense details
+              </DialogDescription>
+            </DialogHeader>
+            <div className="flex-1 overflow-y-auto px-1">
+              <div className="space-y-6">
+                <div className="space-y-2">
+                  <Label htmlFor="edit-expense-property" className="text-sm font-medium text-gray-700">Property *</Label>
+                  <Select value={expenseForm.propertyId} onValueChange={(value) => setExpenseForm(prev => ({ ...prev, propertyId: value }))}>
+                    <SelectTrigger className="h-12 text-base border-gray-300 focus:border-blue-500 focus:ring-blue-500">
+                      <SelectValue placeholder="Select property" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {properties?.properties.map((property: any) => (
+                        <SelectItem key={property.id} value={property.id.toString()}>
+                          {property.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="edit-expense-category" className="text-sm font-medium text-gray-700">Category *</Label>
+                  <Select value={expenseForm.category} onValueChange={(value) => setExpenseForm(prev => ({ ...prev, category: value }))}>
+                    <SelectTrigger className="h-12 text-base border-gray-300 focus:border-blue-500 focus:ring-blue-500">
+                      <SelectValue placeholder="Select category" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="supplies">Supplies</SelectItem>
+                      <SelectItem value="maintenance">Maintenance</SelectItem>
+                      <SelectItem value="utilities">Utilities</SelectItem>
+                      <SelectItem value="marketing">Marketing</SelectItem>
+                      <SelectItem value="staff">Staff</SelectItem>
+                      <SelectItem value="insurance">Insurance</SelectItem>
+                      <SelectItem value="other">Other</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="edit-expense-amount" className="text-sm font-medium text-gray-700">Amount *</Label>
+                  <Input
+                    id="edit-expense-amount"
+                    type="number"
+                    step="0.01"
+                    value={expenseForm.amountCents ? (parseInt(expenseForm.amountCents) / 100).toString() : ''}
+                    onChange={(e) => setExpenseForm(prev => ({ ...prev, amountCents: (parseFloat(e.target.value) * 100).toString() }))}
+                    placeholder="0.00"
+                    className="h-12 text-base border-gray-300 focus:border-blue-500 focus:ring-blue-500"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="edit-expense-description" className="text-sm font-medium text-gray-700">Description</Label>
+                  <Textarea
+                    id="edit-expense-description"
+                    value={expenseForm.description}
+                    onChange={(e) => setExpenseForm(prev => ({ ...prev, description: e.target.value }))}
+                    placeholder="Expense description"
+                    className="border-gray-300 focus:border-blue-500 focus:ring-blue-500"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <FileUpload
+                    label="Receipt Upload"
+                    description="Upload receipt images (JPG, PNG, GIF, WebP) or PDF files. Max size: 100MB"
+                    onFileUpload={handleExpenseFileUpload}
+                    value={expenseForm.receiptFile}
+                    onClear={() => setExpenseForm(prev => ({ ...prev, receiptFile: null }))}
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="edit-expense-payment-mode" className="text-sm font-medium text-gray-700">Payment Mode *</Label>
+                  <Select value={expenseForm.paymentMode} onValueChange={(value: any) => setExpenseForm(prev => ({ ...prev, paymentMode: value }))}>
+                    <SelectTrigger className="h-12 text-base border-gray-300 focus:border-blue-500 focus:ring-blue-500">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="cash">Cash</SelectItem>
+                      <SelectItem value="bank">Bank (UPI/Net Banking/Online)</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {expenseForm.paymentMode === 'bank' && (
+                  <div className="space-y-2">
+                    <Label htmlFor="edit-expense-bank-reference" className="text-sm font-medium text-gray-700">Bank Reference</Label>
+                    <Input
+                      id="edit-expense-bank-reference"
+                      value={expenseForm.bankReference}
+                      onChange={(e) => setExpenseForm(prev => ({ ...prev, bankReference: e.target.value }))}
+                      placeholder="Transaction ID, UPI reference, etc."
+                      className="h-12 text-base border-gray-300 focus:border-blue-500 focus:ring-blue-500"
+                    />
+                  </div>
+                )}
+
+                <div className="space-y-2">
+                  <Label htmlFor="edit-expense-date" className="text-sm font-medium text-gray-700">Date</Label>
+                  <Input
+                    id="edit-expense-date"
+                    type="date"
+                    value={expenseForm.expenseDate}
+                    onChange={(e) => setExpenseForm(prev => ({ ...prev, expenseDate: e.target.value }))}
+                    className="h-12 text-base border-gray-300 focus:border-blue-500 focus:ring-blue-500"
+                  />
+                </div>
               </div>
-              <p className="text-xs text-gray-600 mt-1">
-                {selectedPropertyId !== 'all' || dateRange.startDate || dateRange.endDate 
-                  ? 'Filtered approved bank/UPI expenses' 
-                  : 'All approved bank/UPI expenses'}
-              </p>
-            </CardContent>
-          </Card>
+            </div>
+            <DialogFooter className="border-t pt-4 mt-6 bg-gray-50 -mx-6 -mb-6 px-6 py-4">
+              <div className="flex items-center justify-between w-full">
+                <Button
+                  variant="outline"
+                  onClick={() => setIsEditExpenseDialogOpen(false)}
+                  className="transition-all duration-200 hover:scale-105 hover:shadow-md"
+                >
+                  Cancel
+                </Button>
+                <Button
+                  onClick={handleUpdateExpenseSubmit}
+                  disabled={updateExpenseMutation.isPending}
+                  className="bg-orange-600 hover:bg-orange-700 transition-all duration-200 hover:scale-105 hover:shadow-md"
+                >
+                  {updateExpenseMutation.isPending ? (
+                    <>
+                      <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
+                      Updating...
+                    </>
+                  ) : (
+                    <>
+                      <Edit className="mr-2 h-4 w-4" />
+                      Update Expense
+                    </>
+                  )}
+                </Button>
+              </div>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        <Dialog open={isEditRevenueDialogOpen} onOpenChange={setIsEditRevenueDialogOpen}>
+          <DialogContent className="max-w-2xl max-h-[95vh] overflow-hidden flex flex-col">
+            <DialogHeader className="pb-4">
+              <DialogTitle className="text-xl font-bold text-gray-900 flex items-center gap-2">
+                <div className="p-2 bg-blue-100 rounded-lg shadow-sm">
+                  <Edit className="h-5 w-5 text-blue-600" />
+                </div>
+                Edit Revenue
+              </DialogTitle>
+              <DialogDescription className="text-sm text-gray-600">
+                Update the revenue details
+              </DialogDescription>
+            </DialogHeader>
+            <div className="flex-1 overflow-y-auto px-1">
+              <div className="space-y-6">
+                <div className="space-y-2">
+                  <Label htmlFor="edit-revenue-property" className="text-sm font-medium text-gray-700">Property *</Label>
+                  <Select value={revenueForm.propertyId} onValueChange={(value) => setRevenueForm(prev => ({ ...prev, propertyId: value }))}>
+                    <SelectTrigger className="h-12 text-base border-gray-300 focus:border-blue-500 focus:ring-blue-500">
+                      <SelectValue placeholder="Select property" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {properties?.properties.map((property: any) => (
+                        <SelectItem key={property.id} value={property.id.toString()}>
+                          {property.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="edit-revenue-source" className="text-sm font-medium text-gray-700">Source</Label>
+                  <Select value={revenueForm.source} onValueChange={(value: any) => setRevenueForm(prev => ({ ...prev, source: value }))}>
+                    <SelectTrigger className="h-12 text-base border-gray-300 focus:border-blue-500 focus:ring-blue-500">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="room">Room Revenue</SelectItem>
+                      <SelectItem value="addon">Add-on Services</SelectItem>
+                      <SelectItem value="other">Other Revenue</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="edit-revenue-amount" className="text-sm font-medium text-gray-700">Amount *</Label>
+                  <Input
+                    id="edit-revenue-amount"
+                    type="number"
+                    step="0.01"
+                    value={revenueForm.amountCents ? (parseInt(revenueForm.amountCents) / 100).toString() : ''}
+                    onChange={(e) => setRevenueForm(prev => ({ ...prev, amountCents: (parseFloat(e.target.value) * 100).toString() }))}
+                    placeholder="0.00"
+                    className="h-12 text-base border-gray-300 focus:border-blue-500 focus:ring-blue-500"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="edit-revenue-description" className="text-sm font-medium text-gray-700">Description</Label>
+                  <Textarea
+                    id="edit-revenue-description"
+                    value={revenueForm.description}
+                    onChange={(e) => setRevenueForm(prev => ({ ...prev, description: e.target.value }))}
+                    placeholder="Revenue description"
+                    className="border-gray-300 focus:border-blue-500 focus:ring-blue-500"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <FileUpload
+                    label="Receipt Upload"
+                    description="Upload receipt images (JPG, PNG, GIF, WebP) or PDF files. Max size: 100MB"
+                    onFileUpload={handleRevenueFileUpload}
+                    value={revenueForm.receiptFile}
+                    onClear={() => setRevenueForm(prev => ({ ...prev, receiptFile: null }))}
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="edit-revenue-payment-mode" className="text-sm font-medium text-gray-700">Payment Mode *</Label>
+                  <Select value={revenueForm.paymentMode} onValueChange={(value: any) => setRevenueForm(prev => ({ ...prev, paymentMode: value }))}>
+                    <SelectTrigger className="h-12 text-base border-gray-300 focus:border-blue-500 focus:ring-blue-500">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="cash">Cash</SelectItem>
+                      <SelectItem value="bank">Bank (UPI/Net Banking/Online)</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {revenueForm.paymentMode === 'bank' && (
+                  <div className="space-y-2">
+                    <Label htmlFor="edit-revenue-bank-reference" className="text-sm font-medium text-gray-700">Bank Reference</Label>
+                    <Input
+                      id="edit-revenue-bank-reference"
+                      value={revenueForm.bankReference}
+                      onChange={(e) => setRevenueForm(prev => ({ ...prev, bankReference: e.target.value }))}
+                      placeholder="Transaction ID, UPI reference, etc."
+                      className="h-12 text-base border-gray-300 focus:border-blue-500 focus:ring-blue-500"
+                    />
+                  </div>
+                )}
+
+                <div className="space-y-2">
+                  <Label htmlFor="edit-revenue-date" className="text-sm font-medium text-gray-700">Date</Label>
+                  <Input
+                    id="edit-revenue-date"
+                    type="date"
+                    value={revenueForm.occurredAt}
+                    onChange={(e) => setRevenueForm(prev => ({ ...prev, occurredAt: e.target.value }))}
+                    className="h-12 text-base border-gray-300 focus:border-blue-500 focus:ring-blue-500"
+                  />
+                </div>
+              </div>
+            </div>
+            <DialogFooter className="border-t pt-4 mt-6 bg-gray-50 -mx-6 -mb-6 px-6 py-4">
+              <div className="flex items-center justify-between w-full">
+                <Button
+                  variant="outline"
+                  onClick={() => setIsEditRevenueDialogOpen(false)}
+                  className="transition-all duration-200 hover:scale-105 hover:shadow-md"
+                >
+                  Cancel
+                </Button>
+                <Button
+                  onClick={handleUpdateRevenueSubmit}
+                  disabled={updateRevenueMutation.isPending}
+                  className="bg-blue-600 hover:bg-blue-700 transition-all duration-200 hover:scale-105 hover:shadow-md"
+                >
+                  {updateRevenueMutation.isPending ? (
+                    <>
+                      <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
+                      Updating...
+                    </>
+                  ) : (
+                    <>
+                      <Edit className="mr-2 h-4 w-4" />
+                      Update Revenue
+                    </>
+                  )}
+                </Button>
+              </div>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* Daily Approval Manager (Admin Only) */}
+        {user?.role === 'ADMIN' && (
+          <DailyApprovalManager
+            className="mt-6"
+            propertyId={selectedPropertyId}
+            startDate={dateRange.startDate}
+            endDate={dateRange.endDate}
+          />
+        )}
+
+
+        {/* Stats Grid - Responsive Layout */}
+        <div className="flex overflow-x-auto pb-4 gap-4 sm:grid sm:grid-cols-2 lg:grid-cols-4 sm:overflow-visible sm:pb-0 snap-x snap-mandatory px-4 sm:px-0 -mx-4 sm:mx-0 scrollbar-hide">
+          <StatsCard
+            title="Cash Revenue"
+            value={formatCurrency(totals.cashRevenue || 0)}
+            subtitle={selectedPropertyId !== 'all' || dateRange.startDate || dateRange.endDate ? 'Filtered' : 'All time'}
+            icon={Wallet}
+            iconColor="text-green-600"
+            iconBgColor="bg-green-100"
+            className="snap-center border-none shadow-md bg-white/90 backdrop-blur-sm min-w-[85%] sm:min-w-0"
+            compact
+          />
+          <StatsCard
+            title="Bank/UPI Revenue"
+            value={formatCurrency(totals.bankRevenue || 0)}
+            subtitle={selectedPropertyId !== 'all' || dateRange.startDate || dateRange.endDate ? 'Filtered' : 'All time'}
+            icon={CreditCard}
+            iconColor="text-blue-600"
+            iconBgColor="bg-blue-100"
+            className="snap-center border-none shadow-md bg-white/90 backdrop-blur-sm min-w-[85%] sm:min-w-0"
+            compact
+          />
+          <StatsCard
+            title="Cash Expenses"
+            value={formatCurrency(totals.cashExpense || 0)}
+            subtitle={selectedPropertyId !== 'all' || dateRange.startDate || dateRange.endDate ? 'Filtered' : 'All time'}
+            icon={Wallet}
+            iconColor="text-red-600"
+            iconBgColor="bg-red-100"
+            valueColor="text-red-600"
+            className="snap-center border-none shadow-md bg-white/90 backdrop-blur-sm min-w-[85%] sm:min-w-0"
+            compact
+          />
+          <StatsCard
+            title="Bank/UPI Expenses"
+            value={formatCurrency(totals.bankExpense || 0)}
+            subtitle={selectedPropertyId !== 'all' || dateRange.startDate || dateRange.endDate ? 'Filtered' : 'All time'}
+            icon={CreditCard}
+            iconColor="text-orange-600"
+            iconBgColor="bg-orange-100"
+            valueColor="text-orange-600"
+            className="snap-center border-none shadow-md bg-white/90 backdrop-blur-sm min-w-[85%] sm:min-w-0"
+            compact
+          />
         </div>
 
         {/* Enhanced Transactions Tabs */}
@@ -3036,19 +2958,19 @@ export default function FinancePage() {
               Expenses
             </FinanceTabsTrigger>
             <FinanceTabsTrigger value="revenues" theme={theme}>
-              <TrendingUp className="h-4 w-4 mr-2" />
+              <IndianRupee className="h-4 w-4 mr-2" />
               Revenues
             </FinanceTabsTrigger>
           </FinanceTabsList>
 
           {/* Content Container */}
-          <div className="px-6 py-6">
+          <div className="px-0 sm:px-6 py-2 sm:py-6">
             <TabsContent value="expenses" className="space-y-6 mt-0">
-              <Card className="border-l-4 border-l-red-500 shadow-sm">
-                <CardHeader className="pb-4">
+              <Card className="border-none shadow-md bg-white/80 backdrop-blur-sm">
+                <CardHeader className="pb-3 px-3 pt-4 sm:px-6 sm:pt-6">
                   <CardTitle className="text-lg flex items-center gap-2">
                     <div className="p-2 bg-red-100 rounded-lg shadow-sm">
-                      <Receipt className="h-5 w-5 text-red-600" />
+                      <IndianRupee className="h-5 w-5 text-red-600" />
                     </div>
                     Recent Expenses
                     <span className="text-xs bg-red-100 text-red-700 px-2 py-1 rounded-full font-medium">Live</span>
@@ -3057,9 +2979,9 @@ export default function FinancePage() {
                     Track and manage property expenses
                   </CardDescription>
                 </CardHeader>
-                <CardContent>
+                <CardContent className="px-2 py-2 sm:p-6">
                   {expensesLoading ? (
-                    <Card className="">
+                    <Card className="border-none shadow-sm bg-gray-50/50">
                       <CardContent className="flex items-center justify-center p-12">
                         <div className="text-center">
                           <RefreshCw className="h-8 w-8 animate-spin text-blue-600 mx-auto mb-4" />
@@ -3069,14 +2991,14 @@ export default function FinancePage() {
                       </CardContent>
                     </Card>
                   ) : expenses?.expenses.length === 0 ? (
-                    <Card className="">
+                    <Card className="border-none shadow-sm bg-gray-50/50">
                       <CardContent className="flex flex-col items-center justify-center py-12">
                         <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
                           <Receipt className="h-8 w-8 text-blue-600" />
                         </div>
                         <h3 className="text-lg font-medium text-gray-900 mb-2">No expenses recorded</h3>
                         <p className="text-gray-500 text-center mb-4">Start tracking your property expenses</p>
-                        <Button 
+                        <Button
                           onClick={() => setIsExpenseDialogOpen(true)}
                           className="bg-red-600 hover:bg-red-700"
                         >
@@ -3088,135 +3010,155 @@ export default function FinancePage() {
                   ) : (
                     <div className="space-y-4">
                       {expenses?.expenses.map((expense: any) => (
-                        <Card key={expense.id} className="border-l-4 border-l-red-500 shadow-sm hover:shadow-md transition-all duration-200">
-                          <CardContent className="p-4">
-                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                              <div className="flex-1 min-w-0">
-                                <div className="flex flex-wrap items-center gap-2 mb-2">
-                                  <h4 className="font-medium truncate">{expense.category}</h4>
-                                  <Badge className={`${getStatusColor(expense.status)} flex-shrink-0`}>
-                                    {expense.status}
+                        <div key={expense.id} className="group relative bg-white rounded-2xl p-3 sm:p-4 transition-all duration-200 hover:bg-gray-50 border border-gray-100 shadow-[0_2px_15px_-3px_rgba(0,0,0,0.07),0_10px_20px_-2px_rgba(0,0,0,0.04)] hover:shadow-[0_8px_25px_-5px_rgba(0,0,0,0.1),0_8px_10px_-6px_rgba(0,0,0,0.1)]">
+                          <div className="flex flex-col gap-4">
+                            {/* Header: Category + Badges */}
+                            <div className="flex flex-wrap items-start justify-between gap-2">
+                              <h4 className="text-lg font-bold text-gray-900 capitalize leading-tight">
+                                {expense.category}
+                              </h4>
+                              <div className="flex flex-wrap gap-1.5">
+                                <Badge className={`${getStatusColor(expense.status)} rounded-md px-2 py-0.5 font-normal text-xs uppercase tracking-wide border-0`}>
+                                  {expense.status}
+                                </Badge>
+                                <Badge className={`${expense.paymentMode === 'cash' ? 'bg-green-100 text-green-800' : 'bg-blue-100 text-blue-800'} rounded-md px-2 py-0.5 font-normal text-xs uppercase tracking-wide border-0`}>
+                                  {expense.paymentMode}
+                                </Badge>
+                                {expense.bankReference && (
+                                  <Badge variant="outline" className="text-xs text-gray-500 border-gray-200 rounded-md px-2 py-0.5 font-normal">
+                                    {expense.bankReference}
                                   </Badge>
-                                  <Badge className={`${expense.paymentMode === 'cash' ? 'bg-green-100 text-green-800' : 'bg-blue-100 text-blue-800'} flex-shrink-0`}>
-                                    {expense.paymentMode}
-                                  </Badge>
-                                  {expense.bankReference && (
-                                    <Badge variant="outline" className="text-xs flex-shrink-0">
-                                      {expense.bankReference}
-                                    </Badge>
-                                  )}
-                                </div>
-                                <p className="text-sm text-gray-600 mb-1 truncate">{expense.propertyName}</p>
-                                {expense.description && (
-                                  <p className="text-sm text-gray-500 line-clamp-2 leading-relaxed">{expense.description}</p>
                                 )}
-                                <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4 text-xs text-gray-500 mt-3">
-                                  <span className="flex items-center">
-                                    <Calendar className="h-3 w-3 mr-1 flex-shrink-0" />
-                                    {formatCardDateTime(expense.createdAt)}
-                                  </span>
-                                  <span className="flex items-center bg-blue-50 text-blue-700 px-2 py-1 rounded text-xs font-medium">
-                                    <Calendar className="h-3 w-3 mr-1 flex-shrink-0" />
-                                    For: {formatDateForDisplay(expense.expenseDate)}
-                                  </span>
-                                  <span className="truncate">By {expense.createdByName}</span>
-                                  {(expense.receiptUrl || expense.receiptFileId) && (
-                                    <Button
-                                      variant="ghost"
-                                      size="sm"
-                                      className="h-auto p-0 text-blue-600 hover:text-blue-800 flex-shrink-0"
-                                      onClick={() => setSelectedReceipt({
-                                        id: expense.id,
-                                        type: 'expense',
-                                        category: expense.category,
-                                        propertyName: expense.propertyName,
-                                        amountCents: expense.amountCents,
-                                        description: expense.description,
-                                        receiptUrl: expense.receiptUrl,
-                                        receiptFileId: expense.receiptFileId,
-                                        date: expense.expenseDate,
-                                        createdAt: expense.createdAt,
-                                        createdByName: expense.createdByName,
-                                        status: expense.status,
-                                        paymentMode: expense.paymentMode,
-                                        bankReference: expense.bankReference,
-                                        approvedByName: expense.approvedByName,
-                                        approvedAt: expense.approvedAt,
-                                      })}
-                                    >
-                                      <Eye className="h-3 w-3 mr-1" />
-                                      View Receipt
-                                    </Button>
-                                  )}
-                                </div>
-                              </div>
-                              <div className="flex flex-col sm:items-end mt-3 sm:mt-0">
-                                <div className="text-lg font-semibold text-red-600 mb-2">
-                                  {formatCurrency(expense.amountCents)}
-                                </div>
-                                <div className="flex flex-wrap gap-1">
-                                  {user?.role === 'ADMIN' && expense.status === 'pending' && (
-                                    <>
-                                      <Button
-                                        size="sm"
-                                        variant="outline"
-                                        onClick={() => approveExpenseMutation.mutate({ id: expense.id, approved: true })}
-                                        disabled={approveExpenseMutation.isPending}
-                                        className="flex-shrink-0"
-                                      >
-                                        <Check className="h-3 w-3" />
-                                      </Button>
-                                      <Button
-                                        size="sm"
-                                        variant="outline"
-                                        onClick={() => approveExpenseMutation.mutate({ id: expense.id, approved: false })}
-                                        disabled={approveExpenseMutation.isPending}
-                                        className="flex-shrink-0"
-                                      >
-                                        <X className="h-3 w-3" />
-                                      </Button>
-                                    </>
-                                  )}
-                                  {(user?.role === 'ADMIN' || (user?.role === 'MANAGER' && expense.createdByUserId === parseInt(user.userID))) && (
-                                    <>
-                                      <Button
-                                        size="sm"
-                                        variant="outline"
-                                        onClick={() => handleEditExpense(expense)}
-                                        disabled={updateExpenseMutation.isPending}
-                                        className="flex-shrink-0"
-                                      >
-                                        <Edit className="h-3 w-3" />
-                                      </Button>
-                                      <Button
-                                        size="sm"
-                                        variant="outline"
-                                        onClick={() => handleDeleteExpense(expense.id)}
-                                        disabled={deleteExpenseMutation.isPending}
-                                        className="text-red-600 hover:text-red-800 flex-shrink-0"
-                                      >
-                                        <Trash2 className="h-3 w-3" />
-                                      </Button>
-                                    </>
-                                  )}
-                                </div>
                               </div>
                             </div>
-                          </CardContent>
-                        </Card>
-                  ))}
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        </TabsContent>
+
+                            {/* Meta Info */}
+                            <div className="space-y-3">
+                              <p className="text-sm font-medium text-slate-500">
+                                {expense.propertyName}
+                              </p>
+
+                              <div className="flex items-center text-xs text-gray-400 font-medium">
+                                <Calendar className="h-3.5 w-3.5 mr-1.5 text-gray-300" />
+                                {formatCardDateTime(expense.createdAt)}
+                              </div>
+
+                              <div className="inline-flex items-center bg-blue-50/50 border border-blue-100 rounded-lg px-3 py-1.5">
+                                <Calendar className="h-3.5 w-3.5 mr-2 text-blue-600" />
+                                <span className="text-xs font-semibold text-blue-700">
+                                  For: {formatDateForDisplay(expense.expenseDate)}
+                                </span>
+                              </div>
+
+                              <p className="text-xs text-slate-400 font-medium">
+                                By {expense.createdByName}
+                              </p>
+
+                              {expense.description && (
+                                <p className="text-sm text-gray-600 leading-relaxed pt-1">{expense.description}</p>
+                              )}
+                            </div>
+
+                            {/* Divider */}
+                            <div className="h-px w-full bg-gray-100/80 my-1"></div>
+
+                            {/* Footer: Amount & Actions */}
+                            <div className="flex items-center justify-between pt-1">
+                              <span className="text-2xl font-bold text-red-600 tracking-tight">
+                                {formatCurrency(expense.amountCents)}
+                              </span>
+
+                              <div className="flex items-center gap-3">
+                                {(expense.receiptUrl || expense.receiptFileId) && (
+                                  <Button
+                                    variant="outline"
+                                    size="icon"
+                                    className="h-11 w-11 rounded-full border-gray-100 bg-white text-gray-400 hover:text-blue-600 hover:border-blue-200 hover:bg-blue-50 transition-all shadow-sm"
+                                    onClick={() => setSelectedReceipt({
+                                      id: expense.id,
+                                      type: 'expense',
+                                      category: expense.category,
+                                      propertyName: expense.propertyName,
+                                      amountCents: expense.amountCents,
+                                      description: expense.description,
+                                      receiptUrl: expense.receiptUrl,
+                                      receiptFileId: expense.receiptFileId,
+                                      date: expense.expenseDate,
+                                      createdAt: expense.createdAt,
+                                      createdByName: expense.createdByName,
+                                      status: expense.status,
+                                      paymentMode: expense.paymentMode,
+                                      bankReference: expense.bankReference,
+                                      approvedByName: expense.approvedByName,
+                                      approvedAt: expense.approvedAt,
+                                    })}
+                                  >
+                                    <Eye className="h-5 w-5" />
+                                  </Button>
+                                )}
+
+                                {user?.role === 'ADMIN' && expense.status === 'pending' && (
+                                  <>
+                                    <Button
+                                      size="icon"
+                                      variant="outline"
+                                      onClick={() => approveExpenseMutation.mutate({ id: expense.id, approved: true })}
+                                      disabled={approveExpenseMutation.isPending}
+                                      className="h-11 w-11 rounded-full border-green-100 bg-green-50 text-green-600 hover:bg-green-100 active:scale-95 transition-all shadow-sm"
+                                    >
+                                      <Check className="h-5 w-5" />
+                                    </Button>
+                                    <Button
+                                      size="icon"
+                                      variant="outline"
+                                      onClick={() => approveExpenseMutation.mutate({ id: expense.id, approved: false })}
+                                      disabled={approveExpenseMutation.isPending}
+                                      className="h-11 w-11 rounded-full border-red-100 bg-red-50 text-red-600 hover:bg-red-100 active:scale-95 transition-all shadow-sm"
+                                    >
+                                      <X className="h-5 w-5" />
+                                    </Button>
+                                  </>
+                                )}
+
+                                {(user?.role === 'ADMIN' || (user?.role === 'MANAGER' && expense.createdByUserId === parseInt(user.userID))) && (
+                                  <>
+                                    <Button
+                                      size="icon"
+                                      variant="outline"
+                                      onClick={() => handleEditExpense(expense)}
+                                      disabled={updateExpenseMutation.isPending}
+                                      className="h-11 w-11 rounded-full border-gray-100 bg-white text-gray-600 hover:bg-gray-50 hover:border-gray-200 active:scale-95 transition-all shadow-sm"
+                                    >
+                                      <Edit className="h-5 w-5" />
+                                    </Button>
+                                    <Button
+                                      size="icon"
+                                      variant="outline"
+                                      onClick={() => handleDeleteExpense(expense.id)}
+                                      disabled={deleteExpenseMutation.isPending}
+                                      className="h-11 w-11 rounded-full border-red-50 bg-white text-red-500 hover:bg-red-50 hover:border-red-100 active:scale-95 transition-all shadow-sm"
+                                    >
+                                      <Trash2 className="h-5 w-5" />
+                                    </Button>
+                                  </>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            </TabsContent>
 
             <TabsContent value="revenues" className="space-y-6 mt-0">
-              <Card className="border-l-4 border-l-green-500 shadow-sm">
-                <CardHeader className="pb-4">
+              <Card className="border-none shadow-md bg-white/80 backdrop-blur-sm">
+                <CardHeader className="pb-3 px-3 pt-4 sm:px-6 sm:pt-6">
                   <CardTitle className="text-lg flex items-center gap-2">
                     <div className="p-2 bg-green-100 rounded-lg shadow-sm">
-                      <TrendingUp className="h-5 w-5 text-green-600" />
+                      <IndianRupee className="h-5 w-5 text-green-600" />
                     </div>
                     Recent Revenues
                     <span className="text-xs bg-green-100 text-green-700 px-2 py-1 rounded-full font-medium">Live</span>
@@ -3225,10 +3167,9 @@ export default function FinancePage() {
                     Track property income and revenue streams
                   </CardDescription>
                 </CardHeader>
-                <CardContent>
+                <CardContent className="px-2 py-2 sm:p-6">
                   {revenuesLoading ? (
-                    <Card className="
-                    ">
+                    <Card className="border-none shadow-sm bg-gray-50/50">
                       <CardContent className="flex items-center justify-center p-12">
                         <div className="text-center">
                           <RefreshCw className="h-8 w-8 animate-spin text-blue-600 mx-auto mb-4" />
@@ -3238,14 +3179,14 @@ export default function FinancePage() {
                       </CardContent>
                     </Card>
                   ) : revenues?.revenues.length === 0 ? (
-                    <Card className="">
+                    <Card className="border-none shadow-sm bg-gray-50/50">
                       <CardContent className="flex flex-col items-center justify-center py-12">
                         <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                          <TrendingUp className="h-8 w-8 text-blue-600" />
+                          <IndianRupee className="h-8 w-8 text-blue-600" />
                         </div>
                         <h3 className="text-lg font-medium text-gray-900 mb-2">No revenue recorded</h3>
                         <p className="text-gray-500 text-center mb-4">Start tracking your property revenue</p>
-                        <Button 
+                        <Button
                           onClick={() => setIsRevenueDialogOpen(true)}
                           className="bg-green-600 hover:bg-green-700"
                         >
@@ -3257,125 +3198,142 @@ export default function FinancePage() {
                   ) : (
                     <div className="space-y-4">
                       {revenues?.revenues.map((revenue: any) => (
-                        <Card key={revenue.id} className=" shadow-sm hover:shadow-md transition-all duration-200">
-                          <CardContent className="p-4">
-                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                      <div className="flex-1 min-w-0">
-                        <div className="flex flex-wrap items-center gap-2 mb-2">
-                          <h4 className="font-medium capitalize truncate">{revenue.source} Revenue</h4>
-                          <Badge className={`${getSourceColor(revenue.source)} flex-shrink-0`}>
-                            {revenue.source}
-                          </Badge>
-                          <Badge className={`${getStatusColor(revenue.status)} flex-shrink-0`}>
-                            {revenue.status}
-                          </Badge>
-                          <Badge className={`${revenue.paymentMode === 'cash' ? 'bg-green-100 text-green-800' : 'bg-blue-100 text-blue-800'} flex-shrink-0`}>
-                            {revenue.paymentMode}
-                          </Badge>
-                          {revenue.bankReference && (
-                            <Badge variant="outline" className="text-xs flex-shrink-0">
-                              {revenue.bankReference}
-                            </Badge>
-                          )}
-                        </div>
-                        <p className="text-sm text-gray-600 mb-1 truncate">{revenue.propertyName}</p>
-                        {revenue.description && (
-                          <p className="text-sm text-gray-500 line-clamp-2 leading-relaxed">{revenue.description}</p>
-                        )}
-                        <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4 text-xs text-gray-500 mt-3">
-                          <span className="flex items-center">
-                            <Calendar className="h-3 w-3 mr-1 flex-shrink-0" />
-                            {formatCardDateTime(revenue.createdAt)}
-                          </span>
-                          <span className="flex items-center bg-blue-50 text-blue-700 px-2 py-1 rounded text-xs font-medium">
-                            <Calendar className="h-3 w-3 mr-1 flex-shrink-0" />
-                            For: {formatDateForDisplay(revenue.occurredAt)}
-                          </span>
-                          <span className="truncate">By {revenue.createdByName}</span>
-                          {(revenue.receiptUrl || revenue.receiptFileId) && (
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              className="h-auto p-0 text-blue-600 hover:text-blue-800 flex-shrink-0"
-                              onClick={() => setSelectedReceipt({
-                                id: revenue.id,
-                                type: 'revenue',
-                                source: revenue.source,
-                                propertyName: revenue.propertyName,
-                                amountCents: revenue.amountCents,
-                                description: revenue.description,
-                                receiptUrl: revenue.receiptUrl,
-                                receiptFileId: revenue.receiptFileId,
-                                date: revenue.occurredAt,
-                                createdAt: revenue.createdAt,
-                                createdByName: revenue.createdByName,
-                                status: revenue.status,
-                                paymentMode: revenue.paymentMode,
-                                bankReference: revenue.bankReference,
-                                approvedByName: revenue.approvedByName,
-                                approvedAt: revenue.approvedAt,
-                              })}
-                            >
-                              <Eye className="h-3 w-3 mr-1" />
-                              View Receipt
-                            </Button>
-                          )}
-                        </div>
-                      </div>
-                      <div className="flex flex-col sm:items-end mt-3 sm:mt-0">
-                        <div className="text-lg font-semibold text-green-600 mb-2">
-                          {formatCurrency(revenue.amountCents)}
-                        </div>
-                        <div className="flex flex-wrap gap-1">
-                          {user?.role === 'ADMIN' && revenue.status === 'pending' && (
-                            <>
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                onClick={() => approveRevenueMutation.mutate({ id: revenue.id, approved: true })}
-                                disabled={approveRevenueMutation.isPending}
-                                className="flex-shrink-0"
-                              >
-                                <Check className="h-3 w-3" />
-                              </Button>
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                onClick={() => approveRevenueMutation.mutate({ id: revenue.id, approved: false })}
-                                disabled={approveRevenueMutation.isPending}
-                                className="flex-shrink-0"
-                              >
-                                <X className="h-3 w-3" />
-                              </Button>
-                            </>
-                          )}
-                          {(user?.role === 'ADMIN' || (user?.role === 'MANAGER' && revenue.createdByUserId === parseInt(user.userID))) && (
-                            <>
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                onClick={() => handleEditRevenue(revenue)}
-                                disabled={updateRevenueMutation.isPending}
-                                className="flex-shrink-0"
-                              >
-                                <Edit className="h-3 w-3" />
-                              </Button>
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                onClick={() => handleDeleteRevenue(revenue.id)}
-                                disabled={deleteRevenueMutation.isPending}
-                                className="text-red-600 hover:text-red-800 flex-shrink-0"
-                              >
-                                <Trash2 className="h-3 w-3" />
-                              </Button>
-                            </>
-                          )}
-                        </div>
+                        <div key={revenue.id} className="group relative bg-white rounded-2xl p-3 sm:p-4 transition-all duration-200 hover:bg-gray-50 border border-gray-100 shadow-[0_2px_15px_-3px_rgba(0,0,0,0.07),0_10px_20px_-2px_rgba(0,0,0,0.04)] hover:shadow-[0_8px_25px_-5px_rgba(0,0,0,0.1),0_8px_10px_-6px_rgba(0,0,0,0.1)]">
+                          <div className="flex flex-col gap-4">
+                            {/* Header: Source + Badges */}
+                            <div className="flex flex-wrap items-start justify-between gap-2">
+                              <h4 className="text-lg font-bold text-gray-900 capitalize leading-tight">
+                                {revenue.source} Revenue
+                              </h4>
+                              <div className="flex flex-wrap gap-1.5">
+                                <Badge className={`${getStatusColor(revenue.status)} rounded-md px-2 py-0.5 font-normal text-xs uppercase tracking-wide border-0`}>
+                                  {revenue.status}
+                                </Badge>
+                                <Badge className={`${revenue.paymentMode === 'cash' ? 'bg-green-100 text-green-800' : 'bg-blue-100 text-blue-800'} rounded-md px-2 py-0.5 font-normal text-xs uppercase tracking-wide border-0`}>
+                                  {revenue.paymentMode}
+                                </Badge>
+                                {revenue.bankReference && (
+                                  <Badge variant="outline" className="text-xs text-gray-500 border-gray-200 rounded-md px-2 py-0.5 font-normal">
+                                    {revenue.bankReference}
+                                  </Badge>
+                                )}
                               </div>
                             </div>
-                          </CardContent>
-                        </Card>
+
+                            {/* Meta Info */}
+                            <div className="space-y-3">
+                              <p className="text-sm font-medium text-slate-500">
+                                {revenue.propertyName}
+                              </p>
+
+                              <div className="flex items-center text-xs text-gray-400 font-medium">
+                                <Calendar className="h-3.5 w-3.5 mr-1.5 text-gray-300" />
+                                {formatCardDateTime(revenue.createdAt)}
+                              </div>
+
+                              <div className="inline-flex items-center bg-blue-50/50 border border-blue-100 rounded-lg px-3 py-1.5">
+                                <Calendar className="h-3.5 w-3.5 mr-2 text-blue-600" />
+                                <span className="text-xs font-semibold text-blue-700">
+                                  For: {formatDateForDisplay(revenue.occurredAt)}
+                                </span>
+                              </div>
+
+                              <p className="text-xs text-slate-400 font-medium">
+                                By {revenue.createdByName}
+                              </p>
+
+                              {revenue.description && (
+                                <p className="text-sm text-gray-600 leading-relaxed pt-1">{revenue.description}</p>
+                              )}
+                            </div>
+
+                            {/* Divider */}
+                            <div className="h-px w-full bg-gray-100/80 my-1"></div>
+
+                            {/* Footer: Amount & Actions */}
+                            <div className="flex items-center justify-between pt-1">
+                              <span className="text-2xl font-bold text-green-600 tracking-tight">
+                                {formatCurrency(revenue.amountCents)}
+                              </span>
+
+                              <div className="flex items-center gap-3">
+                                {(revenue.receiptUrl || revenue.receiptFileId) && (
+                                  <Button
+                                    variant="outline"
+                                    size="icon"
+                                    className="h-11 w-11 rounded-full border-gray-100 bg-white text-gray-400 hover:text-blue-600 hover:border-blue-200 hover:bg-blue-50 transition-all shadow-sm"
+                                    onClick={() => setSelectedReceipt({
+                                      id: revenue.id,
+                                      type: 'revenue',
+                                      source: revenue.source,
+                                      propertyName: revenue.propertyName,
+                                      amountCents: revenue.amountCents,
+                                      description: revenue.description,
+                                      receiptUrl: revenue.receiptUrl,
+                                      receiptFileId: revenue.receiptFileId,
+                                      date: revenue.occurredAt,
+                                      createdAt: revenue.createdAt,
+                                      createdByName: revenue.createdByName,
+                                      status: revenue.status,
+                                      paymentMode: revenue.paymentMode,
+                                      bankReference: revenue.bankReference,
+                                      approvedByName: revenue.approvedByName,
+                                      approvedAt: revenue.approvedAt,
+                                    })}
+                                  >
+                                    <Eye className="h-5 w-5" />
+                                  </Button>
+                                )}
+
+                                {user?.role === 'ADMIN' && revenue.status === 'pending' && (
+                                  <>
+                                    <Button
+                                      size="icon"
+                                      variant="outline"
+                                      onClick={() => approveRevenueMutation.mutate({ id: revenue.id, approved: true })}
+                                      disabled={approveRevenueMutation.isPending}
+                                      className="h-11 w-11 rounded-full border-green-100 bg-green-50 text-green-600 hover:bg-green-100 active:scale-95 transition-all shadow-sm"
+                                    >
+                                      <Check className="h-5 w-5" />
+                                    </Button>
+                                    <Button
+                                      size="icon"
+                                      variant="outline"
+                                      onClick={() => approveRevenueMutation.mutate({ id: revenue.id, approved: false })}
+                                      disabled={approveRevenueMutation.isPending}
+                                      className="h-11 w-11 rounded-full border-red-100 bg-red-50 text-red-600 hover:bg-red-100 active:scale-95 transition-all shadow-sm"
+                                    >
+                                      <X className="h-5 w-5" />
+                                    </Button>
+                                  </>
+                                )}
+
+                                {(user?.role === 'ADMIN' || (user?.role === 'MANAGER' && revenue.createdByUserId === parseInt(user.userID))) && (
+                                  <>
+                                    <Button
+                                      size="icon"
+                                      variant="outline"
+                                      onClick={() => handleEditRevenue(revenue)}
+                                      disabled={updateRevenueMutation.isPending}
+                                      className="h-11 w-11 rounded-full border-gray-100 bg-white text-gray-600 hover:bg-gray-50 hover:border-gray-200 active:scale-95 transition-all shadow-sm"
+                                    >
+                                      <Edit className="h-5 w-5" />
+                                    </Button>
+                                    <Button
+                                      size="icon"
+                                      variant="outline"
+                                      onClick={() => handleDeleteRevenue(revenue.id)}
+                                      disabled={deleteRevenueMutation.isPending}
+                                      className="h-11 w-11 rounded-full border-red-50 bg-white text-red-500 hover:bg-red-50 hover:border-red-100 active:scale-95 transition-all shadow-sm"
+                                    >
+                                      <Trash2 className="h-5 w-5" />
+                                    </Button>
+                                  </>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        </div>
                       ))}
                     </div>
                   )}
@@ -3386,36 +3344,66 @@ export default function FinancePage() {
         </FinanceTabs>
 
         {/* Receipt Viewer Modal */}
-        {selectedReceipt && (
-          <ReceiptViewer
-            isOpen={!!selectedReceipt}
-            onClose={() => setSelectedReceipt(null)}
-            transaction={selectedReceipt}
+        {
+          selectedReceipt && (
+            <ReceiptViewer
+              isOpen={!!selectedReceipt}
+              onClose={() => setSelectedReceipt(null)}
+              transaction={selectedReceipt}
+            />
+          )
+        }
+
+        {/* Premium Mobile Floating Action Button (FAB) - iPhone 6s optimized */}
+        {/* Backdrop for closing menu */}
+        {isMobileMenuOpen && (
+          <div
+            className="fixed inset-0 bg-black/20 backdrop-blur-[1px] z-40 sm:hidden animate-in fade-in duration-200"
+            onClick={() => setIsMobileMenuOpen(false)}
           />
         )}
 
-        {/* Mobile sticky action bar (phones only) */}
-        <div className="sm:hidden fixed bottom-0 inset-x-0 z-40 bg-white/90 backdrop-blur border-t border-gray-200 px-3 py-3 pb-safe">
-          <div className="flex gap-3">
+        {/* FAB Container */}
+        <div className="fixed bottom-24 right-4 z-50 flex flex-col items-end gap-4 sm:hidden">
+
+          {/* Action Buttons (Reveal upwards) */}
+          <div className={`flex flex-col gap-3 transition-all duration-300 ease-out origin-bottom ${isMobileMenuOpen ? 'opacity-100 translate-y-0 scale-100' : 'opacity-0 translate-y-10 scale-95 pointer-events-none'}`}>
             <Button
-              onClick={() => setIsRevenueDialogOpen(true)}
-              className="flex-1 h-12 bg-green-600 hover:bg-green-700 text-white"
-              aria-label="Add Revenue"
+              onClick={() => {
+                setIsRevenueDialogOpen(true);
+                setIsMobileMenuOpen(false);
+              }}
+              className="h-11 pl-4 pr-5 rounded-full bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 text-white shadow-lg shadow-green-500/30 border-0 flex items-center gap-2 transition-transform active:scale-95"
             >
-              <TrendingUp className="h-4 w-4 mr-2" />
-              Revenue
+              <div className="bg-white/20 p-1 rounded-full">
+                <IndianRupee className="h-4 w-4" />
+              </div>
+              <span className="font-semibold tracking-wide">Add Revenue</span>
             </Button>
+
             <Button
-              onClick={() => setIsExpenseDialogOpen(true)}
-              className="flex-1 h-12 bg-red-600 hover:bg-red-700 text-white"
-              aria-label="Add Expense"
+              onClick={() => {
+                setIsExpenseDialogOpen(true);
+                setIsMobileMenuOpen(false);
+              }}
+              className="h-11 pl-4 pr-5 rounded-full bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 text-white shadow-lg shadow-red-500/30 border-0 flex items-center gap-2 transition-transform active:scale-95"
             >
-              <Plus className="h-4 w-4 mr-2" />
-              Expense
+              <div className="bg-white/20 p-1 rounded-full">
+                <Plus className="h-4 w-4" />
+              </div>
+              <span className="font-semibold tracking-wide">Add Expense</span>
             </Button>
           </div>
+
+          {/* Main Trigger Button */}
+          <Button
+            onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+            className={`h-14 w-14 rounded-full shadow-xl flex items-center justify-center transition-all duration-300 border-0 ${isMobileMenuOpen ? 'bg-gray-800 rotate-90' : 'bg-blue-600 hover:bg-blue-700'}`}
+          >
+            <Plus className={`h-8 w-8 text-white transition-transform duration-300 ${isMobileMenuOpen ? 'rotate-45' : 'rotate-0'}`} />
+          </Button>
         </div>
-      </div>
-    </div>
+      </div >
+    </div >
   );
 }

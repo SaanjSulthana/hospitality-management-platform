@@ -19,7 +19,7 @@ import ResetPasswordPage from './pages/ResetPasswordPage';
 import DashboardPage from './pages/DashboardPage';
 import PropertiesPage from './pages/PropertiesPage';
 import TasksPage from './pages/TasksPage';
-import TaskManagementPage from './pages/TaskManagementPage';
+// import TaskManagementPage from './pages/TaskManagementPage';
 import FinancePage from './pages/FinancePage';
 import ReportsPage from './pages/ReportsPage';
 import StaffPage from './pages/StaffPage';
@@ -67,7 +67,7 @@ function AppInner() {
                   <Route path="/dashboard" element={<DashboardPage />} />
                   <Route path="/properties" element={<PropertiesPage />} />
                   <Route path="/tasks" element={<TasksPage />} />
-                  <Route path="/task-management" element={<TaskManagementPage />} />
+                  {/* <Route path="/task-management" element={<TaskManagementPage />} /> */}
                   <Route path="/finance" element={<FinancePage />} />
                   <Route path="/reports" element={<ReportsPage />} />
                   <Route path="/staff" element={<StaffPage />} />

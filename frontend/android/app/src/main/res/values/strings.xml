@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Hospitality Management Platform</string>
+    <string name="title_activity_main">Hospitality Management Platform</string>
+    <string name="package_name">com.hvehospitality.pms</string>
+    <string name="custom_url_scheme">com.hvehospitality.pms</string>
+</resources>

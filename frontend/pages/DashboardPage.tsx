@@ -1,62 +1,53 @@
 import React, { useEffect } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/contexts/AuthContext';
 import { useTheme } from '@/contexts/ThemeContext';
 import { usePageTitle } from '@/contexts/PageTitleContext';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { useToast } from '@/components/ui/use-toast';
+
 import { useNavigate } from 'react-router-dom';
-import { LoadingCard, LoadingPage } from '@/components/ui/loading-spinner';
+import { LoadingPage, LoadingCard } from '@/components/ui/loading-spinner'; // Fixed import: LoadingCard loaded from exact alias or file? Usually from loading-spinner too.
 import { NoDataCard } from '@/components/ui/no-data';
 import { useApiError } from '@/hooks/use-api-error';
-import { getFlagBool } from '../lib/feature-flags';
-import { setRealtimePropertyFilter } from '../lib/realtime-helpers';
-import { useRealtimeService } from '../hooks/useRealtimeService';
-import { API_CONFIG } from '../src/config/api';
-import { 
-  useStandardQuery, 
-  useStandardMutation, 
-  QUERY_KEYS, 
-  STANDARD_QUERY_CONFIGS,
-  API_ENDPOINTS,
-  handleStandardError
-} from '../src/utils/api-standardizer';
-import { QUERY_CATEGORIES } from '../src/config/query-config';
-import { useRouteActive } from '@/hooks/use-route-aware-query';
+import { QUERY_KEYS } from '../src/utils/api-standardizer';
+import { useDashboardData } from '../hooks/useDashboardData';
+import { useDashboardRealtime } from '../hooks/useDashboardRealtime';
 
-const __DEV__ = process.env.NODE_ENV === 'development';
-import { 
-  Building2, 
-  Users, 
-  CheckSquare, 
+// Imported Components
+import { ActionCards } from '../components/dashboard/ActionCards';
+import { StatsOverview } from '../components/dashboard/StatsOverview';
+import { DashboardModals } from '../components/dashboard/DashboardModals';
+
+import {
+  Hotel,
+  UserCog,
+  Users,
+  ClipboardList,
+  CheckSquare,
   TrendingUp,
+  Siren,
   AlertCircle,
+  AlarmClock,
   Clock,
-  Shield,
-  UserCheck,
   Plus,
-  LogOut,
   RefreshCw,
-  FileText,
+  ClipboardCheck,
+  CalendarClock,
   Calendar,
   Receipt,
-  CreditCard,
-  Eye,
-  Check,
-  X
+  IndianRupee,
+  Check
 } from 'lucide-react';
 
 export default function DashboardPage() {
-  const { user, getAuthenticatedBackend, logout } = useAuth();
+  const { user, logout } = useAuth();
   const { theme } = useTheme();
   const { setPageTitle } = usePageTitle();
-  const { toast } = useToast();
   const navigate = useNavigate();
   const { handleError } = useApiError();
   const queryClient = useQueryClient();
-  const routeActive = useRouteActive(['/dashboard']);
 
   // Set page title and description
   useEffect(() => {
@@ -87,636 +78,31 @@ export default function DashboardPage() {
     }
   };
 
-  const { data: analytics, isLoading: analyticsLoading, error: analyticsError } = useStandardQuery(
-    QUERY_KEYS.ANALYTICS,
-    '/analytics/overview',
-    {
-      enabled: routeActive && user?.role === 'ADMIN',
-      ...QUERY_CATEGORIES.analytics,
-    }
-  );
+  // Realtime subscriptions
+  useDashboardRealtime();
 
-  const { data: properties, isLoading: propertiesLoading, error: propertiesError } = useStandardQuery(
-    QUERY_KEYS.PROPERTIES,
-    '/properties',
-    {
-      enabled: routeActive,
-      ...QUERY_CATEGORIES.properties,
-    }
-  );
-
-  const { data: tasks, isLoading: tasksLoading, error: tasksError } = useStandardQuery(
-    QUERY_KEYS.TASKS,
-    '/tasks',
-    {
-      enabled: routeActive,
-      ...QUERY_CATEGORIES.tasks,
-    }
-  );
-
-  const { data: users, isLoading: usersLoading, error: usersError } = useStandardQuery(
-    QUERY_KEYS.USERS,
-    '/users',
-    {
-      enabled: routeActive && user?.role === 'ADMIN',
-      ...QUERY_CATEGORIES.users,
-    }
-  );
-
-  // New queries for works to be done
-  const { data: expenses, isLoading: expensesLoading, error: expensesError } = useStandardQuery(
-    QUERY_KEYS.EXPENSES,
-    API_ENDPOINTS.EXPENSES,
-    {
-      enabled: routeActive,
-      ...(getFlagBool('REALTIME_PATCH_MODE', true) ? QUERY_CATEGORIES['realtime-connected'] : QUERY_CATEGORIES.expenses),
-    }
-  );
-
-  const { data: revenues, isLoading: revenuesLoading, error: revenuesError } = useStandardQuery(
-    QUERY_KEYS.REVENUES,
-    API_ENDPOINTS.REVENUES,
-    {
-      enabled: routeActive,
-      ...(getFlagBool('REALTIME_PATCH_MODE', true) ? QUERY_CATEGORIES['realtime-connected'] : QUERY_CATEGORIES.revenues),
-    }
-  );
-
-  const { data: leaveRequests, isLoading: leaveRequestsLoading, error: leaveRequestsError } = useStandardQuery(
-    QUERY_KEYS.LEAVE_REQUESTS,
-    API_ENDPOINTS.LEAVE_REQUESTS,
-    {
-      enabled: routeActive,
-      ...QUERY_CATEGORIES['leave-requests'],
-    }
-  );
-
-  // Fetch pending approvals for admins
-  const { data: pendingApprovals, isLoading: pendingApprovalsLoading, error: pendingApprovalsError } = useStandardQuery(
-    QUERY_KEYS.PENDING_APPROVALS,
-    API_ENDPOINTS.PENDING_APPROVALS,
-    {
-      enabled: routeActive && user?.role === 'ADMIN',
-      ...(user?.role === 'ADMIN'
-        ? { ...QUERY_CATEGORIES['pending-approvals'], staleTime: 600_000 }
-        : QUERY_CATEGORIES['pending-approvals']),
-    }
-  );
-
-  // Realtime: Dashboard events listener (debounced invalidation + telemetry)
-  useEffect(() => {
-    try { (window as any).__dashboardSelectedPropertyId = 'all'; } catch {}
-    try { setRealtimePropertyFilter(null); } catch {}
-
-    const enabled = getFlagBool('DASHBOARD_REALTIME_V1', true);
-    if (!enabled) return;
-
-    let timer: ReturnType<typeof setTimeout> | null = null;
-    const scheduleInvalidate = (events: any[]) => {
-      const impacted = new Set<string[]>();
-      const patchMode = getFlagBool('REALTIME_PATCH_MODE', true);
-      for (const ev of events) {
-        const t = (ev?.eventType || '').toString();
-        const entity = (ev?.entityType || '').toString();
-        // In patch mode, skip list invalidations – lists are patched by service handlers.
-        if (!patchMode) {
-          if (t.startsWith('revenue_') || entity === 'revenue') impacted.add(QUERY_KEYS.REVENUES);
-          if (t.startsWith('expense_') || entity === 'expense') impacted.add(QUERY_KEYS.EXPENSES);
-          if (t.startsWith('property_') || entity === 'property') impacted.add(QUERY_KEYS.PROPERTIES);
-          if (t.startsWith('task_') || entity === 'task') impacted.add(QUERY_KEYS.TASKS);
-          if (t.startsWith('user_') || entity === 'user') impacted.add(QUERY_KEYS.USERS);
-        }
-        if (t.includes('leave')) impacted.add(QUERY_KEYS.LEAVE_REQUESTS);
-        if (t.includes('approval')) impacted.add(QUERY_KEYS.PENDING_APPROVALS);
-        if (t.includes('dashboard') || t.includes('analytics')) impacted.add(QUERY_KEYS.ANALYTICS);
-      }
-      if (impacted.size === 0) {
-        impacted.add(QUERY_KEYS.ANALYTICS);
-      }
-      impacted.forEach(k => queryClient.invalidateQueries({ queryKey: k }));
-      // Telemetry removed here to avoid duplication; handled centrally elsewhere (dev-only)
-    };
-
-    const onEvents = (e: any) => {
-      const events = e?.detail?.events || [];
-      if (!Array.isArray(events) || events.length === 0) return;
-      if (timer) clearTimeout(timer);
-      const snapshot = events.slice(0, 200);
-      timer = setTimeout(() => scheduleInvalidate(snapshot), 350);
-    };
-    const onHealth = (_e: any) => {};
-
-    window.addEventListener('dashboard-stream-health', onHealth);
-    return () => {
-      window.removeEventListener('dashboard-stream-health', onHealth);
-      if (timer) clearTimeout(timer);
-    };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [queryClient]);
-
-  // Realtime: Dashboard service (domain-agnostic) → refresh analytics/dashboard only
-  useRealtimeService('dashboard', (events) => {
-    if (!Array.isArray(events) || events.length === 0) return;
-    setTimeout(() => {
-      queryClient.invalidateQueries({ queryKey: QUERY_KEYS.ANALYTICS });
-      queryClient.invalidateQueries({ queryKey: QUERY_KEYS.DASHBOARD });
-    }, 250);
-  }, getFlagBool('DASHBOARD_REALTIME_V1', true));
-
-  // Realtime: Finance events → narrow, debounced invalidations for dashboard tiles
-  useRealtimeService('finance', (events) => {
-    if (!Array.isArray(events) || events.length === 0) return;
-    let needsRevenuesInvalidate = false;
-    let needsExpensesInvalidate = false;
-    let needsDerivedInvalidate = false;
-    let approvalEventOccurred = false;
-
-    for (const ev of events) {
-      const t = (ev?.eventType || '').toString();
-      const entity = (ev?.entityType || '').toString();
-      const id = ev?.entityId;
-      const meta = ev?.metadata || {};
-
-      // For create/delete (complex changes), prefer a narrow invalidation
-      if (t === 'revenue_added') {
-        // Optimistic insert to make counts instant; reconcile later via invalidate
-        queryClient.setQueryData(QUERY_KEYS.REVENUES, (old: any) => {
-          if (!old?.revenues) return old;
-          const exists = old.revenues.some((r: any) => r.id === id);
-          if (exists) return old;
-          const newRow = {
-            id,
-            amountCents: meta?.amountCents ?? 0,
-            currency: meta?.currency ?? 'INR',
-            source: meta?.source ?? 'unknown',
-            description: meta?.description || 'Revenue',
-            propertyName: meta?.propertyName ?? '—',
-            status: meta?.newStatus ?? 'pending',
-            transactionDate: meta?.transactionDate ?? new Date().toISOString(),
-            // FIX: Include creator info from event metadata
-            createdByName: meta?.createdByName ?? 'Unknown User',
-            createdByUserId: meta?.createdByUserId ?? ev?.userId,
-            createdAt: ev?.timestamp ?? new Date().toISOString(),
-          };
-          return { ...old, revenues: [newRow, ...old.revenues] };
-        });
-        needsDerivedInvalidate = true;
-        continue;
-      }
-      if (t === 'revenue_deleted') {
-        queryClient.setQueryData(QUERY_KEYS.REVENUES, (old: any) => {
-          if (!old?.revenues) return old;
-          return { ...old, revenues: old.revenues.filter((r: any) => r.id !== id) };
-        });
-        needsDerivedInvalidate = true;
-        continue;
-      }
-      if (t === 'expense_added') {
-        queryClient.setQueryData(QUERY_KEYS.EXPENSES, (old: any) => {
-          if (!old?.expenses) return old;
-          const exists = old.expenses.some((e: any) => e.id === id);
-          if (exists) return old;
-          const newRow = {
-            id,
-            amountCents: meta?.amountCents ?? 0,
-            currency: meta?.currency ?? 'INR',
-            category: meta?.category ?? 'misc',
-            description: meta?.description || 'Expense',
-            propertyName: meta?.propertyName ?? '—',
-            status: meta?.newStatus ?? 'pending',
-            transactionDate: meta?.transactionDate ?? new Date().toISOString(),
-            // FIX: Include creator info from event metadata
-            createdByName: meta?.createdByName ?? 'Unknown User',
-            createdByUserId: meta?.createdByUserId ?? ev?.userId,
-            createdAt: ev?.timestamp ?? new Date().toISOString(),
-          };
-          return { ...old, expenses: [newRow, ...old.expenses] };
-        });
-        needsDerivedInvalidate = true;
-        continue;
-      }
-      if (t === 'expense_deleted') {
-        queryClient.setQueryData(QUERY_KEYS.EXPENSES, (old: any) => {
-          if (!old?.expenses) return old;
-          return { ...old, expenses: old.expenses.filter((e: any) => e.id !== id) };
-        });
-        needsDerivedInvalidate = true;
-        continue;
-      }
-
-      // Row-level patches for updates/approvals to keep UI instant
-      if ((t === 'revenue_updated' || t === 'revenue_approved' || entity === 'revenue') && id) {
-        queryClient.setQueryData(QUERY_KEYS.REVENUES, (old: any) => {
-          if (!old?.revenues) return old;
-          return {
-            ...old,
-            revenues: old.revenues.map((r: any) =>
-              r.id === id
-                ? {
-                    ...r,
-                    amountCents: meta?.amountCents ?? r.amountCents,
-                    description: meta?.description ?? r.description,
-                    source: meta?.source ?? r.source,
-                    propertyName: meta?.propertyName ?? r.propertyName,
-                    // status exists on backend; keep if present in meta
-                    ...(meta?.newStatus ? { status: meta.newStatus } : {}),
-                  }
-                : r
-            ),
-          };
-        });
-        try {
-          (window as any).__realtimeClientStats = (window as any).__realtimeClientStats || { invalidationsFlushed: 0, keys: 0, patchesApplied: 0 };
-          (window as any).__realtimeClientStats.patchesApplied++;
-        } catch {}
-        needsDerivedInvalidate = true;
-        if (t.endsWith('_approved') || t.endsWith('_rejected')) approvalEventOccurred = true;
-        continue;
-      }
-
-      if ((t === 'expense_updated' || t === 'expense_approved' || entity === 'expense') && id) {
-        queryClient.setQueryData(QUERY_KEYS.EXPENSES, (old: any) => {
-          if (!old?.expenses) return old;
-          return {
-            ...old,
-            expenses: old.expenses.map((e: any) =>
-              e.id === id
-                ? {
-                    ...e,
-                    amountCents: meta?.amountCents ?? e.amountCents,
-                    description: meta?.description ?? e.description,
-                    category: meta?.category ?? e.category,
-                    propertyName: meta?.propertyName ?? e.propertyName,
-                    ...(meta?.newStatus ? { status: meta.newStatus } : {}),
-                  }
-                : e
-            ),
-          };
-        });
-        try {
-          (window as any).__realtimeClientStats = (window as any).__realtimeClientStats || { invalidationsFlushed: 0, keys: 0, patchesApplied: 0 };
-          (window as any).__realtimeClientStats.patchesApplied++;
-        } catch {}
-        needsDerivedInvalidate = true;
-        if (t.endsWith('_approved') || t.endsWith('_rejected')) approvalEventOccurred = true;
-        continue;
-      }
-
-      if (t === 'daily_approval_granted') {
-        approvalEventOccurred = true;
-        needsDerivedInvalidate = true;
-        
-        // Patch individual items if transaction IDs are provided
-        const transactionIds = meta?.transactionIds as number[] | undefined;
-        const newStatus = meta?.newStatus || 'approved';
-        
-        console.log('[Dashboard] daily_approval_granted received', { 
-          transactionIds, 
-          newStatus, 
-          userId: ev?.userId,
-          meta 
-        });
-        
-        if (transactionIds && transactionIds.length > 0) {
-          // Update revenues list
-          queryClient.setQueryData(QUERY_KEYS.REVENUES, (old: any) => {
-            if (!old?.revenues) return old;
-            return {
-              ...old,
-              revenues: old.revenues.map((r: any) =>
-                transactionIds.includes(r.id)
-                  ? { ...r, status: newStatus, approvedByUserId: ev?.userId, approvedAt: ev?.timestamp || new Date().toISOString() }
-                  : r
-              ),
-            };
-          });
-          
-          // Update expenses list
-          queryClient.setQueryData(QUERY_KEYS.EXPENSES, (old: any) => {
-            if (!old?.expenses) return old;
-            return {
-              ...old,
-              expenses: old.expenses.map((e: any) =>
-                transactionIds.includes(e.id)
-                  ? { ...e, status: newStatus, approvedByUserId: ev?.userId, approvedAt: ev?.timestamp || new Date().toISOString() }
-                  : e
-              ),
-            };
-          });
-        } else {
-          // Fallback: if no transactionIds, force invalidate the lists
-          console.log('[Dashboard] daily_approval_granted without transactionIds - forcing invalidation');
-          queryClient.invalidateQueries({ queryKey: QUERY_KEYS.REVENUES });
-          queryClient.invalidateQueries({ queryKey: QUERY_KEYS.EXPENSES });
-        }
-        continue;
-      }
-    }
-    // Debounce narrow invalidations for lists and aggregates
-    const doInvalidate = () => {
-      if (!routeActive) return;
-      if (needsDerivedInvalidate) {
-        queryClient.invalidateQueries({ queryKey: QUERY_KEYS.PROFIT_LOSS });
-        if (approvalEventOccurred) {
-          queryClient.invalidateQueries({ queryKey: QUERY_KEYS.DAILY_APPROVAL_CHECK });
-        }
-      }
-    };
-    setTimeout(doInvalidate, 200);
-  }, getFlagBool('DASHBOARD_REALTIME_V1', true));
-
-  // Realtime: Tasks events → update tasks tile (narrow invalidation)
-  useRealtimeService('tasks', (events) => {
-    if (!Array.isArray(events) || events.length === 0) return;
-    let needsTasksInvalidate = false;
-    let touchedTask = false;
-    for (const ev of events) {
-      const t = String(ev?.eventType || '');
-      const id = ev?.entityId;
-      const meta = ev?.metadata || {};
-      if (!id) continue;
-
-      if (t === 'task_status_updated') {
-        queryClient.setQueryData(QUERY_KEYS.TASKS, (old: any) => {
-          if (!old?.tasks) return old;
-          return {
-            ...old,
-            tasks: old.tasks.map((task: any) =>
-              task.id === id ? { ...task, status: meta?.newStatus ?? meta?.status ?? task.status } : task
-            ),
-          };
-        });
-        touchedTask = true;
-        continue;
-      }
-
-      if (t === 'task_updated') {
-        queryClient.setQueryData(QUERY_KEYS.TASKS, (old: any) => {
-          if (!old?.tasks) return old;
-          return {
-            ...old,
-            tasks: old.tasks.map((task: any) =>
-              task.id === id
-                ? {
-                    ...task,
-                    title: meta?.title ?? task.title,
-                    description: meta?.description ?? task.description,
-                    dueAt: meta?.dueAt ?? task.dueAt,
-                    priority: meta?.priority ?? task.priority,
-                  }
-                : task
-            ),
-          };
-        });
-        touchedTask = true;
-        continue;
-      }
-
-      if (t === 'task_created' || t === 'task_deleted') {
-        needsTasksInvalidate = true;
-      }
-    }
-    setTimeout(() => {
-      if (needsTasksInvalidate) queryClient.invalidateQueries({ queryKey: QUERY_KEYS.TASKS });
-      if (touchedTask) queryClient.invalidateQueries({ queryKey: QUERY_KEYS.ANALYTICS });
-    }, 200);
-  }, getFlagBool('DASHBOARD_REALTIME_V1', true));
-
-  // Realtime: Users events → update managers count
-  useRealtimeService('users', (events) => {
-    if (!Array.isArray(events) || events.length === 0) return;
-    let needsUsersInvalidate = false;
-    for (const ev of events) {
-      const t = String(ev?.eventType || '');
-      const id = ev?.entityId;
-      const meta = ev?.metadata || {};
-      if (t === 'user_updated' && id) {
-        queryClient.setQueryData(QUERY_KEYS.USERS, (old: any) => {
-          if (!old?.users) return old;
-          return {
-            ...old,
-            users: old.users.map((u: any) =>
-              u.id === id
-                ? {
-                    ...u,
-                    displayName: meta?.displayName ?? u.displayName,
-                    email: meta?.email ?? u.email,
-                    role: meta?.role ?? u.role,
-                  }
-                : u
-            ),
-          };
-        });
-      } else if (t === 'user_created' || t === 'user_deleted') {
-        needsUsersInvalidate = true;
-      }
-    }
-    if (needsUsersInvalidate) {
-      setTimeout(() => {
-        queryClient.invalidateQueries({ queryKey: QUERY_KEYS.USERS });
-      }, 200);
-    }
-  }, getFlagBool('DASHBOARD_REALTIME_V1', true));
-
-  // Realtime: Properties events → update properties count
-  useRealtimeService('properties', (events) => {
-    if (!Array.isArray(events) || events.length === 0) return;
-    let needsPropsInvalidate = false;
-    for (const ev of events) {
-      const t = String(ev?.eventType || '');
-      const id = ev?.entityId;
-      const meta = ev?.metadata || {};
-
-      if (t === 'property_updated' && id) {
-        queryClient.setQueryData(QUERY_KEYS.PROPERTIES, (old: any) => {
-          if (!old?.properties) return old;
-          return {
-            ...old,
-            properties: old.properties.map((p: any) =>
-              p.id === id
-                ? {
-                    ...p,
-                    name: meta?.name ?? p.name,
-                    status: meta?.status ?? p.status,
-                    regionId: meta?.regionId ?? p.regionId,
-                  }
-                : p
-            ),
-          };
-        });
-      } else if (t === 'property_created' || t === 'property_deleted') {
-        needsPropsInvalidate = true;
-      }
-    }
-    if (needsPropsInvalidate) {
-      setTimeout(() => {
-        queryClient.invalidateQueries({ queryKey: QUERY_KEYS.PROPERTIES });
-      }, 200);
-    }
-  }, getFlagBool('DASHBOARD_REALTIME_V1', true));
-
-  // Realtime: Staff/Leave events → update leave requests tile
-  useRealtimeService('staff', (events) => {
-    if (!Array.isArray(events) || events.length === 0) return;
-    const affectsLeave = events.some((ev: any) => {
-      const t = String(ev?.eventType || '');
-      return t.includes('leave_') || String(ev?.entityType || '') === 'leave_request';
-    });
-    if (affectsLeave) {
-      setTimeout(() => {
-        queryClient.invalidateQueries({ queryKey: QUERY_KEYS.LEAVE_REQUESTS });
-      }, 200);
-    }
-  }, getFlagBool('DASHBOARD_REALTIME_V1', true));
-
-  // Realtime: Analytics events → refresh analytics block
-  useRealtimeService('analytics', (events) => {
-    if (!Array.isArray(events) || events.length === 0) return;
-    setTimeout(() => {
-      queryClient.invalidateQueries({ queryKey: [QUERY_KEYS.ANALYTICS] });
-    }, 200);
-  }, getFlagBool('DASHBOARD_REALTIME_V1', true));
-
-  const getRoleDisplayName = (role: string) => {
-    return role.replace('_', ' ').toLowerCase().replace(/\b\w/g, l => l.toUpperCase());
-  };
-
-  const getGreeting = () => {
-    const hour = new Date().getHours();
-    if (hour < 12) return 'Good morning';
-    if (hour < 18) return 'Good afternoon';
-    return 'Good evening';
-  };
-
-  // Helper function to format currency - always use INR for now
-  const formatCurrency = (amount: number) => {
-    return `₹${amount.toFixed(2)}`;
-  };
-
-  const urgentTasks = tasks?.tasks.filter((task: any) => 
-    task.priority === 'high' && task.status !== 'done'
-  ) || [];
-
-  const overdueTasks = tasks?.tasks.filter((task: any) => 
-    task.dueAt && new Date(task.dueAt) < new Date() && task.status !== 'done'
-  ) || [];
-
-  // Enhanced data processing for works to be done
-  const pendingExpenses = expenses?.expenses.filter((expense: any) => 
-    expense.status === 'pending'
-  ) || [];
-
-  // Handle missing status property for revenues (frontend client type mismatch)
-  const pendingRevenues = revenues?.revenues.filter((revenue: any) => 
-    // @ts-ignore - status property exists in backend but not in frontend client type
-    (revenue as any).status === 'pending'
-  ) || [];
-
-  const pendingLeaveRequests = leaveRequests?.leaveRequests.filter((leave: any) => 
-    leave.status === 'pending'
-  ) || [];
-
-  const managersCreated = users?.users.filter((u: any) => u.role === 'MANAGER') || [];
-
-  // Calculate totals for works to be done (prefer live list data for instant UI)
-  const totalPendingApprovals = (() => {
-    if (__DEV__) {
-      console.log('=== PENDING APPROVALS DEBUG ===');
-      console.log('Pending approvals data:', pendingApprovals);
-      console.log('Pending expenses count:', pendingExpenses.length);
-      console.log('Pending revenues count:', pendingRevenues.length);
-      console.log('Pending leave requests count:', pendingLeaveRequests.length);
-    }
-
-    // Instant: derive from live list caches (revenues/expenses/leave)
-    // Endpoint still fetched for detailed manager breakdowns elsewhere.
-    return pendingExpenses.length + pendingRevenues.length + pendingLeaveRequests.length;
-  })();
-  const totalUrgentItems = urgentTasks.length + overdueTasks.length;
+  // Data fetching (Hooks)
+  const dashboardData = useDashboardData();
+  const {
+    analytics,
+    properties, propertiesLoading, propertiesError,
+    tasks, tasksLoading, tasksError,
+    pendingApprovals,
+    urgentTasks,
+    overdueTasks,
+    pendingExpenses,
+    pendingRevenues,
+    pendingLeaveRequests,
+    managersCreated,
+    totalPendingApprovals,
+    totalUrgentItems
+  } = dashboardData;
 
   // State for quick action modals
   const [showPendingApprovalsModal, setShowPendingApprovalsModal] = React.useState(false);
   const [showUrgentTasksModal, setShowUrgentTasksModal] = React.useState(false);
   const [showOverdueTasksModal, setShowOverdueTasksModal] = React.useState(false);
   const [showFinancialPendingModal, setShowFinancialPendingModal] = React.useState(false);
-
-  const approveExpenseMutation = useStandardMutation(
-    '/finance/expenses/:id/approve',
-    'PATCH',
-    {
-      invalidateQueries: [
-        QUERY_KEYS.EXPENSES,
-        QUERY_KEYS.REVENUES,
-        QUERY_KEYS.DAILY_APPROVAL_CHECK,
-        QUERY_KEYS.ANALYTICS,
-        QUERY_KEYS.DASHBOARD,
-        QUERY_KEYS.PROFIT_LOSS,
-        QUERY_KEYS.DAILY_APPROVAL_CHECK,
-      ],
-      successMessage: "Expense updated successfully",
-      errorMessage: "Failed to process expense",
-    }
-  );
-
-  const approveRevenueMutation = useStandardMutation(
-    '/finance/revenues/:id/approve',
-    'PATCH',
-    {
-      invalidateQueries: [
-        QUERY_KEYS.REVENUES,
-        QUERY_KEYS.EXPENSES,
-        QUERY_KEYS.DAILY_APPROVAL_CHECK,
-        QUERY_KEYS.ANALYTICS,
-        QUERY_KEYS.DASHBOARD,
-        QUERY_KEYS.PROFIT_LOSS,
-        QUERY_KEYS.DAILY_APPROVAL_CHECK,
-      ],
-      refetchQueries: [
-        QUERY_KEYS.REVENUES,
-        QUERY_KEYS.DAILY_APPROVAL_CHECK,
-        QUERY_KEYS.ANALYTICS,
-      ],
-      successMessage: "The revenue has been processed successfully.",
-      errorMessage: "Failed to process revenue. Please try again.",
-    }
-  );
-
-  const approveLeaveMutation = useStandardMutation(
-    '/staff/leave-requests/:id/approve',
-    'PATCH',
-    {
-      invalidateQueries: [
-        QUERY_KEYS.LEAVE_REQUESTS,
-        QUERY_KEYS.DAILY_APPROVAL_CHECK,
-        QUERY_KEYS.ANALYTICS,
-        QUERY_KEYS.DASHBOARD,
-      ],
-      refetchQueries: [
-        QUERY_KEYS.LEAVE_REQUESTS,
-        QUERY_KEYS.DAILY_APPROVAL_CHECK,
-      ],
-      successMessage: "The leave request has been processed.",
-      errorMessage: "Failed to process leave request. Please try again.",
-    }
-  );
-
-  const handleLogout = async () => {
-    try {
-      await logout();
-      toast({
-        title: "Logged out",
-        description: "You have been signed out.",
-      });
-      navigate('/login', { replace: true });
-    } catch (err) {
-      console.error('Logout error:', err);
-      toast({
-        variant: 'destructive',
-        title: 'Logout failed',
-        description: 'Please try again.',
-      });
-    }
-  };
 
   // Show loading state only if critical data (properties and tasks) is loading
   if (propertiesLoading || tasksLoading) {
@@ -733,7 +119,7 @@ export default function DashboardPage() {
           <p className="text-gray-500 mb-4">
             There was an error loading your dashboard. Please try refreshing the page.
           </p>
-          <Button onClick={refreshNow} variant="outline" className="bg-white border-rose-200 text-red-700 hover:bg-rose-50 hover:border-rose-300 font-semibold">
+          <Button onClick={refreshNow} variant="outline" className="h-11 bg-white border-rose-200 text-red-700 hover:bg-rose-50 hover:border-rose-300 font-semibold px-4">
             <RefreshCw className="mr-2 h-4 w-4" />
             Try Again
           </Button>
@@ -742,388 +128,162 @@ export default function DashboardPage() {
     );
   }
 
+  const handleActionCardClick = (type: 'approvals' | 'urgent' | 'financial' | 'leave') => {
+    switch (type) {
+      case 'approvals':
+        if (totalPendingApprovals > 0) setShowPendingApprovalsModal(true);
+        else navigate('/finance');
+        break;
+      case 'urgent':
+        if (urgentTasks.length > 0) setShowUrgentTasksModal(true);
+        else navigate('/tasks');
+        break;
+      case 'financial':
+        if (pendingRevenues.length > 0 || pendingExpenses.length > 0) setShowFinancialPendingModal(true);
+        else navigate('/finance');
+        break;
+      case 'leave':
+        navigate('/staff');
+        break;
+    }
+  };
 
+  // Helper function to format currency - always use INR for now
+  const formatCurrency = (amount: number) => {
+    return `₹${amount.toFixed(2)}`;
+  };
 
   return (
-    <div className="w-full space-y-6">
+    <div className="w-full space-y-4 md:space-y-6 pt-safe pb-safe pb-20 sm:pb-safe px-4 sm:px-6">
 
-      {/* WORKS TO BE DONE - Priority Section */}
-      <div className="space-y-4">
-        <h2 className="text-xl font-semibold text-gray-900 flex items-center gap-2">
-          <AlertCircle className="h-5 w-5 text-red-500" />
-          Works to be Done
-        </h2>
-        
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-          {/* Pending Approvals */}
-          <Card 
-            className="border-red-200 bg-red-50 cursor-pointer hover:bg-red-100 transition-all duration-300 hover:shadow-lg hover:scale-105"
-            onClick={() => {
-              if (totalPendingApprovals > 0) {
-                setShowPendingApprovalsModal(true);
-              } else {
-                navigate('/finance');
-              }
-            }}
-          >
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium text-red-900">Pending Approvals</CardTitle>
-              <div className="flex items-center gap-1">
-                <FileText className="h-4 w-4 text-red-600" />
-                {totalPendingApprovals > 0 && (
-                  <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse"></div>
-                )}
-              </div>
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold text-red-900">
-                {totalPendingApprovals}
-              </div>
-              <p className="text-xs text-red-700">
-                {totalPendingApprovals > 0 ? 'Click to review' : 'Require attention'}
-              </p>
-            </CardContent>
-          </Card>
+      {/* Works to be Done (New Component) */}
+      <ActionCards
+        stats={{
+          pendingApprovals: totalPendingApprovals,
+          urgentItems: totalUrgentItems,
+          financialPending: pendingRevenues.length + pendingExpenses.length,
+          pendingLeave: pendingLeaveRequests.length,
+          urgentTasksCount: urgentTasks.length
+        }}
+        onAction={handleActionCardClick}
+      />
 
-          {/* Urgent Tasks */}
-          <Card 
-            className="border-orange-200 bg-orange-50 cursor-pointer hover:bg-orange-100 transition-all duration-300 hover:shadow-lg hover:scale-105"
-            onClick={() => {
-              if (urgentTasks.length > 0) {
-                setShowUrgentTasksModal(true);
-              } else {
-                navigate('/tasks');
-              }
-            }}
-          >
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium text-orange-900">Urgent Tasks</CardTitle>
-              <div className="flex items-center gap-1">
-                <AlertCircle className="h-4 w-4 text-orange-600" />
-                {urgentTasks.length > 0 && (
-                  <div className="w-2 h-2 bg-orange-500 rounded-full animate-pulse"></div>
-                )}
-              </div>
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold text-orange-900">
-                {urgentTasks.length}
-              </div>
-              <p className="text-xs text-orange-700">
-                {urgentTasks.length > 0 ? 'Click to view' : 'High priority'}
-              </p>
-            </CardContent>
-          </Card>
-
-          {/* Overdue Tasks */}
-          <Card 
-            className="border-red-200 bg-red-50 cursor-pointer hover:bg-red-100 transition-all duration-300 hover:shadow-lg hover:scale-105"
-            onClick={() => {
-              if (overdueTasks.length > 0) {
-                setShowOverdueTasksModal(true);
-              } else {
-                navigate('/tasks');
-              }
-            }}
-          >
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium text-red-900">Overdue Tasks</CardTitle>
-              <div className="flex items-center gap-1">
-                <Clock className="h-4 w-4 text-red-600" />
-                {overdueTasks.length > 0 && (
-                  <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse"></div>
-                )}
-              </div>
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold text-red-900">
-                {overdueTasks.length}
-              </div>
-              <p className="text-xs text-red-700">
-                {overdueTasks.length > 0 ? 'Click to view' : 'Past due date'}
-              </p>
-            </CardContent>
-          </Card>
-
-          {/* Financial Transactions */}
-          <Card 
-            className="border-blue-200 bg-blue-50 cursor-pointer hover:bg-blue-100 transition-all duration-300 hover:shadow-lg hover:scale-105"
-            onClick={() => {
-              if (pendingExpenses.length + pendingRevenues.length > 0) {
-                setShowFinancialPendingModal(true);
-              } else {
-                navigate('/finance');
-              }
-            }}
-          >
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium text-blue-900">Financial Pending</CardTitle>
-              <div className="flex items-center gap-1">
-                <CreditCard className="h-4 w-4 text-blue-600" />
-                {(pendingExpenses.length + pendingRevenues.length) > 0 && (
-                  <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></div>
-                )}
-              </div>
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold text-blue-900">
-                {pendingExpenses.length + pendingRevenues.length}
-              </div>
-              <p className="text-xs text-blue-700">
-                {(pendingExpenses.length + pendingRevenues.length) > 0 ? 'Click to approve' : 'Expenses & Revenues'}
-              </p>
-            </CardContent>
-          </Card>
-        </div>
-      </div>
-
-      {/* Key Metrics */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        {user?.role === 'ADMIN' && (
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Managers</CardTitle>
-              <UserCheck className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">
-                {usersLoading ? '...' : managersCreated.length}
-              </div>
-              <p className="text-xs text-muted-foreground">
-                Active managers
-              </p>
-            </CardContent>
-          </Card>
-        )}
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Properties</CardTitle>
-            <Building2 className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">
-              {propertiesLoading ? '...' : properties?.properties.length || 0}
-            </div>
-            <p className="text-xs text-muted-foreground">
-              Active properties
-            </p>
-          </CardContent>
-        </Card>
-
-
-
-        {user?.role === 'ADMIN' && (
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Revenue</CardTitle>
-              <div className="flex items-center gap-1">
-              <TrendingUp className="h-4 w-4 text-muted-foreground" />
-                {(analytics?.metrics.totalRevenue || (revenues?.revenues && revenues.revenues.length > 0)) && (
-                  <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
-                )}
-              </div>
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">
-                {analyticsLoading && revenuesLoading ? (
-                  <div className="flex items-center gap-2">
-                    <div className="w-4 h-4 border-2 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
-                    <span className="text-gray-500">Loading...</span>
-              </div>
-                ) : (
-                  <span className="text-green-600">
-                    {(() => {
-                      // Debug logging
-                    if (__DEV__) {
-                      console.log('=== REVENUE DEBUG ===');
-                      console.log('Analytics data:', analytics);
-                      console.log('Revenues data:', revenues);
-                      console.log('Analytics loading:', analyticsLoading);
-                      console.log('Revenues loading:', revenuesLoading);
-                    }
-                      
-                      // Prioritize real revenue data over analytics (which might be mock data)
-                      if (revenues?.revenues && revenues.revenues.length > 0) {
-                        if (__DEV__) {
-                          console.log('Found revenues:', revenues.revenues.length, 'items');
-                          console.log('Backend totalAmount (includes pending):', revenues.totalAmount);
-                        }
-                        
-                        // Calculate only approved revenues for dashboard display
-                        const approvedRevenues = revenues.revenues.filter((revenue: any) => {
-                          // @ts-ignore - status property exists in backend but not in frontend client type
-                          const status = (revenue as any).status;
-                          const isApproved = status === 'approved' || status === undefined || status === null;
-                          console.log(`Revenue ${revenue.id}: status=${status}, amount=${revenue.amountCents/100}, approved=${isApproved}`);
-                          return isApproved;
-                        });
-                        
-                        if (__DEV__) {
-                          console.log('Approved revenues count:', approvedRevenues.length);
-                        }
-                        
-                        // Calculate total from approved revenues only, converting all to INR
-                        const currency = 'INR'; // Force INR for now
-                        const symbol = '₹';
-                        
-                        // Group revenues by currency and calculate totals
-                        const revenueByCurrency = approvedRevenues.reduce((acc: any, revenue: any) => {
-                          const revenueCurrency = revenue.currency || 'USD';
-                          if (!acc[revenueCurrency]) {
-                            acc[revenueCurrency] = 0;
-                          }
-                          acc[revenueCurrency] += revenue.amountCents / 100;
-                          return acc;
-                        }, {});
-                        
-                        if (__DEV__) {
-                          console.log('Revenue by currency:', revenueByCurrency);
-                        }
-                        
-                        // Convert all currencies to INR for display
-                        // USD to INR conversion rate: 1 USD = 83 INR
-                        const usdToInrRate = 83;
-                        const totalApprovedRevenue = (revenueByCurrency.USD || 0) * usdToInrRate + (revenueByCurrency.INR || 0);
-                        
-                        if (__DEV__) {
-                          console.log('Total approved revenue in INR:', totalApprovedRevenue);
-                        }
-                        
-                        return `${symbol}${totalApprovedRevenue.toLocaleString()}`;
-                      }
-                      
-                      // Fallback to analytics data if no real revenue data available
-                      if (analytics?.metrics?.totalRevenue) {
-                        if (__DEV__) {
-                          console.log('Using analytics revenue (fallback):', analytics.metrics.totalRevenue);
-                        }
-                        // Convert analytics revenue to INR (assuming it's in USD)
-                        const usdToInrRate = 83;
-                        const totalInInr = analytics.metrics.totalRevenue * usdToInrRate;
-                        return `₹${totalInInr.toLocaleString()}`;
-                      }
-                      
-                      if (__DEV__) console.log('No revenue data available');
-                      return `₹0`;
-                    })()}
-                  </span>
-                )}
-              </div>
-              <p className="text-xs text-muted-foreground">
-                {revenues?.revenues && revenues.revenues.length > 0 ? 
-                  (user?.role === 'ADMIN' ? 'All properties' : 'Assigned properties') : 
-                 analytics?.metrics.totalRevenue ? 'Last 30 days' : 'No data'}
-              </p>
-              {(analytics?.metrics.totalRevenue || (revenues?.revenues && revenues.revenues.length > 0)) && (
-                <div className="mt-1 flex items-center gap-1 text-xs text-green-600">
-                  <TrendingUp className="h-3 w-3" />
-                  <span>Live data</span>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        )}
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Active Tasks</CardTitle>
-            <CheckSquare className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">
-              {tasksLoading ? '...' : tasks?.tasks.filter((t: any) => t.status !== 'done').length || 0}
-            </div>
-            <p className="text-xs text-muted-foreground">
-              Pending completion
-            </p>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Role-specific content */}
       {user?.role === 'ADMIN' ? (
         <>
-          {/* Admin Dashboard Content - Enhanced with Works to be Done */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {/* Pending Approvals - Financial */}
-            <Card>
-          <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Receipt className="h-5 w-5 text-blue-500" />
-                  Pending Financial Approvals
-            </CardTitle>
+          {/* Stats Overview (New Component) */}
+          {analytics && <StatsOverview analytics={analytics} />}
+
+          <div className="flex overflow-x-auto snap-x snap-mandatory px-4 -mx-4 pb-4 no-scrollbar sm:grid sm:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6 sm:overflow-visible sm:px-0 sm:mx-0 sm:pb-0">
+            {/* Properties Overview - Consider Componentizing later */}
+            <Card className="snap-start min-w-[75vw] sm:min-w-0 h-full">
+              <CardHeader className="p-4 sm:p-6">
+                <CardTitle className="flex items-center gap-2 text-lg sm:text-xl">
+                  <Hotel className="h-5 w-5 text-blue-500" />
+                  Properties Overview
+                </CardTitle>
                 <CardDescription>
-                  Expenses and revenues awaiting approval
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-                {pendingExpenses.length === 0 && pendingRevenues.length === 0 ? (
-                  <div className="text-center py-6">
-                    <Receipt className="h-8 w-8 text-gray-400 mx-auto mb-2" />
-                    <p className="text-sm text-gray-500 mb-3">No pending financial approvals</p>
-                    <Button size="sm" variant="outline" onClick={() => navigate('/finance')}>
-                  <Plus className="mr-2 h-4 w-4" />
-                      View Finance
-                </Button>
-              </div>
+                  Status of all managed properties
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="p-4 pt-0 sm:p-6 sm:pt-0">
+                {propertiesLoading ? (
+                  <LoadingCard />
+                ) : properties?.properties.length === 0 ? (
+                  <NoDataCard
+                    title="No Properties"
+                    description="Get started by adding your first property"
+                    action={
+                      <Button onClick={() => navigate('/properties')} className="h-11 px-4">
+                        <Plus className="mr-2 h-4 w-4" />
+                        Add Property
+                      </Button>
+                    }
+                  />
                 ) : (
-                  <div className="space-y-3">
-                    {pendingExpenses.slice(0, 3).map((expense: any) => (
-                      <div key={`expense-${expense.id}`} className="flex items-center justify-between p-3 bg-orange-50 rounded-lg">
-                        <div className="flex-1">
-                          <p className="font-medium text-sm">{expense.description || 'Expense'}</p>
-                          <p className="text-xs text-gray-600">{expense.propertyName}</p>
-                          <p className="text-xs text-orange-600">
-                            {formatCurrency(expense.amountCents / 100)} • {expense.category}
-                          </p>
-              </div>
-                        <Badge variant="outline" className="border-orange-500 text-orange-700">
-                          Expense
+                  <div className="space-y-4">
+                    <div className="flex justify-between items-end">
+                      <div>
+                        <p className="text-xl md:text-3xl font-bold text-gray-900">{properties?.properties.length}</p>
+                        <p className="text-sm text-gray-500">Total Properties</p>
+                      </div>
+                      <div className="flex gap-2">
+                        <Badge variant="secondary" className="bg-green-100 text-green-800">
+                          {properties?.properties.filter((p: any) => p.status === 'active').length} Active
                         </Badge>
                       </div>
-                    ))}
-                    {pendingRevenues.slice(0, 3).map((revenue: any) => (
-                      <div key={`revenue-${revenue.id}`} className="flex items-center justify-between p-3 bg-green-50 rounded-lg">
-                        <div className="flex-1">
-                          <p className="font-medium text-sm">{revenue.description || 'Revenue'}</p>
-                          <p className="text-xs text-gray-600">{revenue.propertyName}</p>
-                          <p className="text-xs text-green-600">
-                            {formatCurrency(revenue.amountCents / 100)} • {revenue.source}
-                          </p>
-              </div>
-                        <Badge variant="outline" className="border-green-500 text-green-700">
-                          Revenue
-                        </Badge>
-            </div>
-                    ))}
-                    {(pendingExpenses.length > 3 || pendingRevenues.length > 3) && (
-                      <Button size="sm" variant="outline" className="w-full" onClick={() => navigate('/finance')}>
-                        View All ({pendingExpenses.length + pendingRevenues.length})
-                      </Button>
+                    </div>
+                    <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
+                      <div
+                        className="h-full bg-blue-500"
+                        style={{
+                          width: `${(properties?.properties.filter((p: any) => p.status === 'active').length / (properties?.properties.length || 1)) * 100}%`
+                        }}
+                      />
+                    </div>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* Recent Pending Approvals Detail - Left as is for now */}
+            <Card className="snap-start min-w-[75vw] sm:min-w-0 h-full">
+              <CardHeader className="p-4 sm:p-6">
+                <CardTitle className="flex items-center gap-2 text-lg sm:text-xl">
+                  <ClipboardCheck className="h-5 w-5 text-indigo-500" />
+                  Recent Approvals
+                </CardTitle>
+                <CardDescription>
+                  Latest items requiring your approval
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="p-4 pt-0 sm:p-6 sm:pt-0">
+                {totalPendingApprovals === 0 ? (
+                  <div className="text-center py-6">
+                    <Check className="h-8 w-8 text-green-500 mx-auto mb-2" />
+                    <p className="text-sm text-gray-500">All caught up!</p>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {pendingExpenses.length > 0 && (
+                      <div className="flex items-center justify-between p-2 bg-gray-50 rounded">
+                        <span className="text-sm">Expenses</span>
+                        <Badge variant="secondary">{pendingExpenses.length}</Badge>
+                      </div>
+                    )}
+                    {pendingRevenues.length > 0 && (
+                      <div className="flex items-center justify-between p-2 bg-gray-50 rounded">
+                        <span className="text-sm">Revenues</span>
+                        <Badge variant="secondary">{pendingRevenues.length}</Badge>
+                      </div>
+                    )}
+                    {pendingLeaveRequests.length > 0 && (
+                      <div className="flex items-center justify-between p-2 bg-gray-50 rounded">
+                        <span className="text-sm">Leave Requests</span>
+                        <Badge variant="secondary">{pendingLeaveRequests.length}</Badge>
+                      </div>
                     )}
                   </div>
                 )}
-          </CardContent>
-        </Card>
+              </CardContent>
+            </Card>
 
-            {/* Pending Leave Requests */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Calendar className="h-5 w-5 text-purple-500" />
+            {/* Pending Leave Requests - Left as is for now */}
+            <Card className="snap-start min-w-[75vw] sm:min-w-0 h-full">
+              <CardHeader className="p-4 sm:p-6">
+                <CardTitle className="flex items-center gap-2 text-lg sm:text-xl">
+                  <CalendarClock className="h-5 w-5 text-purple-500" />
                   Pending Leave Requests
                 </CardTitle>
                 <CardDescription>
                   Staff leave requests awaiting approval
                 </CardDescription>
               </CardHeader>
-              <CardContent>
+              <CardContent className="p-4 pt-0 sm:p-6 sm:pt-0">
                 {pendingLeaveRequests.length === 0 ? (
                   <div className="text-center py-6">
                     <Calendar className="h-8 w-8 text-gray-400 mx-auto mb-2" />
                     <p className="text-sm text-gray-500 mb-3">No pending leave requests</p>
-                    <Button size="sm" variant="outline" onClick={() => navigate('/staff')}>
+                    <Button variant="outline" onClick={() => navigate('/staff')} className="h-11 px-4">
                       <Plus className="mr-2 h-4 w-4" />
                       View Staff
                     </Button>
@@ -1145,7 +305,7 @@ export default function DashboardPage() {
                       </div>
                     ))}
                     {pendingLeaveRequests.length > 5 && (
-                      <Button size="sm" variant="outline" className="w-full" onClick={() => navigate('/staff')}>
+                      <Button variant="outline" className="w-full h-11" onClick={() => navigate('/staff')}>
                         View All ({pendingLeaveRequests.length})
                       </Button>
                     )}
@@ -1155,69 +315,26 @@ export default function DashboardPage() {
             </Card>
           </div>
 
-          {/* Urgent Tasks for Admin */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <AlertCircle className="h-5 w-5 text-red-500" />
-                  Urgent Tasks
-                </CardTitle>
-                <CardDescription>
-                  High priority tasks requiring immediate attention
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                {urgentTasks.length === 0 ? (
-                  <div className="text-center py-6">
-                    <CheckSquare className="h-8 w-8 text-gray-400 mx-auto mb-2" />
-                    <p className="text-sm text-gray-500 mb-3">No urgent tasks at the moment</p>
-                  <Button size="sm" variant="outline" onClick={() => navigate('/tasks')}>
-                      <Plus className="mr-2 h-4 w-4" />
-                      Create Task
-                    </Button>
-                  </div>
-                ) : (
-                  <div className="space-y-3">
-                  {urgentTasks.slice(0, 5).map((task: any) => (
-                      <div key={task.id} className="flex items-center justify-between p-3 bg-red-50 rounded-lg">
-                        <div className="flex-1">
-                          <p className="font-medium text-sm">{task.title}</p>
-                          <p className="text-xs text-gray-600">{task.propertyName}</p>
-                        </div>
-                        <Badge variant="destructive">High</Badge>
-                      </div>
-                    ))}
-                  {urgentTasks.length > 5 && (
-                    <Button size="sm" variant="outline" className="w-full" onClick={() => navigate('/tasks')}>
-                      View All ({urgentTasks.length})
-                    </Button>
-                  )}
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-
-          {/* Recent Managers */}
           <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Users className="h-5 w-5 text-blue-500" />
+            <CardHeader className="p-4 sm:p-6">
+              <CardTitle className="flex items-center gap-2 text-lg sm:text-xl">
+                <UserCog className="h-5 w-5 text-blue-500" />
                 Recent Managers
               </CardTitle>
               <CardDescription>
                 Recently created manager accounts
               </CardDescription>
             </CardHeader>
-            <CardContent>
+            <CardContent className="p-4 pt-0 sm:p-6 sm:pt-0">
               {managersCreated.length === 0 ? (
                 <div className="text-center py-6">
                   <Users className="h-8 w-8 text-gray-400 mx-auto mb-2" />
                   <p className="text-sm text-gray-500 mb-3">No managers created yet</p>
-                  <Button size="sm" variant="outline">
+                  <Button variant="outline" className="h-11 px-4">
                     <Plus className="mr-2 h-4 w-4" />
                     Create First Manager
                   </Button>
-          </div>
+                </div>
               ) : (
                 <div className="space-y-3">
                   {managersCreated.slice(0, 5).map((manager: any) => (
@@ -1236,122 +353,27 @@ export default function DashboardPage() {
               )}
             </CardContent>
           </Card>
-
-          {/* Getting Started Section for New Organizations */}
-          {(!properties?.properties.length || properties.properties.length === 0) && (
-            <Card className="border-blue-200 bg-blue-50">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2 text-blue-900">
-                  <Building2 className="h-5 w-5" />
-                  Welcome to Your Hospitality Platform!
-                </CardTitle>
-                <CardDescription className="text-blue-700">
-                  Get started by setting up your first property and inviting team members
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <div className="text-center p-4 bg-white rounded-lg border border-blue-200">
-                    <Building2 className="h-8 w-8 mx-auto mb-2 text-blue-600" />
-                    <h3 className="font-medium text-blue-900 mb-2">Add Your First Property</h3>
-                    <p className="text-sm text-blue-700 mb-3">
-                      Set up your hotel, hostel, resort, or apartment
-                    </p>
-                    <Button size="sm" className="bg-blue-600 hover:bg-blue-700">
-                      <Plus className="mr-2 h-4 w-4" />
-                      Add Property
-                    </Button>
-                  </div>
-                  
-                  <div className="text-center p-4 bg-white rounded-lg border border-blue-200">
-                    <Users className="h-8 w-8 mx-auto mb-2 text-blue-600" />
-                    <h3 className="font-medium text-blue-900 mb-2">Invite Managers</h3>
-                    <p className="text-sm text-blue-700 mb-3">
-                      Create manager accounts for your team
-                    </p>
-                    <Button size="sm" variant="outline" className="border-blue-600 text-blue-600 hover:bg-blue-50">
-                      <Plus className="mr-2 h-4 w-4" />
-                      Create Manager
-                    </Button>
-                  </div>
-                  
-                  <div className="text-center p-4 bg-white rounded-lg border border-blue-200">
-                    <CheckSquare className="h-8 w-8 mx-auto mb-2 text-blue-600" />
-                    <h3 className="font-medium text-blue-900 mb-2">Create Tasks</h3>
-                    <p className="text-sm text-blue-700 mb-3">
-                      Start managing operations and workflows
-                    </p>
-                    <Button size="sm" variant="outline" className="border-blue-600 text-blue-600 hover:bg-blue-50">
-                      <Plus className="mr-2 h-4 w-4" />
-                      Create Task
-                    </Button>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          )}
-
-          {/* Quick Stats for Admin */}
-          {analytics && (
-            <Card>
-              <CardHeader>
-                <CardTitle>Performance Overview</CardTitle>
-                <CardDescription>
-                  Key performance indicators for the last 30 days
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                  <div className="text-center">
-                    <div className="text-2xl font-bold" style={{ color: theme.primaryColor }}>
-                      {formatCurrency(analytics.metrics.adr)}
-                    </div>
-                    <p className="text-sm text-gray-600">Average Daily Rate</p>
-                  </div>
-                  <div className="text-center">
-                    <div className="text-2xl font-bold" style={{ color: theme.primaryColor }}>
-                      {formatCurrency(analytics.metrics.revpar)}
-                    </div>
-                    <p className="text-sm text-gray-600">RevPAR</p>
-                  </div>
-                  <div className="text-center">
-                    <div className="text-2xl font-bold" style={{ color: theme.primaryColor }}>
-                      {analytics.metrics.totalBookings}
-                    </div>
-                    <p className="text-sm text-gray-600">Total Bookings</p>
-                  </div>
-                  <div className="text-center">
-                    <div className="text-2xl font-bold" style={{ color: theme.primaryColor }}>
-                      {analytics.metrics.taskCompletionRate.toFixed(0)}%
-                    </div>
-                    <p className="text-sm text-gray-600">Task Completion</p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          )}
         </>
       ) : (
         <>
-          {/* Manager Dashboard Content */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {/* My Tasks */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <CheckSquare className="h-5 w-5 text-green-500" />
+          {/* Manager Dashboard Content - Simplification */}
+          <div className="flex overflow-x-auto snap-x snap-mandatory px-4 -mx-4 pb-4 no-scrollbar sm:grid lg:grid-cols-2 gap-6 sm:overflow-visible sm:px-0 sm:mx-0 sm:pb-0">
+            <Card className="snap-start min-w-[75vw] sm:min-w-0 h-full">
+              <CardHeader className="p-4 sm:p-6">
+                <CardTitle className="flex items-center gap-2 text-lg sm:text-xl">
+                  <ClipboardList className="h-5 w-5 text-green-500" />
                   My Tasks
                 </CardTitle>
                 <CardDescription>
                   Tasks assigned to you
                 </CardDescription>
               </CardHeader>
-              <CardContent>
+              <CardContent className="p-4 pt-0 sm:p-6 sm:pt-0">
                 {tasks?.tasks.length === 0 ? (
                   <div className="text-center py-6">
                     <CheckSquare className="h-8 w-8 text-gray-400 mx-auto mb-2" />
                     <p className="text-sm text-gray-500 mb-3">No tasks assigned yet</p>
-                    <Button size="sm" variant="outline">
+                    <Button variant="outline" className="h-11 px-4">
                       <Plus className="mr-2 h-4 w-4" />
                       Create Task
                     </Button>
@@ -1374,18 +396,18 @@ export default function DashboardPage() {
               </CardContent>
             </Card>
 
-            {/* Overdue Tasks */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Clock className="h-5 w-5 text-orange-500" />
+            <Card className="snap-start min-w-[75vw] sm:min-w-0 h-full">
+              <CardHeader className="p-4 sm:p-6">
+                <CardTitle className="flex items-center gap-2 text-lg sm:text-xl">
+                  <AlarmClock className="h-5 w-5 text-orange-500" />
                   Overdue Tasks
                 </CardTitle>
                 <CardDescription>
                   Tasks that have passed their due date
                 </CardDescription>
               </CardHeader>
-              <CardContent>
+              <CardContent className="p-4 pt-0 sm:p-6 sm:pt-0">
+                {/* Logic preserved from original */}
                 {overdueTasks.length === 0 ? (
                   <div className="text-center py-6">
                     <Clock className="h-8 w-8 text-gray-400 mx-auto mb-2" />
@@ -1414,381 +436,32 @@ export default function DashboardPage() {
               </CardContent>
             </Card>
           </div>
-
-          {/* Manager Quick Actions */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Quick Actions</CardTitle>
-              <CardDescription>
-                Common tasks and actions for managers
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                <div className="text-center p-4 border rounded-lg hover:bg-gray-50 cursor-pointer">
-                  <CheckSquare className="h-8 w-8 mx-auto mb-2 text-blue-500" />
-                  <p className="text-sm font-medium">View Tasks</p>
-                </div>
-                <div className="text-center p-4 border rounded-lg hover:bg-gray-50 cursor-pointer">
-                  <Building2 className="h-8 w-8 mx-auto mb-2 text-purple-500" />
-                  <p className="text-sm font-medium">Properties</p>
-                </div>
-                <div className="text-center p-4 border rounded-lg hover:bg-gray-50 cursor-pointer">
-                   <Receipt className="h-8 w-8 mx-auto mb-2 text-green-500" />
-                  <p className="text-sm font-medium">Finance</p>
-                </div>
-                <div className="text-center p-4 border rounded-lg hover:bg-gray-50 cursor-pointer">
-                  <TrendingUp className="h-8 w-8 mx-auto mb-2 text-orange-500" />
-                  <p className="text-sm font-medium">Analytics</p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
         </>
       )}
-      
-      {/* Quick Action Modals */}
-      
-                    {/* Pending Approvals Modal */}
-      {showPendingApprovalsModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-6 max-w-2xl w-full mx-4 max-h-[80vh] overflow-y-auto">
-            <div className="flex justify-between items-center mb-4">
-              <h3 className="text-lg font-semibold">Pending Approvals</h3>
-              <Button variant="outline" size="sm" onClick={() => setShowPendingApprovalsModal(false)}>
-                <X className="h-4 w-4" />
-              </Button>
-            </div>
-            
-            <div className="space-y-4">
-              {/* Pending Expenses */}
-              {pendingExpenses.length > 0 && (
-                <div>
-                  <h4 className="font-medium text-gray-900 mb-2">Pending Expenses</h4>
-                  <div className="space-y-2">
-                    {pendingExpenses.map((expense: any) => (
-                      <div key={expense.id} className="flex items-center justify-between p-3 bg-orange-50 rounded-lg">
-                        <div className="flex-1">
-                          <p className="font-medium text-sm">{expense.description || 'Expense'}</p>
-                          <p className="text-xs text-gray-600">{expense.propertyName}</p>
-                          <p className="text-xs text-orange-600">
-                            {formatCurrency(expense.amountCents / 100)} • {expense.category}
-                          </p>
-                        </div>
-                        <div className="flex gap-2">
-                          <Button
-                            size="sm"
-                            className="bg-green-600 hover:bg-green-700"
-                            onClick={() => approveExpenseMutation.mutate({ id: expense.id, approved: true })}
-                            disabled={approveExpenseMutation.isPending}
-                          >
-                            <Check className="h-3 w-3 mr-1" />
-                            Approve
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="destructive"
-                            onClick={() => approveExpenseMutation.mutate({ id: expense.id, approved: false })}
-                            disabled={approveExpenseMutation.isPending}
-                          >
-                            <X className="h-3 w-3 mr-1" />
-                            Reject
-                          </Button>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
 
-              {/* Pending Revenues */}
-              {pendingRevenues.length > 0 && (
-                <div>
-                  <h4 className="font-medium text-gray-900 mb-2">Pending Revenues</h4>
-                  <div className="space-y-2">
-                    {pendingRevenues.map((revenue: any) => (
-                      <div key={revenue.id} className="flex items-center justify-between p-3 bg-green-50 rounded-lg">
-                        <div className="flex-1">
-                          <p className="font-medium text-sm">{revenue.description || 'Revenue'}</p>
-                          <p className="text-xs text-gray-600">{revenue.propertyName}</p>
-                          <p className="text-xs text-green-600">
-                            ${(revenue.amountCents / 100).toFixed(2)} • {revenue.source}
-                          </p>
-                        </div>
-                        <div className="flex gap-2">
-                          <Button
-                            size="sm"
-                            className="bg-green-600 hover:bg-green-700"
-                            onClick={() => approveRevenueMutation.mutate({ id: revenue.id, approved: true })}
-                            disabled={approveRevenueMutation.isPending}
-                          >
-                            <Check className="h-3 w-3 mr-1" />
-                            Approve
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="destructive"
-                            onClick={() => approveRevenueMutation.mutate({ id: revenue.id, approved: false })}
-                            disabled={approveRevenueMutation.isPending}
-                          >
-                            <X className="h-3 w-3 mr-1" />
-                            Reject
-                          </Button>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* Pending Leave Requests */}
-              {pendingLeaveRequests.length > 0 && (
-                <div>
-                  <h4 className="font-medium text-gray-900 mb-2">Pending Leave Requests</h4>
-                  <div className="space-y-2">
-                    {pendingLeaveRequests.map((leave: any) => (
-                      <div key={leave.id} className="flex items-center justify-between p-3 bg-purple-50 rounded-lg">
-                        <div className="flex-1">
-                          <p className="font-medium text-sm">{leave.staffName}</p>
-                          <p className="text-xs text-gray-600">{leave.leaveType}</p>
-                          <p className="text-xs text-purple-600">
-                            {new Date(leave.startDate).toLocaleDateString()} - {new Date(leave.endDate).toLocaleDateString()}
-                          </p>
-                        </div>
-                        <div className="flex gap-2">
-                          <Button
-                            size="sm"
-                            className="bg-green-600 hover:bg-green-700"
-                            onClick={() => approveLeaveMutation.mutate({ id: leave.id, approved: true })}
-                            disabled={approveLeaveMutation.isPending}
-                          >
-                            <Check className="h-3 w-3 mr-1" />
-                            Approve
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="destructive"
-                            onClick={() => approveLeaveMutation.mutate({ id: leave.id, approved: false })}
-                            disabled={approveLeaveMutation.isPending}
-                          >
-                            <X className="h-3 w-3 mr-1" />
-                            Reject
-                          </Button>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {totalPendingApprovals === 0 && (
-                <div className="text-center py-8">
-                  <FileText className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-                  <p className="text-gray-500">No pending approvals</p>
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Urgent Tasks Modal */}
-      {showUrgentTasksModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-6 max-w-2xl w-full mx-4 max-h-[80vh] overflow-y-auto">
-            <div className="flex justify-between items-center mb-4">
-              <h3 className="text-lg font-semibold">Urgent Tasks</h3>
-              <Button variant="outline" size="sm" onClick={() => setShowUrgentTasksModal(false)}>
-                <X className="h-4 w-4" />
-              </Button>
-            </div>
-            
-            <div className="space-y-3">
-              {urgentTasks.length > 0 ? (
-                urgentTasks.map((task: any) => (
-                  <div key={task.id} className="flex items-center justify-between p-3 bg-red-50 rounded-lg">
-                    <div className="flex-1">
-                      <p className="font-medium text-sm">{task.title}</p>
-                      <p className="text-xs text-gray-600">{task.propertyName}</p>
-                      {task.dueAt && (
-                        <p className="text-xs text-red-600">
-                          Due: {new Date(task.dueAt).toLocaleDateString()}
-                        </p>
-                      )}
-                    </div>
-                    <div className="flex gap-2">
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => navigate(`/tasks`)}
-                      >
-                        <Eye className="h-3 w-3 mr-1" />
-                        View
-                      </Button>
-                    </div>
-                  </div>
-                ))
-              ) : (
-                <div className="text-center py-8">
-                  <AlertCircle className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-                  <p className="text-gray-500">No urgent tasks</p>
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Overdue Tasks Modal */}
-      {showOverdueTasksModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-6 max-w-2xl w-full mx-4 max-h-[80vh] overflow-y-auto">
-            <div className="flex justify-between items-center mb-4">
-              <h3 className="text-lg font-semibold">Overdue Tasks</h3>
-              <Button variant="outline" size="sm" onClick={() => setShowOverdueTasksModal(false)}>
-                <X className="h-4 w-4" />
-              </Button>
-            </div>
-            
-            <div className="space-y-3">
-              {overdueTasks.length > 0 ? (
-                overdueTasks.map((task: any) => (
-                  <div key={task.id} className="flex items-center justify-between p-3 bg-red-50 rounded-lg">
-                    <div className="flex-1">
-                      <p className="font-medium text-sm">{task.title}</p>
-                      <p className="text-xs text-gray-600">{task.propertyName}</p>
-                      {task.dueAt && (
-                        <p className="text-xs text-red-600">
-                          Due: {new Date(task.dueAt).toLocaleDateString()}
-                        </p>
-                      )}
-                    </div>
-                    <div className="flex gap-2">
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => navigate(`/tasks`)}
-                      >
-                        <Eye className="h-3 w-3 mr-1" />
-                        View
-                      </Button>
-                    </div>
-                  </div>
-                ))
-              ) : (
-                <div className="text-center py-8">
-                  <Clock className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-                  <p className="text-gray-500">No overdue tasks</p>
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Financial Pending Modal */}
-      {showFinancialPendingModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-6 max-w-2xl w-full mx-4 max-h-[80vh] overflow-y-auto">
-            <div className="flex justify-between items-center mb-4">
-              <h3 className="text-lg font-semibold">Financial Pending</h3>
-              <Button variant="outline" size="sm" onClick={() => setShowFinancialPendingModal(false)}>
-                <X className="h-4 w-4" />
-              </Button>
-            </div>
-            
-            <div className="space-y-4">
-              {/* Pending Expenses */}
-              {pendingExpenses.length > 0 && (
-                <div>
-                  <h4 className="font-medium text-gray-900 mb-2">Pending Expenses</h4>
-                  <div className="space-y-2">
-                    {pendingExpenses.map((expense: any) => (
-                      <div key={expense.id} className="flex items-center justify-between p-3 bg-orange-50 rounded-lg">
-                        <div className="flex-1">
-                          <p className="font-medium text-sm">{expense.description || 'Expense'}</p>
-                          <p className="text-xs text-gray-600">{expense.propertyName}</p>
-                          <p className="text-xs text-orange-600">
-                            {formatCurrency(expense.amountCents / 100)} • {expense.category}
-                          </p>
-                        </div>
-                        <div className="flex gap-2">
-                          <Button
-                            size="sm"
-                            className="bg-green-600 hover:bg-green-700"
-                            onClick={() => approveExpenseMutation.mutate({ id: expense.id, approved: true })}
-                            disabled={approveExpenseMutation.isPending}
-                          >
-                            <Check className="h-3 w-3 mr-1" />
-                            Approve
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="destructive"
-                            onClick={() => approveExpenseMutation.mutate({ id: expense.id, approved: false })}
-                            disabled={approveExpenseMutation.isPending}
-                          >
-                            <X className="h-3 w-3 mr-1" />
-                            Reject
-                          </Button>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* Pending Revenues */}
-              {pendingRevenues.length > 0 && (
-                <div>
-                  <h4 className="font-medium text-gray-900 mb-2">Pending Revenues</h4>
-                  <div className="space-y-2">
-                    {pendingRevenues.map((revenue: any) => (
-                      <div key={revenue.id} className="flex items-center justify-between p-3 bg-green-50 rounded-lg">
-                        <div className="flex-1">
-                          <p className="font-medium text-sm">{revenue.description || 'Revenue'}</p>
-                          <p className="text-xs text-gray-600">{revenue.propertyName}</p>
-                          <p className="text-xs text-green-600">
-                            {formatCurrency(revenue.amountCents / 100)} • {revenue.source}
-                          </p>
-                        </div>
-                        <div className="flex gap-2">
-                          <Button
-                            size="sm"
-                            className="bg-green-600 hover:bg-green-700"
-                            onClick={() => approveRevenueMutation.mutate({ id: revenue.id, approved: true })}
-                            disabled={approveRevenueMutation.isPending}
-                          >
-                            <Check className="h-3 w-3 mr-1" />
-                            Approve
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="destructive"
-                            onClick={() => approveRevenueMutation.mutate({ id: revenue.id, approved: false })}
-                            disabled={approveRevenueMutation.isPending}
-                          >
-                            <X className="h-3 w-3 mr-1" />
-                            Reject
-                          </Button>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {pendingExpenses.length === 0 && pendingRevenues.length === 0 && (
-                <div className="text-center py-8">
-                  <CreditCard className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-                  <p className="text-gray-500">No pending financial transactions</p>
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
-
+      {/* Modals Component */}
+      <DashboardModals
+        state={{
+          showPendingApprovals: showPendingApprovalsModal,
+          showUrgentTasks: showUrgentTasksModal,
+          showOverdueTasks: showOverdueTasksModal,
+          showFinancialPending: showFinancialPendingModal
+        }}
+        actions={{
+          setShowPendingApprovals: setShowPendingApprovalsModal,
+          setShowUrgentTasks: setShowUrgentTasksModal,
+          setShowOverdueTasks: setShowOverdueTasksModal,
+          setShowFinancialPending: setShowFinancialPendingModal
+        }}
+        data={{
+          pendingExpenses,
+          pendingRevenues,
+          pendingLeaveRequests,
+          urgentTasks,
+          overdueTasks,
+          totalPendingApprovals
+        }}
+      />
     </div>
   );
 }

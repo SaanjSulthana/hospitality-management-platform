@@ -1,3 +1,4 @@
+@import url('https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;500;600;700&display=swap');
 @import "tailwindcss";
 
 @import "tw-animate-css";
@@ -8,12 +9,13 @@
   margin-inline: auto;
   padding-inline: 1rem;
 
-  @media (width >= theme(--breakpoint-sm)) {
+  @media (width >=theme(--breakpoint-sm)) {
     padding-inline: 2rem;
   }
 }
 
 :root {
+  /* scrollbar-gutter: stable; removed to prevent layout shift with Radix Dialog */
   --radius: 0.625rem;
   --background: oklch(1 0 0);
   --foreground: oklch(0.145 0 0);
@@ -130,38 +132,86 @@
   * {
     @apply border-border outline-ring/50;
   }
+
   body {
-    @apply bg-background text-foreground;
+    @apply bg-background text-foreground font-sans;
+    font-family: 'Barlow Condensed', system-ui, sans-serif;
+    overflow-x: hidden;
+  }
+}
+
+@layer utilities {
+  .glass {
+    @apply bg-white/70 dark:bg-black/70 backdrop-blur-md border border-white/20 dark:border-white/10 shadow-sm;
+  }
+
+  .glass-card {
+    @apply bg-white/70 dark:bg-black/70 backdrop-blur-md border border-white/20 dark:border-white/10 shadow-sm rounded-xl;
+  }
+
+  .glass-panel {
+    @apply bg-white/50 dark:bg-black/50 backdrop-blur-lg border border-white/10 dark:border-white/5;
+  }
+
+  .shadow-soft {
+    box-shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.05);
+  }
+
+  .shadow-card {
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.03);
   }
 }
 
 @layer components {
+
   /* Theme-aware tabs styles */
   .theme-tabs-trigger[data-state="active"] {
     color: var(--theme-primary, #3b82f6) !important;
     border-bottom-color: var(--theme-primary, #3b82f6) !important;
     background-color: var(--theme-primary-10, rgba(59, 130, 246, 0.1)) !important;
   }
-  
+
   .theme-tabs-trigger[data-state="active"]:focus-visible {
     --tw-ring-color: var(--theme-primary, #3b82f6) !important;
   }
-  
+
   .theme-tabs-trigger[data-state="active"]:hover {
     background-color: var(--theme-primary-20, rgba(59, 130, 246, 0.2)) !important;
   }
 }
 
 /* Safe‑area helpers for notched devices */
-.pt-safe { padding-top: var(--safe-top); }
-.pb-safe { padding-bottom: var(--safe-bottom); }
+.pt-safe {
+  padding-top: var(--safe-top);
+}
+
+.pb-safe {
+  padding-bottom: var(--safe-bottom);
+}
 
 /* Dynamic viewport height to avoid iOS URL bar jump */
-.min-h-dvh { min-height: 100vh; }
+.min-h-dvh {
+  min-height: 100vh;
+}
+
 @supports (height: 100dvh) {
-  .min-h-dvh { min-height: 100dvh; }
+  .min-h-dvh {
+    min-height: 100dvh;
+  }
 }
 
 /* Hide scrollbars when needed (e.g., horizontal tab scrollers) */
-.no-scrollbar::-webkit-scrollbar { display: none; }
-.no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+/* Hide native calendar picker indicator to prevent double icons */
+input[type="date"]::-webkit-calendar-picker-indicator {
+  display: none;
+  -webkit-appearance: none;
+}

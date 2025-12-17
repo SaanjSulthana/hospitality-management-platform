@@ -1,4 +1,58 @@
 // Environment utilities for browser compatibility
+// Enhanced with Capacitor platform detection
+
+import { Capacitor } from '@capacitor/core';
+
+/**
+ * Check if running inside Capacitor native app
+ */
+export function isCapacitor(): boolean {
+  try {
+    return Capacitor.isNativePlatform();
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Get current platform
+ */
+export function getPlatform(): 'web' | 'android' | 'ios' {
+  try {
+    if (!isCapacitor()) return 'web';
+    const platform = Capacitor.getPlatform();
+    return (platform === 'android' || platform === 'ios') ? platform : 'web';
+  } catch {
+    return 'web';
+  }
+}
+
+/**
+ * Check if running on Android
+ */
+export function isAndroid(): boolean {
+  return getPlatform() === 'android';
+}
+
+/**
+ * Check if running on iOS
+ */
+export function isIOS(): boolean {
+  return getPlatform() === 'ios';
+}
+
+/**
+ * Check if running on mobile (native or mobile browser)
+ */
+export function isMobile(): boolean {
+  if (isCapacitor()) return true;
+  if (typeof window !== 'undefined') {
+    return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(
+      navigator.userAgent
+    );
+  }
+  return false;
+}
 
 /**
  * Get the current environment mode
@@ -80,6 +134,7 @@ export const API_VERSION = '/v1';
 /**
  * Get API URL from environment or use default
  * Returns BASE URL without version prefix (version added per request)
+ * Enhanced with Capacitor support
  */
 export function getApiUrl(): string {
   // Check for explicit environment variables first
@@ -88,6 +143,12 @@ export function getApiUrl(): string {
   
   if (viteApiUrl) return viteApiUrl;
   if (reactApiUrl) return reactApiUrl;
+  
+  // For Capacitor native apps, always use production API
+  // Native apps can't access localhost on the device
+  if (isCapacitor()) {
+    return 'https://api.curat.ai';
+  }
   
   // Auto-detect based on current hostname for Encore Cloud
   if (typeof window !== 'undefined') {

@@ -10,21 +10,21 @@ import { Badge } from '../components/ui/badge';
 import { Alert, AlertDescription } from '../components/ui/alert';
 import { usePageTitle } from '../contexts/PageTitleContext';
 import { useToast } from '@/components/ui/use-toast';
-import { 
-  User, 
-  Mail, 
-  Phone, 
-  MapPin, 
-  CreditCard, 
-  Globe, 
-  Calendar, 
-  Home, 
-  Users, 
-  CheckCircle, 
-  AlertCircle, 
-  RefreshCw, 
-  Eye, 
-  Edit, 
+import {
+  User,
+  Mail,
+  Phone,
+  MapPin,
+  CreditCard,
+  Globe,
+  Calendar,
+  Home,
+  Users,
+  CheckCircle,
+  AlertCircle,
+  RefreshCw,
+  Eye,
+  Edit,
   MoreVertical,
   HelpCircle,
   FileText,
@@ -115,7 +115,7 @@ export default function GuestCheckInPage() {
   const [filterGuestName, setFilterGuestName] = useState<string>('');
   const [filterCheckInDate, setFilterCheckInDate] = useState<string>('');
   const [showAddGuestModal, setShowAddGuestModal] = useState(false);
-  
+
   // Unified popup for validation errors
   const showValidationToast = useCallback((message: string) => {
     toast({
@@ -125,12 +125,12 @@ export default function GuestCheckInPage() {
       duration: 4000,
     });
   }, [toast]);
-  
+
   // Additional state for Indian form (moved to top level)
   const [activeTab, setActiveTab] = useState<'personal' | 'id_details' | 'address'>('personal');
   const [aadharScanned, setAadharScanned] = useState(false);
   const [anyIdScanned, setAnyIdScanned] = useState(false); // Track if any ID was scanned
-  
+
   // Tab state for form navigation
   const [indianActiveTab, setIndianActiveTab] = useState<'personal' | 'id-documents' | 'booking'>('personal');
   const [foreignActiveTab, setForeignActiveTab] = useState<'personal' | 'travel-documents' | 'form-c' | 'booking'>('personal');
@@ -206,32 +206,32 @@ export default function GuestCheckInPage() {
       'Finland': '+358',
       'FIN': '+358',
     };
-    
+
     const upperCountry = country.toUpperCase();
     return countryCodeMap[upperCountry] || countryCodeMap[country] || '+1';
   };
-  
+
   // Document upload state
   const [uploadedDocuments, setUploadedDocuments] = useState<DocumentUploadResult[]>([]);
-  
+
   // Track which specific upload slots have documents (MANDATORY enforcement)
   const [indianPrimaryDocUploaded, setIndianPrimaryDocUploaded] = useState(false);
   const [foreignPassportUploaded, setForeignPassportUploaded] = useState(false);
   const [foreignVisaUploaded, setForeignVisaUploaded] = useState(false);
-  
+
   // Version counter to force remount of DocumentUploadZone components after check-in
   // Incrementing this resets all internal state (uploadedDoc, progress, errors, etc.)
   const [uploadZoneResetKey, setUploadZoneResetKey] = useState(0);
-  
+
   const [showDocumentViewer, setShowDocumentViewer] = useState(false);
   const [selectedGuestForDocs, setSelectedGuestForDocs] = useState<GuestCheckIn | null>(null);
   const [documentViewerDocs, setDocumentViewerDocs] = useState<any[]>([]);
   const [openMenuId, setOpenMenuId] = useState<number | null>(null);
-  
+
   // Guest Details Modal state
   const [showGuestDetailsModal, setShowGuestDetailsModal] = useState(false);
   const [selectedGuestForDetails, setSelectedGuestForDetails] = useState<GuestCheckIn | null>(null);
-  
+
   // Helpers for Audit Log date normalization (IST, end-of-day inclusive)
   const normalizeUiDateToIso = useCallback((value?: string, endOfDay: boolean = false): string | undefined => {
     if (!value) return undefined;
@@ -271,38 +271,38 @@ export default function GuestCheckInPage() {
     }
     return normalized;
   }, [normalizeUiDateToIso]);
-  
+
   // Audit logs state
   const [auditFiltersUi, setAuditFiltersUi] = useState({});
   const auditFiltersApi = React.useMemo(() => normalizeAuditFiltersForApi(auditFiltersUi), [auditFiltersUi, normalizeAuditFiltersForApi]);
   const { logs: auditLogs, isLoading: auditLoading, error: auditError, pagination: auditPagination, fetchLogs, exportToCsv } = useAuditLogs(auditFiltersApi, false);
-  
+
   // 🔥 DEBOUNCED filter changes (prevents API spam on typing)
   const debouncedFetchLogs = useDebouncedCallback((filters: any) => {
     console.log('📝 Applying debounced filters:', filters);
     fetchLogs(filters, { silent: true, replace: true });
   }, 500); // Wait 500ms after user stops typing
-  
+
   // Audit Detail Modal state
   const [showAuditDetailModal, setShowAuditDetailModal] = useState(false);
   const [selectedAuditLog, setSelectedAuditLog] = useState<any>(null);
-  
+
   // 🚀 OPTIMIZED: Event-driven audit log updates with ZERO wasteful polling!
   const isAuditTabActive = desktopTab === 'audit-logs';
   const hasInitialFetchedAuditRef = useRef(false);
   const shouldRefetchOnActivateRef = useRef(false);
   const auditFiltersRef = useRef(auditFiltersApi);
   const fetchLogsRef = useRef(fetchLogs);
-  
+
   // Keep refs up to date
   useEffect(() => {
     auditFiltersRef.current = auditFiltersApi;
   }, [auditFiltersApi]);
-  
+
   useEffect(() => {
     fetchLogsRef.current = fetchLogs;
   }, [fetchLogs]);
-  
+
   // Fetch on tab activation + silent refresh when returning
   useEffect(() => {
     if (isAuditTabActive) {
@@ -320,17 +320,17 @@ export default function GuestCheckInPage() {
       shouldRefetchOnActivateRef.current = true;
     }
   }, [isAuditTabActive]);
-  
+
   // 🔥 TRULY stable callback for real-time updates (ZERO dependencies!)
   const handleAuditUpdate = useCallback(() => {
     console.log('🔔 Real audit event received, refreshing with filters:', auditFiltersRef.current);
     fetchLogsRef.current(auditFiltersRef.current, { silent: true, replace: true });
   }, []); // NO dependencies = NEVER recreated!
-  
+
   // Audit realtime handled by guest-stream-events via RealtimeProvider.
   // Legacy audit long-poll disabled to avoid extra network load.
   // useAuditLogsRealtimeV2(isAuditTabActive, handleAuditUpdate);
-  
+
   // Document management helpers
   const addUploadedDocument = useCallback((doc: DocumentUploadResult) => {
     setUploadedDocuments(prev => {
@@ -344,15 +344,15 @@ export default function GuestCheckInPage() {
     if (!doc) return;
     setUploadedDocuments(prev => prev.filter(existing => existing.fileData !== doc.fileData));
   }, []);
-  
+
   // Property-based autofill helper for Form C Indian address fields
   const autofillIndianAddressFromProperty = useCallback((propertyId: string) => {
     const selectedProperty = properties.find(p => p.id.toString() === propertyId);
-    
+
     console.log('=== AUTOFILL INDIAN ADDRESS ===');
     console.log('Property ID:', propertyId);
     console.log('Selected property:', selectedProperty);
-    
+
     if (selectedProperty) {
       // Extract address from addressJson
       const addressJson = (selectedProperty as any).addressJson || {};
@@ -363,10 +363,10 @@ export default function GuestCheckInPage() {
         addressJson.country,
         addressJson.zipCode
       ].filter(Boolean).join(', ');
-      
+
       console.log('Address JSON:', addressJson);
       console.log('Full address:', fullAddress);
-      
+
       setForeignForm(prev => ({
         ...prev,
         propertyId: propertyId,
@@ -379,15 +379,15 @@ export default function GuestCheckInPage() {
       }));
     }
   }, [properties]);
-  
+
   // Form validation functions
   const isIndianPersonalInfoValid = () => {
-    return indianForm.fullName.trim() !== '' && 
-           indianForm.email.trim() !== '' && 
-           indianForm.phone.trim() !== '' && 
-           indianForm.address.trim() !== '';
+    return indianForm.fullName.trim() !== '' &&
+      indianForm.email.trim() !== '' &&
+      indianForm.phone.trim() !== '' &&
+      indianForm.address.trim() !== '';
   };
-  
+
   const isIndianIdDocumentsValid = () => {
     // MUST have uploaded at least one Indian ID document
     // AND have at least one ID number filled in form
@@ -398,10 +398,10 @@ export default function GuestCheckInPage() {
       indianForm.electionCardNumber.trim() !== ''
     );
   };
-  
+
   const isIndianBookingValid = () => {
-    const isValid = indianForm.propertyId !== '' && 
-                   indianForm.numberOfGuests > 0;
+    const isValid = indianForm.propertyId !== '' &&
+      indianForm.numberOfGuests > 0;
     console.log('Indian booking validation:', {
       propertyId: indianForm.propertyId,
       numberOfGuests: indianForm.numberOfGuests,
@@ -410,32 +410,32 @@ export default function GuestCheckInPage() {
     });
     return isValid;
   };
-  
+
   const isForeignPersonalInfoValid = () => {
-    return foreignForm.fullName.trim() !== '' && 
-           foreignForm.email.trim() !== '' && 
-           foreignForm.phone.trim() !== '' && 
-           foreignForm.address.trim() !== '';
+    return foreignForm.fullName.trim() !== '' &&
+      foreignForm.email.trim() !== '' &&
+      foreignForm.phone.trim() !== '' &&
+      foreignForm.address.trim() !== '';
   };
-  
+
   const isForeignTravelDocumentsValid = () => {
     // Check passport number is filled
     const hasPassportNumber = foreignForm.passportNumber.trim() !== '';
-    
+
     // Check if country is filled in any of the fields (passportCountry, country, or passportNationality as fallback)
-    const hasCountry = 
+    const hasCountry =
       (foreignForm.passportCountry?.trim() || '').length > 0 ||
       (foreignForm.country?.trim() || '').length > 0 ||
       (foreignForm.passportNationality?.trim() || '').length > 0;
-    
+
     // MUST have uploaded BOTH passport AND visa documents
-    return hasPassportNumber && hasCountry && 
-           foreignPassportUploaded && foreignVisaUploaded;
+    return hasPassportNumber && hasCountry &&
+      foreignPassportUploaded && foreignVisaUploaded;
   };
-  
+
   const isForeignBookingValid = () => {
-    const isValid = foreignForm.propertyId !== '' && 
-                   foreignForm.numberOfGuests > 0;
+    const isValid = foreignForm.propertyId !== '' &&
+      foreignForm.numberOfGuests > 0;
     console.log('Foreign booking validation:', {
       propertyId: foreignForm.propertyId,
       numberOfGuests: foreignForm.numberOfGuests,
@@ -541,18 +541,18 @@ export default function GuestCheckInPage() {
   // Document upload handlers
   const handleIndianDocumentUpload = (result: DocumentUploadResult) => {
     addUploadedDocument(result);
-    
+
     // Auto-fill form from extracted data (supports all Indian ID types)
     if (result.extractedData) {
       const extracted = result.extractedData;
-      
+
       setIndianForm(prev => {
         const newForm = { ...prev };
-        
+
         // Always fill personal information if available
         if (extracted.fullName?.value) {
           newForm.fullName = extracted.fullName.value;
-          
+
           // Generate email from name
           const cleanName = extracted.fullName.value.toLowerCase()
             .replace(/[^a-z\s]/g, '') // Remove special characters
@@ -560,7 +560,7 @@ export default function GuestCheckInPage() {
             .substring(0, 10); // Limit length
           newForm.email = `${cleanName}@curat.ai`;
         }
-        
+
         // Fill address - prioritize extracted address, fallback to place of birth + country
         if (extracted.address?.value) {
           newForm.address = extracted.address.value;
@@ -569,14 +569,14 @@ export default function GuestCheckInPage() {
         } else if (extracted.placeOfBirth?.value) {
           newForm.address = extracted.placeOfBirth.value;
         }
-        
+
         // Generate phone number with India country code
         newForm.phone = "+910000000000";
-        
+
         // Determine which ID number to use based on detected document type
         // Only fill the field that matches the detected document type to prevent cross-contamination
         const docType = (result.detectedDocumentType || result.documentType || '').toLowerCase();
-        
+
         if (docType.includes('aadhaar') && extracted.aadharNumber?.value) {
           newForm.aadharNumber = extracted.aadharNumber.value.replace(/\s/g, '');
         } else if (docType.includes('pan') && extracted.panNumber?.value) {
@@ -600,30 +600,30 @@ export default function GuestCheckInPage() {
             newForm.electionCardNumber = extracted.epicNumber.value;
           }
         }
-        
+
         return newForm;
       });
-      
+
       // Mark appropriate ID as scanned based on what was detected
       const detectedType = result.detectedDocumentType || result.documentType || 'unknown';
       if (detectedType.includes('aadhaar') || extracted.aadharNumber?.value) {
         setAadharScanned(true);
       }
-      
+
       // Mark that any ID was scanned (for validation)
       setAnyIdScanned(true);
-      
+
       // Show success message with detected document type
       const fieldCount = Object.keys(extracted).length;
       const typeConfidence = result.documentTypeConfidence || 100;
-      
+
       let successMessage = `Document processed successfully! Detected: ${detectedType.replace(/_/g, ' ').toUpperCase()}. Extracted ${fieldCount} fields with ${result.overallConfidence}% confidence.`;
-      
+
       // Add warning if detection confidence is low
       if (typeConfidence < 85) {
         successMessage += ` ⚠️ Document type detection confidence is ${typeConfidence}% - please verify the detected type is correct.`;
       }
-      
+
       setSuccess(successMessage);
       setTimeout(() => setSuccess(''), 7000);
     }
@@ -631,26 +631,26 @@ export default function GuestCheckInPage() {
 
   const handleForeignDocumentUpload = (result: DocumentUploadResult) => {
     addUploadedDocument(result);
-    
+
     // Auto-fill form from extracted data based on document type
     if (result.extractedData) {
       const extracted = result.extractedData;
       const documentType = result.documentType || result.detectedDocumentType || 'unknown';
-      
+
       setForeignForm(prev => {
         const newForm = { ...prev };
-        
+
         // Always fill personal information if available
         if (extracted.fullName?.value) {
           newForm.fullName = extracted.fullName.value;
-          
+
           // Generate email from name
           const cleanName = extracted.fullName.value.toLowerCase()
             .replace(/[^a-z\s]/g, '') // Remove special characters
             .replace(/\s+/g, '') // Remove spaces
             .substring(0, 10); // Limit length
           newForm.email = `${cleanName}@curat.ai`;
-          
+
           // **NEW: Extract surname from fullName**
           // Passport format: "SURNAME, Given Names" or "Given Names SURNAME"
           const nameParts = extracted.fullName.value.split(',');
@@ -665,7 +665,7 @@ export default function GuestCheckInPage() {
             }
           }
         }
-        
+
         // Fill address - prioritize extracted address, fallback to place of birth + country
         if (extracted.address?.value) {
           newForm.address = extracted.address.value;
@@ -674,16 +674,16 @@ export default function GuestCheckInPage() {
         } else if (extracted.placeOfBirth?.value) {
           newForm.address = extracted.placeOfBirth.value;
         }
-        
+
         // Generate phone number with country code
         if (extracted.country?.value) {
           const countryCode = getCountryCode(extracted.country.value);
           newForm.phone = `${countryCode}0000000000`;
         }
-        
+
         // Fill passport fields only if this is a passport document
         if (documentType === 'passport' || documentType.includes('passport')) {
-          
+
           if (extracted.passportNumber?.value) {
             newForm.passportNumber = extracted.passportNumber.value;
           }
@@ -704,7 +704,7 @@ export default function GuestCheckInPage() {
           }
           if (extracted.placeOfBirth?.value) {
             newForm.passportPlaceOfBirth = extracted.placeOfBirth.value;
-            
+
             // **NEW: Auto-fill permanentCity from placeOfBirth**
             // Extract city name (before comma if format is "City, Country")
             const cityMatch = extracted.placeOfBirth.value.split(',')[0].trim();
@@ -715,7 +715,7 @@ export default function GuestCheckInPage() {
           if (extracted.issuingAuthority?.value) {
             newForm.passportIssuingAuthority = extracted.issuingAuthority.value;
           }
-          
+
           // **NEW: Auto-fill sex from passport**
           if (extracted.sex?.value) {
             const sexValue = extracted.sex.value.toUpperCase();
@@ -725,28 +725,28 @@ export default function GuestCheckInPage() {
               newForm.sex = 'Female';
             }
           }
-          
+
           // **NEW: Auto-fill arrivedFrom from passport nationality/country**
           if (extracted.nationality?.value || extracted.country?.value) {
             const countryName = extracted.nationality?.value || extracted.country?.value || '';
             newForm.arrivedFrom = countryName;
           }
-          
+
           // **NEW: Auto-fill permanent contact numbers from phone**
           if (newForm.phone) {
             newForm.contactNoPermanent = newForm.phone;
             newForm.mobileNoPermanent = newForm.phone;
           }
-          
+
           // Legacy field for backward compatibility
           if (extracted.country?.value || extracted.nationality?.value) {
             newForm.country = extracted.country?.value || extracted.nationality?.value || prev.country;
           }
         }
-        
+
         // Fill visa fields only if this is a visa document
         if (documentType === 'visa_front' || documentType === 'visa_back' || documentType.includes('visa')) {
-          
+
           if (extracted.visaType?.value) {
             newForm.visaType = extracted.visaType.value;
           }
@@ -762,7 +762,7 @@ export default function GuestCheckInPage() {
           if (extracted.issueDate?.value || extracted.visaIssueDate?.value) {
             const visaIssueDate = extracted.issueDate?.value || extracted.visaIssueDate?.value;
             newForm.visaIssueDate = visaIssueDate;
-            
+
             // **NEW: Use visa issue date as smart default for dateOfArrivalInIndia**
             if (visaIssueDate) {
               newForm.dateOfArrivalInIndia = visaIssueDate;
@@ -776,19 +776,19 @@ export default function GuestCheckInPage() {
           }
           if (extracted.purposeOfVisit?.value) {
             newForm.visaPurposeOfVisit = extracted.purposeOfVisit.value;
-            
+
             // **NEW: Auto-fill Form C purposeOfVisit from visa**
             newForm.purposeOfVisit = extracted.purposeOfVisit.value;
           }
           if (extracted.durationOfStay?.value) {
             newForm.visaDurationOfStay = extracted.durationOfStay.value;
-            
+
             // **NEW: Parse duration and auto-fill intendedDuration**
             // Parse "90 days" → 90, "3 months" → 90, etc.
             const durationStr = extracted.durationOfStay.value.toLowerCase();
             const daysMatch = durationStr.match(/(\d+)\s*days?/);
             const monthsMatch = durationStr.match(/(\d+)\s*months?/);
-            
+
             if (daysMatch) {
               newForm.intendedDuration = parseInt(daysMatch[1]);
             } else if (monthsMatch) {
@@ -809,33 +809,33 @@ export default function GuestCheckInPage() {
           }
           if (extracted.remarks?.value) {
             newForm.visaRemarks = extracted.remarks.value;
-            
+
             // **NEW: Auto-fill Form C remarks from visa**
             newForm.remarks = extracted.remarks.value;
           }
         }
-        
+
         // **NEW: Auto-set dateOfArrivalAtAccommodation to today**
         const today = new Date().toISOString().split('T')[0];
         newForm.dateOfArrivalAtAccommodation = today;
-        
+
         // **NEW: Auto-set timeOfArrival to current time**
         const now = new Date();
         const currentTime = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
         newForm.timeOfArrival = currentTime;
-        
+
         return newForm;
       });
-      
+
       // Show success message with document-specific details
       const detectedType = result.detectedDocumentType || documentType || 'Unknown';
       const fieldCount = Object.keys(extracted).length;
-      const documentSpecificMessage = documentType === 'passport' || documentType.includes('passport') 
-        ? 'Passport fields auto-filled (including Form C details)' 
+      const documentSpecificMessage = documentType === 'passport' || documentType.includes('passport')
+        ? 'Passport fields auto-filled (including Form C details)'
         : documentType === 'visa_front' || documentType.includes('visa')
-        ? 'Visa fields auto-filled (including Form C details)'
-        : 'Document fields auto-filled';
-        
+          ? 'Visa fields auto-filled (including Form C details)'
+          : 'Document fields auto-filled';
+
       setSuccess(`Document processed successfully! Detected: ${detectedType}. Extracted ${fieldCount} fields with ${result.overallConfidence}% confidence. ${documentSpecificMessage}.`);
       setTimeout(() => setSuccess(''), 5000);
     }
@@ -886,11 +886,11 @@ export default function GuestCheckInPage() {
             'Content-Type': 'application/json',
           },
         });
-        
+
         if (!response.ok) {
           throw new Error('Failed to fetch properties');
         }
-        
+
         const data = await response.json();
         setProperties(data.properties || []);
       } catch (err) {
@@ -932,9 +932,9 @@ export default function GuestCheckInPage() {
       // Fetch ALL check-ins - no filter params sent to server
       // Filtering is done client-side for instant results
       const url = `${API_CONFIG.BASE_URL}/guest-checkin/list`;
-      
+
       const authToken = localStorage.getItem('accessToken');
-      
+
       console.log('API Base URL:', API_CONFIG.BASE_URL);
       console.log('Full URL:', url);
       console.log('Auth Token:', authToken ? `${authToken.substring(0, 20)}...` : 'NO TOKEN');
@@ -961,7 +961,7 @@ export default function GuestCheckInPage() {
       console.log('Response Data:', data);
       console.log('Check-ins Count:', data.checkins ? data.checkins.length : 0);
       console.log('Total:', data.total);
-      
+
       const fetchedCheckins = data.checkins || [];
       setAllCheckIns(fetchedCheckins);
       // Note: setCheckIns is handled by the client-side filtering useEffect
@@ -1071,7 +1071,7 @@ export default function GuestCheckInPage() {
 
     // Filter by property
     if (filterPropertyId && filterPropertyId !== 'all') {
-      filtered = filtered.filter((checkIn) => 
+      filtered = filtered.filter((checkIn) =>
         checkIn.propertyId.toString() === filterPropertyId
       );
     }
@@ -1088,7 +1088,7 @@ export default function GuestCheckInPage() {
   React.useEffect(() => {
     try {
       (window as any).__guestSelectedPropertyId = filterPropertyId || 'all';
-    } catch {}
+    } catch { }
   }, [filterPropertyId]);
 
   // Production-grade realtime integration (V3) - DISABLED for now (uses old V2)
@@ -1100,72 +1100,72 @@ export default function GuestCheckInPage() {
 
   // Multi-service provider integration: listen to guest-stream-events
   // Realtime: Guest events via shared hook
-  useRealtimeService('guest', async (events) => {
-      const desktopTab = (typeof window !== 'undefined' ? (window as any).__guestDesktopTab : null) || desktopTab;
-      if (!events?.length) {
-        return;
-      }
-      // Handle document events
-      const docEvents = events.filter((event: any) => event.entityType === 'guest_document');
-      if (docEvents.length && selectedGuestForDocs?.id) {
-        const hasDocEventForOpenGuest = docEvents.some(
-          (event: any) => event.entityId === selectedGuestForDocs.id
-        );
-        if (hasDocEventForOpenGuest) {
-          await refreshSelectedGuestDocuments(selectedGuestForDocs.id);
-        }
-      }
-      // Handle guest check-in events
-      const guestEvents = events.filter((event: any) => event.entityType === 'guest_checkin');
-      if (!guestEvents.length) {
-        return;
-      }
-      const deleteIds = guestEvents
-        .filter((event: any) => event.eventType === 'guest_deleted')
-        .map((event: any) => event.entityId);
-      if (deleteIds.length) {
-        setAllCheckIns((prev) => prev.filter((guest) => !deleteIds.includes(guest.id)));
-      }
-      const fetchIds = Array.from(
-        new Set(
-          guestEvents
-            .filter((event: any) => event.eventType !== 'guest_deleted')
-            .map((event: any) => event.entityId)
-        )
+  useRealtimeService('guest', async (events: any[]) => {
+    const effectiveDesktopTab = (typeof window !== 'undefined' ? (window as any).__guestDesktopTab : null) || desktopTab;
+    if (!events?.length) {
+      return;
+    }
+    // Handle document events
+    const docEvents = events.filter((event: any) => event.entityType === 'guest_document');
+    if (docEvents.length && selectedGuestForDocs?.id) {
+      const hasDocEventForOpenGuest = docEvents.some(
+        (event: any) => event.entityId === selectedGuestForDocs.id
       );
-      if (fetchIds.length) {
+      if (hasDocEventForOpenGuest) {
+        await refreshSelectedGuestDocuments(selectedGuestForDocs.id);
+      }
+    }
+    // Handle guest check-in events
+    const guestEvents = events.filter((event: any) => event.entityType === 'guest_checkin');
+    if (!guestEvents.length) {
+      return;
+    }
+    const deleteIds = guestEvents
+      .filter((event: any) => event.eventType === 'guest_deleted')
+      .map((event: any) => event.entityId);
+    if (deleteIds.length) {
+      setAllCheckIns((prev) => prev.filter((guest) => !deleteIds.includes(guest.id)));
+    }
+    const fetchIds = Array.from(
+      new Set(
+        guestEvents
+          .filter((event: any) => event.eventType !== 'guest_deleted')
+          .map((event: any) => event.entityId)
+      )
+    );
+    if (fetchIds.length) {
       const updatedGuests = (
         await Promise.all(fetchIds.map((guestId) => fetchGuestDetailsById(Number(guestId))))
       ).filter((guest): guest is GuestCheckIn => Boolean(guest));
       if (!updatedGuests.length) {
         fetchCheckIns();
-        } else {
-      setAllCheckIns((prev) => {
-        let next = [...prev];
-        updatedGuests.forEach((guest) => {
-          const existingIndex = next.findIndex((item) => item.id === guest.id);
-          if (existingIndex >= 0) {
-            next[existingIndex] = guest;
-          } else {
-            next = [guest, ...next];
-          }
+      } else {
+        setAllCheckIns((prev) => {
+          let next = [...prev];
+          updatedGuests.forEach((guest) => {
+            const existingIndex = next.findIndex((item) => item.id === guest.id);
+            if (existingIndex >= 0) {
+              next[existingIndex] = guest;
+            } else {
+              next = [guest, ...next];
+            }
+          });
+          return next;
         });
-        return next;
-      });
+      }
     }
-      }
-      // Debounced audit log refresh when audit tab is visible
-      if (desktopTab === 'audit-logs') {
-        const w: any = window as any;
-        clearTimeout(w.__guestAuditDebounce);
-        w.__guestAuditDebounce = setTimeout(() => {
-          fetchLogsRef.current(auditFiltersApi, { replace: true });
-        }, 1000);
-      }
+    // Debounced audit log refresh when audit tab is visible
+    if (effectiveDesktopTab === 'audit-logs') {
+      const w: any = window as any;
+      clearTimeout(w.__guestAuditDebounce);
+      w.__guestAuditDebounce = setTimeout(() => {
+        fetchLogsRef.current(auditFiltersApi, { replace: true });
+      }, 1000);
+    }
   }, getFlagBool('GUEST_REALTIME_V1', true));
 
   // Standardize property filter (no explicit property scoping here → null)
-  useEffect(() => { try { setRealtimePropertyFilter(null); } catch {} }, []);
+  useEffect(() => { try { setRealtimePropertyFilter(null); } catch { } }, []);
 
   useEffect(() => {
     if (viewMode === 'admin-dashboard' && !guestDetailsLoadedRef.current) {
@@ -1203,7 +1203,7 @@ export default function GuestCheckInPage() {
   // Handle Indian guest check-in
   const handleIndianCheckIn = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     // ENFORCE DOCUMENT UPLOAD REQUIREMENT
     if (!indianPrimaryDocUploaded) {
       setError('⚠️ Please upload at least one Indian ID document (Aadhaar/PAN/DL/Election Card) before completing check-in.');
@@ -1216,7 +1216,7 @@ export default function GuestCheckInPage() {
       });
       return;
     }
-    
+
     setIsLoading(true);
     setError(null);
     setSuccess(null);
@@ -1267,11 +1267,11 @@ export default function GuestCheckInPage() {
     }
 
     // Validate that at least ONE Indian ID is provided
-    const hasAnyId = requestData.aadharNumber || 
-                     requestData.panNumber || 
-                     requestData.drivingLicenseNumber || 
-                     requestData.electionCardNumber;
-    
+    const hasAnyId = requestData.aadharNumber ||
+      requestData.panNumber ||
+      requestData.drivingLicenseNumber ||
+      requestData.electionCardNumber;
+
     if (!hasAnyId) {
       setError('Please provide at least one Indian ID (Aadhaar, PAN, Driving License, or Election Card)');
       setIsLoading(false);
@@ -1325,12 +1325,12 @@ export default function GuestCheckInPage() {
       console.log('=== SUCCESS RESPONSE ===');
       console.log('Response Data:', data);
       const checkInId = data.id;
-      
+
       // Upload documents NOW with checkInId (client-side storage approach)
       if (uploadedDocuments.length > 0 && checkInId) {
         try {
           console.log('Uploading documents to cloud with checkInId:', { checkInId, documentCount: uploadedDocuments.length });
-          
+
           for (const doc of uploadedDocuments) {
             try {
               const uploadResponse = await fetch(`${API_CONFIG.BASE_URL}/guest-checkin/documents/upload`, {
@@ -1348,7 +1348,7 @@ export default function GuestCheckInPage() {
                   performExtraction: false, // Already extracted
                 }),
               });
-              
+
               if (uploadResponse.ok) {
                 console.log('Document uploaded successfully:', { documentType: doc.documentType });
               } else {
@@ -1359,17 +1359,17 @@ export default function GuestCheckInPage() {
               // Continue with other documents
             }
           }
-          
+
           console.log('All documents uploaded successfully');
         } catch (uploadError) {
           console.error('Error uploading documents:', uploadError);
           // Don't fail the check-in if document upload fails
         }
       }
-      
+
       const successMessage = data.message || 'Check-in successful! Welcome to our property.';
       setSuccess(successMessage);
-      
+
       // Show toast notification
       toast({
         title: "Check-in Successful! 🎉",
@@ -1377,16 +1377,16 @@ export default function GuestCheckInPage() {
         variant: 'success' as any,
         duration: 5000,
       });
-      
+
       // Refresh guest list if in admin dashboard view
       console.log('=== CHECK-IN SUCCESS DEBUG ===');
       console.log('Current viewMode:', viewMode);
       console.log('Should refresh guest list:', viewMode === 'admin-dashboard');
-      
+
       // Always refresh guest list after successful check-in
       console.log('Calling fetchCheckIns after successful check-in...');
       fetchCheckIns();
-      
+
       // Reset form and uploaded documents
       setIndianForm({
         propertyId: '',
@@ -1413,7 +1413,7 @@ export default function GuestCheckInPage() {
     } catch (err: any) {
       const errorMessage = err.message || 'Failed to complete check-in';
       setError(errorMessage);
-      
+
       // Show error toast notification
       toast({
         title: "Check-in Failed ❌",
@@ -1429,13 +1429,13 @@ export default function GuestCheckInPage() {
   // Handle foreign guest check-in
   const handleForeignCheckIn = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     // ENFORCE DOCUMENT UPLOAD REQUIREMENTS
     if (!foreignPassportUploaded || !foreignVisaUploaded) {
       const missingDocs = [];
       if (!foreignPassportUploaded) missingDocs.push('Passport');
       if (!foreignVisaUploaded) missingDocs.push('Visa');
-      
+
       setError(`⚠️ Please upload ${missingDocs.join(' and ')} document(s) before completing check-in.`);
       setIsLoading(false);
       toast({
@@ -1446,7 +1446,7 @@ export default function GuestCheckInPage() {
       });
       return;
     }
-    
+
     setIsLoading(true);
     setError(null);
     setSuccess(null);
@@ -1538,12 +1538,12 @@ export default function GuestCheckInPage() {
       console.log('=== SUCCESS RESPONSE ===');
       console.log('Response Data:', data);
       const checkInId = data.id;
-      
+
       // Upload documents NOW with checkInId (client-side storage approach)
       if (uploadedDocuments.length > 0 && checkInId) {
         try {
           console.log('Uploading documents to cloud with checkInId:', { checkInId, documentCount: uploadedDocuments.length });
-          
+
           for (const doc of uploadedDocuments) {
             try {
               const uploadResponse = await fetch(`${API_CONFIG.BASE_URL}/guest-checkin/documents/upload`, {
@@ -1561,7 +1561,7 @@ export default function GuestCheckInPage() {
                   performExtraction: false, // Already extracted
                 }),
               });
-              
+
               if (uploadResponse.ok) {
                 console.log('Document uploaded successfully:', { documentType: doc.documentType });
               } else {
@@ -1572,17 +1572,17 @@ export default function GuestCheckInPage() {
               // Continue with other documents
             }
           }
-          
+
           console.log('All documents uploaded successfully');
         } catch (uploadError) {
           console.error('Error uploading documents:', uploadError);
           // Don't fail the check-in if document upload fails
         }
       }
-      
+
       const successMessage = data.message || 'Check-in successful! Welcome to our property.';
       setSuccess(successMessage);
-      
+
       // Show toast notification
       toast({
         title: "Check-in Successful! 🎉",
@@ -1590,11 +1590,11 @@ export default function GuestCheckInPage() {
         variant: 'success' as any,
         duration: 5000,
       });
-      
+
       // Always refresh guest list after successful check-in
       console.log('Calling fetchCheckIns after successful foreign check-in...');
       fetchCheckIns();
-      
+
       // Reset form and uploaded documents
       setForeignForm({
         propertyId: '',
@@ -1667,7 +1667,7 @@ export default function GuestCheckInPage() {
     } catch (err: any) {
       const errorMessage = err.message || 'Failed to complete check-in';
       setError(errorMessage);
-      
+
       // Show error toast notification
       toast({
         title: "Check-in Failed ❌",
@@ -1683,12 +1683,12 @@ export default function GuestCheckInPage() {
   // Handle delete guest
   const handleDelete = async (checkInId: number, guestName: string) => {
     setOpenMenuId(null);
-    
+
     // Show confirmation dialog
     const confirmDelete = window.confirm(
       `⚠️ Delete Guest Entry?\n\nAre you sure you want to delete the check-in entry for "${guestName}"?\n\nThis action cannot be undone.`
     );
-    
+
     if (!confirmDelete) return;
 
     setIsLoading(true);
@@ -1712,18 +1712,18 @@ export default function GuestCheckInPage() {
         description: `The check-in entry for ${guestName} has been deleted.`,
         duration: 4000,
       });
-      
+
       setSuccess('Guest entry deleted successfully');
-      
+
       // Refresh the guest list
       fetchCheckIns();
-      
+
       // Clear success message after 3 seconds
       setTimeout(() => setSuccess(null), 3000);
     } catch (err: any) {
       const errorMessage = err.message || 'Failed to delete guest entry';
       setError(errorMessage);
-      
+
       // Show error toast
       toast({
         title: "Delete Failed ❌",
@@ -1776,7 +1776,7 @@ export default function GuestCheckInPage() {
 
   const handleCFormReady = async (checkIn: GuestCheckIn) => {
     setOpenMenuId(null);
-    
+
     try {
       // Show loading toast
       toast({
@@ -1801,7 +1801,7 @@ export default function GuestCheckInPage() {
 
       // Get JSON response with base64 PDF data
       const data = await response.json();
-      
+
       // Convert base64 to blob
       const binaryString = window.atob(data.pdfData);
       const bytes = new Uint8Array(binaryString.length);
@@ -1809,7 +1809,7 @@ export default function GuestCheckInPage() {
         bytes[i] = binaryString.charCodeAt(i);
       }
       const blob = new Blob([bytes], { type: 'application/pdf' });
-      
+
       // Use filename from API response
       const filename = data.filename || `Form_C_${checkIn.fullName.replace(/[^a-zA-Z0-9]/g, '_')}_${new Date().toISOString().split('T')[0]}.pdf`;
 
@@ -1820,7 +1820,7 @@ export default function GuestCheckInPage() {
       a.download = filename;
       document.body.appendChild(a);
       a.click();
-      
+
       // Cleanup
       window.URL.revokeObjectURL(url);
       document.body.removeChild(a);
@@ -1876,87 +1876,87 @@ export default function GuestCheckInPage() {
       <div className="min-h-[100vh] md:min-h-screen bg-gray-50 dark:bg-gray-900 flex flex-col pt-safe">
         {/* Unified UI - Reports page style with tabs */}
         <div className="w-full min-h-[100vh] md:min-h-screen bg-gray-50">
-          <div className="px-3 xs:px-4 sm:px-6 pt-3 sm:pt-6 pb-20 sm:pb-8">
+          <div className="px-3 xs:px-4 sm:px-6 pt-3 sm:pt-6 pb-20 sm:pb-8 lg:bg-[#F5F7FA]">
             <Tabs value={desktopTab} onValueChange={(v) => setDesktopTab(v as DesktopTab)}>
-            {/* Sticky header with mobile dropdown + desktop tabs */}
-            <div className="sticky top-20 z-30 bg-white dark:bg-gray-800 -mx-3 xs:-mx-4 sm:-mx-6 px-3 xs:px-4 sm:px-6 py-2 border-b border-gray-200 dark:border-gray-700">
-              {/* Mobile header */}
-              <div className="flex items-center justify-between sm:hidden">
-                <div className="flex items-center gap-2">
-                  <Home className="h-5 w-5 text-green-600" />
-                  <span className="text-sm font-medium truncate">
-                    {(() => {
-                      const pid = desktopTab === 'foreign-guest' ? foreignForm.propertyId : indianForm.propertyId;
-                      const p = properties.find(p => p.id.toString() === String(pid));
-                      return p ? p.name : 'Property';
-                    })()}
-                  </span>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setTopTabsOpen(v => !v)}
-                  className="flex items-center gap-2 px-3 h-10 rounded-md bg-gray-100 dark:bg-gray-700 text-sm"
-                  aria-expanded={topTabsOpen}
-                >
-                  <span className="truncate">
-                    {desktopTab === 'indian-guest' ? 'Indian Guest Check-in' : null}
-                    {desktopTab === 'foreign-guest' ? 'Foreign Guest Check-in' : null}
-                    {desktopTab === 'guest-details' ? 'Guest Details' : null}
-                    {desktopTab === 'audit-logs' ? 'Audit Logs' : null}
+              {/* Sticky header with mobile dropdown + desktop tabs */}
+              <div className="sticky top-20 z-30 bg-white lg:bg-[#F5F7FA] dark:bg-gray-800 -mx-3 xs:-mx-4 sm:-mx-6 px-3 xs:px-4 sm:px-6 py-2 border-b border-gray-200 dark:border-gray-700">
+                {/* Mobile header */}
+                <div className="flex items-center justify-between sm:hidden">
+                  <div className="flex items-center gap-2">
+                    <Home className="h-5 w-5 text-green-600" />
+                    <span className="text-sm font-medium truncate">
+                      {(() => {
+                        const pid = desktopTab === 'foreign-guest' ? foreignForm.propertyId : indianForm.propertyId;
+                        const p = properties.find(p => p.id.toString() === String(pid));
+                        return p ? p.name : 'Property';
+                      })()}
                     </span>
-                  <svg className={`h-4 w-4 transition-transform ${topTabsOpen ? 'rotate-180' : ''}`} viewBox="0 0 20 20" fill="currentColor"><path d="M5 7l5 5 5-5" /></svg>
-                </button>
-                <div className="flex items-center gap-2">
-                  {(() => { const q = allCheckIns.filter(c => c.status !== 'checked_in').length; return q > 0 ? (<span className="text-xs px-2 py-1 rounded-full bg-purple-100 text-purple-700">{`Queue · ${q}`}</span>) : null })()}
-                  <button type="button" onClick={() => {
-                    const targetId = desktopTab === 'foreign-guest' ? 'foreign-upload-section' : 'indian-upload-section';
-                    const el = document.getElementById(targetId);
-                    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                  }} className="h-9 w-9 flex items-center justify-center rounded-md bg-gray-100 dark:bg-gray-700" aria-label="Scan ID">
-                    <Camera className="h-5 w-5" />
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setTopTabsOpen(v => !v)}
+                    className="flex items-center gap-2 px-3 h-10 rounded-md bg-gray-100 dark:bg-gray-700 text-sm"
+                    aria-expanded={topTabsOpen}
+                  >
+                    <span className="truncate">
+                      {desktopTab === 'indian-guest' ? 'Indian Guest Check-in' : null}
+                      {desktopTab === 'foreign-guest' ? 'Foreign Guest Check-in' : null}
+                      {desktopTab === 'guest-details' ? 'Guest Details' : null}
+                      {desktopTab === 'audit-logs' ? 'Audit Logs' : null}
+                    </span>
+                    <svg className={`h-4 w-4 transition-transform ${topTabsOpen ? 'rotate-180' : ''}`} viewBox="0 0 20 20" fill="currentColor"><path d="M5 7l5 5 5-5" /></svg>
                   </button>
+                  <div className="flex items-center gap-2">
+                    {(() => { const q = allCheckIns.filter(c => c.status !== 'checked_in').length; return q > 0 ? (<span className="text-xs px-2 py-1 rounded-full bg-purple-100 text-purple-700">{`Queue · ${q}`}</span>) : null })()}
+                    <button type="button" onClick={() => {
+                      const targetId = desktopTab === 'foreign-guest' ? 'foreign-upload-section' : 'indian-upload-section';
+                      const el = document.getElementById(targetId);
+                      if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                    }} className="h-9 w-9 flex items-center justify-center rounded-md bg-gray-100 dark:bg-gray-700" aria-label="Scan ID">
+                      <Camera className="h-5 w-5" />
+                    </button>
                   </div>
                 </div>
-              {/* Mobile dropdown */}
-              <div className={`${topTabsOpen ? 'max-h-64 mt-2' : 'max-h-0'} sm:hidden overflow-hidden transition-[max-height] duration-200`}>
-                <div className="bg-white dark:bg-gray-800 rounded-md border border-gray-200 dark:border-gray-700 divide-y divide-gray-200/60 dark:divide-gray-700/60">
-                  <button className={`w-full h-12 flex items-center gap-2 px-3 text-left ${desktopTab==='indian-guest' ? 'bg-purple-600 text-white' : ''}`} onClick={() => { setDesktopTab('indian-guest'); setTopTabsOpen(false); }}>
-                    <User className="h-4 w-4" /> <span>Indian Guest Check-in</span>
-                  </button>
-                  <button className={`w-full h-12 flex items-center gap-2 px-3 text-left ${desktopTab==='foreign-guest' ? 'bg-purple-600 text-white' : ''}`} onClick={() => { setDesktopTab('foreign-guest'); setTopTabsOpen(false); }}>
-                    <Globe className="h-4 w-4" /> <span>  Foreign Guest Check-in</span>
-                  </button>
-                  <button className={`w-full h-12 flex items-center gap-2 px-3 text-left ${desktopTab==='guest-details' ? 'bg-purple-600 text-white' : ''}`} onClick={() => { setDesktopTab('guest-details'); setTopTabsOpen(false); }}>
-                    <Shield className="h-4 w-4" /> <span>  Guest Details</span>
-                  </button>
-                  <button className={`w-full h-12 flex items-center gap-2 px-3 text-left ${desktopTab==='audit-logs' ? 'bg-purple-600 text-white' : ''}`} onClick={() => { setDesktopTab('audit-logs'); setTopTabsOpen(false); }}>
-                    <FileText className="h-4 w-4" /> <span>  Audit Logs</span>
-                  </button>
+                {/* Mobile dropdown */}
+                <div className={`${topTabsOpen ? 'max-h-64 mt-2' : 'max-h-0'} sm:hidden overflow-hidden transition-[max-height] duration-200`}>
+                  <div className="bg-white dark:bg-gray-800 rounded-md border border-gray-200 dark:border-gray-700 divide-y divide-gray-200/60 dark:divide-gray-700/60">
+                    <button className={`w-full h-12 flex items-center gap-2 px-3 text-left ${desktopTab === 'indian-guest' ? 'bg-purple-600 text-white' : ''}`} onClick={() => { setDesktopTab('indian-guest'); setTopTabsOpen(false); }}>
+                      <User className="h-4 w-4" /> <span>Indian Guest Check-in</span>
+                    </button>
+                    <button className={`w-full h-12 flex items-center gap-2 px-3 text-left ${desktopTab === 'foreign-guest' ? 'bg-purple-600 text-white' : ''}`} onClick={() => { setDesktopTab('foreign-guest'); setTopTabsOpen(false); }}>
+                      <Globe className="h-4 w-4" /> <span>  Foreign Guest Check-in</span>
+                    </button>
+                    <button className={`w-full h-12 flex items-center gap-2 px-3 text-left ${desktopTab === 'guest-details' ? 'bg-purple-600 text-white' : ''}`} onClick={() => { setDesktopTab('guest-details'); setTopTabsOpen(false); }}>
+                      <Shield className="h-4 w-4" /> <span>  Guest Details</span>
+                    </button>
+                    <button className={`w-full h-12 flex items-center gap-2 px-3 text-left ${desktopTab === 'audit-logs' ? 'bg-purple-600 text-white' : ''}`} onClick={() => { setDesktopTab('audit-logs'); setTopTabsOpen(false); }}>
+                      <FileText className="h-4 w-4" /> <span>  Audit Logs</span>
+                    </button>
+                  </div>
                 </div>
-              </div>
-              {/* Desktop tabs */}
-              <div className="hidden sm:block">
-                <div className="-mx-6 px-6">
-                  <FinanceTabsList className="grid grid-cols-4 gap-2 bg-gray-100 dark:bg-slate-800 rounded-md p-1" theme={theme}>
-                    <FinanceTabsTrigger value="indian-guest" theme={theme} className="text-sm px-3 py-2 data-[state=active]:bg-white data-[state=active]:shadow-sm">
-                  <User className="h-4 w-4 mr-2" />
-                  Indian Guest Check-in
-                </FinanceTabsTrigger>
-                    <FinanceTabsTrigger value="foreign-guest" theme={theme} className="text-sm px-3 py-2 data-[state=active]:bg-white data-[state=active]:shadow-sm">
-                  <Globe className="h-4 w-4 mr-2" />
-                  Foreign Guest Check-in
-                </FinanceTabsTrigger>
-                    <FinanceTabsTrigger value="guest-details" theme={theme} className="text-sm px-3 py-2 data-[state=active]:bg-white data-[state=active]:shadow-sm">
-                  <Shield className="h-4 w-4 mr-2" />
-                  Guest Details
-                </FinanceTabsTrigger>
-                    <FinanceTabsTrigger value="audit-logs" theme={theme} className="text-sm px-3 py-2 data-[state=active]:bg-white data-[state=active]:shadow-sm">
-                  <FileText className="h-4 w-4 mr-2" />
-                  Audit Logs
-                </FinanceTabsTrigger>
-              </FinanceTabsList>
+                {/* Desktop tabs */}
+                <div className="hidden sm:block">
+                  <div className="-mx-6 px-6 lg:bg-[#F5F7FA]">
+                    <FinanceTabsList className="grid grid-cols-4 gap-2 bg-gray-100 dark:bg-slate-800 rounded-md p-1" theme={theme}>
+                      <FinanceTabsTrigger value="indian-guest" theme={theme} className="text-sm px-3 py-2 data-[state=active]:bg-white data-[state=active]:shadow-none">
+                        <User className="h-4 w-4 mr-2" />
+                        Indian Guest Check-in
+                      </FinanceTabsTrigger>
+                      <FinanceTabsTrigger value="foreign-guest" theme={theme} className="text-sm px-3 py-2 data-[state=active]:bg-white data-[state=active]:shadow-none">
+                        <Globe className="h-4 w-4 mr-2" />
+                        Foreign Guest Check-in
+                      </FinanceTabsTrigger>
+                      <FinanceTabsTrigger value="guest-details" theme={theme} className="text-sm px-3 py-2 data-[state=active]:bg-white data-[state=active]:shadow-none">
+                        <Shield className="h-4 w-4 mr-2" />
+                        Guest Details
+                      </FinanceTabsTrigger>
+                      <FinanceTabsTrigger value="audit-logs" theme={theme} className="text-sm px-3 py-2 data-[state=active]:bg-white data-[state=active]:shadow-none">
+                        <FileText className="h-4 w-4 mr-2" />
+                        Audit Logs
+                      </FinanceTabsTrigger>
+                    </FinanceTabsList>
+                  </div>
                 </div>
-              </div>
               </div>
 
               {/* Content Container */}
@@ -1986,11 +1986,11 @@ export default function GuestCheckInPage() {
                       )}
 
                       {/* Indian ID Documents Upload Section */}
-                    <div className="mb-6" id="indian-upload-section">
+                      <div className="mb-6" id="indian-upload-section">
                         <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-3">Upload Indian ID Document</h3>
                         <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">Auto-fill your details by uploading any Indian government ID. AI will detect the document type and extract information automatically. Supported: Aadhaar, PAN, Driving License, Election Card</p>
-                        
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
+
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
                           <DocumentUploadZone
                             key={`indian-primary-${uploadZoneResetKey}`}
                             documentType="other"
@@ -2007,9 +2007,9 @@ export default function GuestCheckInPage() {
                                 setIndianPrimaryDocUploaded(true);
                               }
                             }}
-                          className="min-h-[168px] sm:min-h-[220px]"
+                            className="min-h-[168px] sm:min-h-[220px]"
                           />
-                          
+
                           <DocumentUploadZone
                             key={`indian-optional-${uploadZoneResetKey}`}
                             documentType="other"
@@ -2020,10 +2020,10 @@ export default function GuestCheckInPage() {
                                 removeUploadedDocument(doc);
                               }
                             }}
-                          className="min-h-[168px] sm:min-h-[220px]"
+                            className="min-h-[168px] sm:min-h-[220px]"
                           />
                         </div>
-                        
+
                         {uploadedDocuments.length > 0 && (
                           <div className="mt-4 p-3 bg-green-50 border border-green-200 rounded-lg">
                             <p className="text-sm text-green-700 flex items-center gap-2">
@@ -2034,44 +2034,44 @@ export default function GuestCheckInPage() {
                         )}
                       </div>
 
-                    <form ref={indianFormRef as any} onSubmit={handleIndianCheckIn} className="space-y-6">
+                      <form ref={indianFormRef as any} onSubmit={handleIndianCheckIn} className="space-y-6">
                         {/* Tabbed Interface for Form Sections */}
                         <FinanceTabs value={indianActiveTab} onValueChange={(value) => setIndianActiveTab(value as any)} theme={theme} className="space-y-4">
-                        {/* Mobile accordion-style headers */}
-                        <div className="sm:hidden space-y-2">
-                          <button type="button" onClick={()=>setIndMenuOpen(v=>!v)} className="w-full h-10 rounded-md bg-gray-100 dark:bg-gray-700 text-sm font-medium flex items-center justify-between px-3">
-                            <span className="truncate">
-                              {indianActiveTab === 'personal' ? 'Personal Information' : indianActiveTab === 'id-documents' ? 'ID Documents' : 'Booking Details'}
-                            </span>
-                            <svg className={`h-4 w-4 transition-transform ${indMenuOpen ? 'rotate(180deg)' : ''}`} viewBox="0 0 20 20" fill="currentColor"><path d="M5 7l5 5 5-5"/></svg>
-                          </button>
-                          <div className={`${indMenuOpen ? 'max-h-48 mt-2' : 'max-h-0'} overflow-hidden transition-[max-height] duration-300` }>
-                            <div className="flex flex-col gap-2">
-                              <button type="button" className={`h-12 text-left px-3 rounded-md ${indianActiveTab==='personal' ? 'bg-green-600 text-white' : 'bg-gray-100 dark:bg-gray-700 text-slate-800 dark:text-slate-200'}`} onClick={()=>{setIndMenuOpen(false); setIndianActiveTab('personal')}}>Personal Information</button>
-                              <button type="button" className={`h-12 text-left px-3 rounded-md ${indianActiveTab==='id-documents' ? 'bg-green-600 text-white' : 'bg-gray-100 dark:bg-gray-700 text-slate-800 dark:text-slate-200'}`} onClick={()=>{setIndMenuOpen(false); setIndianActiveTab('id-documents')}}>ID Documents</button>
-                              <button type="button" className={`h-12 text-left px-3 rounded-md ${indianActiveTab==='booking' ? 'bg-green-600 text-white' : 'bg-gray-100 dark:bg-gray-700 text-slate-800 dark:text-slate-200'}`} onClick={()=>{setIndMenuOpen(false); setIndianActiveTab('booking')}}>Booking Details</button>
+                          {/* Mobile accordion-style headers */}
+                          <div className="sm:hidden space-y-2">
+                            <button type="button" onClick={() => setIndMenuOpen(v => !v)} className="w-full h-10 rounded-md bg-gray-100 dark:bg-gray-700 text-sm font-medium flex items-center justify-between px-3">
+                              <span className="truncate">
+                                {indianActiveTab === 'personal' ? 'Personal Information' : indianActiveTab === 'id-documents' ? 'ID Documents' : 'Booking Details'}
+                              </span>
+                              <svg className={`h-4 w-4 transition-transform ${indMenuOpen ? 'rotate(180deg)' : ''}`} viewBox="0 0 20 20" fill="currentColor"><path d="M5 7l5 5 5-5" /></svg>
+                            </button>
+                            <div className={`${indMenuOpen ? 'max-h-48 mt-2' : 'max-h-0'} overflow-hidden transition-[max-height] duration-300`}>
+                              <div className="flex flex-col gap-2">
+                                <button type="button" className={`h-12 text-left px-3 rounded-md ${indianActiveTab === 'personal' ? 'bg-green-600 text-white' : 'bg-gray-100 dark:bg-gray-700 text-slate-800 dark:text-slate-200'}`} onClick={() => { setIndMenuOpen(false); setIndianActiveTab('personal') }}>Personal Information</button>
+                                <button type="button" className={`h-12 text-left px-3 rounded-md ${indianActiveTab === 'id-documents' ? 'bg-green-600 text-white' : 'bg-gray-100 dark:bg-gray-700 text-slate-800 dark:text-slate-200'}`} onClick={() => { setIndMenuOpen(false); setIndianActiveTab('id-documents') }}>ID Documents</button>
+                                <button type="button" className={`h-12 text-left px-3 rounded-md ${indianActiveTab === 'booking' ? 'bg-green-600 text-white' : 'bg-gray-100 dark:bg-gray-700 text-slate-800 dark:text-slate-200'}`} onClick={() => { setIndMenuOpen(false); setIndianActiveTab('booking') }}>Booking Details</button>
+                              </div>
                             </div>
                           </div>
-                        </div>
-                        {/* Desktop tabs remain */}
-                        <FinanceTabsList className="grid grid-cols-3" containerClassName="hidden sm:block" theme={theme}>
-                            <FinanceTabsTrigger 
-                              value="personal" 
-                              theme={theme} 
+                          {/* Desktop tabs remain */}
+                          <FinanceTabsList className="grid grid-cols-3" containerClassName="hidden sm:block" theme={theme}>
+                            <FinanceTabsTrigger
+                              value="personal"
+                              theme={theme}
                               className="text-sm px-4 py-3 data-[state=active]:text-green-600 data-[state=active]:bg-green-50 data-[state=active]:border-b-green-600 data-[state=inactive]:text-gray-600 data-[state=inactive]:hover:text-gray-800 data-[state=inactive]:hover:bg-gray-50"
                             >
                               Personal Information
                             </FinanceTabsTrigger>
-                            <FinanceTabsTrigger 
-                              value="id-documents" 
-                              theme={theme} 
+                            <FinanceTabsTrigger
+                              value="id-documents"
+                              theme={theme}
                               className="text-sm px-4 py-3 data-[state=active]:text-green-600 data-[state=active]:bg-green-50 data-[state=active]:border-b-green-600 data-[state=inactive]:text-gray-600 data-[state=inactive]:hover:text-gray-800 data-[state=inactive]:hover:bg-gray-50"
                             >
                               ID Documents
                             </FinanceTabsTrigger>
-                            <FinanceTabsTrigger 
-                              value="booking" 
-                              theme={theme} 
+                            <FinanceTabsTrigger
+                              value="booking"
+                              theme={theme}
                               className="text-sm px-4 py-3 data-[state=active]:text-green-600 data-[state=active]:bg-green-50 data-[state=active]:border-b-green-600 data-[state=inactive]:text-gray-600 data-[state=inactive]:hover:text-gray-800 data-[state=inactive]:hover:bg-gray-50"
                             >
                               Booking Details
@@ -2115,13 +2115,13 @@ export default function GuestCheckInPage() {
                                 <Input
                                   id="indian-email"
                                   type="email"
-                                inputMode="email"
-                                autoComplete="email"
+                                  inputMode="email"
+                                  autoComplete="email"
                                   value={indianForm.email}
                                   onChange={(e) => setIndianForm({ ...indianForm, email: e.target.value })}
                                   placeholder="your.email@example.com"
                                   required
-                                className="h-12 sm:h-11"
+                                  className="h-12 sm:h-11"
                                 />
                               </div>
                             </div>
@@ -2133,13 +2133,13 @@ export default function GuestCheckInPage() {
                               <Input
                                 id="indian-phone"
                                 type="tel"
-                              inputMode="tel"
-                              autoComplete="tel"
+                                inputMode="tel"
+                                autoComplete="tel"
                                 value={indianForm.phone}
                                 onChange={(e) => setIndianForm({ ...indianForm, phone: e.target.value })}
                                 placeholder="+91 98765 43210"
                                 required
-                              className="h-12 sm:h-11"
+                                className="h-12 sm:h-11"
                               />
                             </div>
 
@@ -2163,14 +2163,14 @@ export default function GuestCheckInPage() {
                                 )}
                               </div>
                             </div>
-                            
+
                             {/* Next Button */}
                             <div className="pt-4">
                               <Button
                                 type="button"
                                 onClick={() => setIndianActiveTab('id-documents')}
                                 disabled={!isIndianPersonalInfoValid()}
-                              className="hidden sm:inline-flex w-full bg-green-600 hover:bg-green-700 disabled:bg-gray-400 disabled:cursor-not-allowed text-white py-6 text-lg font-semibold"
+                                className="hidden sm:inline-flex w-full bg-green-600 hover:bg-green-700 disabled:bg-gray-400 disabled:cursor-not-allowed text-white py-6 text-lg font-semibold"
                               >
                                 Next
                               </Button>
@@ -2240,14 +2240,14 @@ export default function GuestCheckInPage() {
                                 />
                               </div>
                             </div>
-                            
+
                             {/* Next Button */}
                             <div className="pt-4">
                               <Button
                                 type="button"
                                 onClick={() => setIndianActiveTab('booking')}
                                 disabled={!isIndianIdDocumentsValid()}
-                              className="hidden sm:inline-flex w-full bg-green-600 hover:bg-green-700 disabled:bg-gray-400 disabled:cursor-not-allowed text-white py-6 text-lg font-semibold"
+                                className="hidden sm:inline-flex w-full bg-green-600 hover:bg-green-700 disabled:bg-gray-400 disabled:cursor-not-allowed text-white py-6 text-lg font-semibold"
                               >
                                 Next
                               </Button>
@@ -2297,11 +2297,11 @@ export default function GuestCheckInPage() {
                                 <Input
                                   id="indian-guests"
                                   type="number"
-                                inputMode="numeric"
+                                  inputMode="numeric"
                                   min="1"
                                   value={indianForm.numberOfGuests}
                                   onChange={(e) => setIndianForm({ ...indianForm, numberOfGuests: parseInt(e.target.value) || 1 })}
-                                className="h-12 sm:h-11"
+                                  className="h-12 sm:h-11"
                                 />
                               </div>
 
@@ -2318,11 +2318,11 @@ export default function GuestCheckInPage() {
                                 />
                               </div>
                             </div>
-                            
+
                             {/* Complete Check-in Button */}
                             <Button
                               type="submit"
-                            className="hidden sm:inline-flex w-full bg-green-600 hover:bg-green-700 disabled:bg-gray-400 disabled:cursor-not-allowed text-white py-6 text-lg font-semibold"
+                              className="hidden sm:inline-flex w-full bg-green-600 hover:bg-green-700 disabled:bg-gray-400 disabled:cursor-not-allowed text-white py-6 text-lg font-semibold"
                               disabled={isLoading || !isIndianBookingValid() || !indianPrimaryDocUploaded}
                             >
                               {isLoading ? (
@@ -2350,48 +2350,48 @@ export default function GuestCheckInPage() {
                           </TabsContent>
                         </FinanceTabs>
                       </form>
-                    {/* Mobile sticky action bar for Indian flow */}
-                    {desktopTab === 'indian-guest' && (
-                      <div className="sm:hidden fixed bottom-0 inset-x-0 bg-white dark:bg-gray-900 border-t border-gray-200 dark:border-gray-700 px-3 py-3 pb-safe z-40">
-                        <div className="flex gap-8">
-                          {indianActiveTab !== 'personal' ? (
+                      {/* Mobile sticky action bar for Indian flow */}
+                      {desktopTab === 'indian-guest' && (
+                        <div className="sm:hidden fixed bottom-0 inset-x-0 bg-white dark:bg-gray-900 border-t border-gray-200 dark:border-gray-700 px-3 py-3 pb-safe z-40">
+                          <div className="flex gap-8">
+                            {indianActiveTab !== 'personal' ? (
+                              <Button
+                                type="button"
+                                variant="outline"
+                                className="flex-1 h-12"
+                                onClick={() => {
+                                  if (indianActiveTab === 'booking') setIndianActiveTab('id-documents');
+                                  else if (indianActiveTab === 'id-documents') setIndianActiveTab('personal');
+                                }}
+                              >
+                                Back
+                              </Button>
+                            ) : null}
                             <Button
                               type="button"
-                              variant="outline"
-                              className="flex-1 h-12"
+                              className="flex-1 h-12 bg-green-600 hover:bg-green-700 text-white"
+                              disabled={
+                                (indianActiveTab === 'personal' && !isIndianPersonalInfoValid()) ||
+                                (indianActiveTab === 'id-documents' && !isIndianIdDocumentsValid()) ||
+                                (indianActiveTab === 'booking' && (isLoading || !isIndianBookingValid() || !indianPrimaryDocUploaded))
+                              }
                               onClick={() => {
-                                if (indianActiveTab === 'booking') setIndianActiveTab('id-documents');
-                                else if (indianActiveTab === 'id-documents') setIndianActiveTab('personal');
+                                if (indianActiveTab === 'personal') {
+                                  if (isIndianPersonalInfoValid()) setIndianActiveTab('id-documents');
+                                } else if (indianActiveTab === 'id-documents') {
+                                  if (isIndianIdDocumentsValid()) setIndianActiveTab('booking');
+                                } else {
+                                  if (!isLoading && isIndianBookingValid() && indianPrimaryDocUploaded) {
+                                    (indianFormRef.current as any)?.requestSubmit?.();
+                                  }
+                                }
                               }}
                             >
-                              Back
+                              {indianActiveTab === 'booking' ? (isLoading ? 'Processing…' : 'Complete Check-in') : 'Continue'}
                             </Button>
-                          ) : null}
-                          <Button
-                            type="button"
-                            className="flex-1 h-12 bg-green-600 hover:bg-green-700 text-white"
-                            disabled={
-                              (indianActiveTab === 'personal' && !isIndianPersonalInfoValid()) ||
-                              (indianActiveTab === 'id-documents' && !isIndianIdDocumentsValid()) ||
-                              (indianActiveTab === 'booking' && (isLoading || !isIndianBookingValid() || !indianPrimaryDocUploaded))
-                            }
-                            onClick={() => {
-                              if (indianActiveTab === 'personal') {
-                                if (isIndianPersonalInfoValid()) setIndianActiveTab('id-documents');
-                              } else if (indianActiveTab === 'id-documents') {
-                                if (isIndianIdDocumentsValid()) setIndianActiveTab('booking');
-                              } else {
-                                if (!isLoading && isIndianBookingValid() && indianPrimaryDocUploaded) {
-                                  (indianFormRef.current as any)?.requestSubmit?.();
-                                }
-                              }
-                            }}
-                          >
-                            {indianActiveTab === 'booking' ? (isLoading ? 'Processing…' : 'Complete Check-in') : 'Continue'}
-                          </Button>
+                          </div>
                         </div>
-                      </div>
-                    )}
+                      )}
                     </CardContent>
                   </Card>
                 </TabsContent>
@@ -2421,11 +2421,11 @@ export default function GuestCheckInPage() {
                       )}
 
                       {/* Document Upload Section */}
-                    <div className="mb-6" id="foreign-upload-section">
+                      <div className="mb-6" id="foreign-upload-section">
                         <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-3">Upload Travel Documents</h3>
                         <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">Auto-fill your details by uploading your passport and visa. AI will extract information automatically.</p>
-                        
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
+
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
                           <DocumentUploadZone
                             key={`foreign-passport-${uploadZoneResetKey}`}
                             documentType="passport"
@@ -2442,9 +2442,9 @@ export default function GuestCheckInPage() {
                                 setForeignPassportUploaded(true);
                               }
                             }}
-                          className="min-h-[168px] sm:min-h-[220px]"
+                            className="min-h-[168px] sm:min-h-[220px]"
                           />
-                          
+
                           <DocumentUploadZone
                             key={`foreign-visa-${uploadZoneResetKey}`}
                             documentType="visa_front"
@@ -2458,10 +2458,10 @@ export default function GuestCheckInPage() {
                                 setForeignVisaUploaded(true);
                               }
                             }}
-                          className="min-h-[168px] sm:min-h-[220px]"
+                            className="min-h-[168px] sm:min-h-[220px]"
                           />
                         </div>
-                        
+
                         {uploadedDocuments.length > 0 && (
                           <div className="mt-4 p-3 bg-green-50 border border-green-200 rounded-lg">
                             <p className="text-sm text-green-700 flex items-center gap-2">
@@ -2472,52 +2472,52 @@ export default function GuestCheckInPage() {
                         )}
                       </div>
 
-                    <form ref={foreignFormRef as any} onSubmit={handleForeignCheckIn} className="space-y-6">
+                      <form ref={foreignFormRef as any} onSubmit={handleForeignCheckIn} className="space-y-6">
                         {/* Tabbed Interface for Form Sections */}
                         <FinanceTabs value={foreignActiveTab} onValueChange={(value) => setForeignActiveTab(value as any)} theme={theme} className="space-y-4">
-                        {/* Mobile accordion-style headers */}
-                        <div className="sm:hidden space-y-2">
-                          <button type="button" onClick={()=>setForeignMenuOpen(v=>!v)} className="w-full h-10 rounded-md bg-gray-100 dark:bg-gray-700 text-sm font-medium flex items-center justify-between px-3">
-                            <span className="truncate">
-                              {foreignActiveTab === 'personal' ? 'Personal Info' : foreignActiveTab === 'travel-documents' ? '  Travel Docs' : foreignActiveTab === 'form-c' ? 'Form C Details' : 'Booking'}
-                            </span>
-                            <svg className={`h-4 w-4 transition-transform ${foreignMenuOpen ? 'rotate(180deg)' : ''}`} viewBox="0 0 20 20" fill="currentColor"><path d="M5 7l5 5 5-5"/></svg>
-                          </button>
-                          <div className={`${foreignMenuOpen ? 'max-h-56 mt-2' : 'max-h-0'} overflow-hidden transition-[max-height] duration-300` }>
-                            <div className="flex flex-col gap-2">
-                              <button type="button" className={`h-12 text-left px-3 rounded-md ${foreignActiveTab==='personal' ? 'bg-green-600 text-white' : 'bg-gray-100 dark:bg-gray-700 text-slate-800 dark:text-slate-200'}`} onClick={()=>{setForeignMenuOpen(false); setForeignActiveTab('personal')}}>Personal Info</button>
-                              <button type="button" className={`h-12 text-left px-3 rounded-md ${foreignActiveTab==='travel-documents' ? 'bg-green-600 text-white' : 'bg-gray-100 dark:bg-gray-700 text-slate-800 dark:text-slate-200'}`} onClick={()=>{setForeignMenuOpen(false); setForeignActiveTab('travel-documents')}}>Travel Docs</button>
-                              <button type="button" className={`h-12 text-left px-3 rounded-md ${foreignActiveTab==='form-c' ? 'bg-green-600 text-white' : 'bg-gray-100 dark:bg-gray-700 text-slate-800 dark:text-slate-200'}`} onClick={()=>{setForeignMenuOpen(false); setForeignActiveTab('form-c')}}>Form C Details</button>
-                              <button type="button" className={`h-12 text-left px-3 rounded-md ${foreignActiveTab==='booking' ? 'bg-green-600 text-white' : 'bg-gray-100 dark:bg-gray-700 text-slate-800 dark:text-slate-200'}`} onClick={()=>{setForeignMenuOpen(false); setForeignActiveTab('booking')}}>Booking</button>
+                          {/* Mobile accordion-style headers */}
+                          <div className="sm:hidden space-y-2">
+                            <button type="button" onClick={() => setForeignMenuOpen(v => !v)} className="w-full h-10 rounded-md bg-gray-100 dark:bg-gray-700 text-sm font-medium flex items-center justify-between px-3">
+                              <span className="truncate">
+                                {foreignActiveTab === 'personal' ? 'Personal Info' : foreignActiveTab === 'travel-documents' ? '  Travel Docs' : foreignActiveTab === 'form-c' ? 'Form C Details' : 'Booking'}
+                              </span>
+                              <svg className={`h-4 w-4 transition-transform ${foreignMenuOpen ? 'rotate(180deg)' : ''}`} viewBox="0 0 20 20" fill="currentColor"><path d="M5 7l5 5 5-5" /></svg>
+                            </button>
+                            <div className={`${foreignMenuOpen ? 'max-h-56 mt-2' : 'max-h-0'} overflow-hidden transition-[max-height] duration-300`}>
+                              <div className="flex flex-col gap-2">
+                                <button type="button" className={`h-12 text-left px-3 rounded-md ${foreignActiveTab === 'personal' ? 'bg-green-600 text-white' : 'bg-gray-100 dark:bg-gray-700 text-slate-800 dark:text-slate-200'}`} onClick={() => { setForeignMenuOpen(false); setForeignActiveTab('personal') }}>Personal Info</button>
+                                <button type="button" className={`h-12 text-left px-3 rounded-md ${foreignActiveTab === 'travel-documents' ? 'bg-green-600 text-white' : 'bg-gray-100 dark:bg-gray-700 text-slate-800 dark:text-slate-200'}`} onClick={() => { setForeignMenuOpen(false); setForeignActiveTab('travel-documents') }}>Travel Docs</button>
+                                <button type="button" className={`h-12 text-left px-3 rounded-md ${foreignActiveTab === 'form-c' ? 'bg-green-600 text-white' : 'bg-gray-100 dark:bg-gray-700 text-slate-800 dark:text-slate-200'}`} onClick={() => { setForeignMenuOpen(false); setForeignActiveTab('form-c') }}>Form C Details</button>
+                                <button type="button" className={`h-12 text-left px-3 rounded-md ${foreignActiveTab === 'booking' ? 'bg-green-600 text-white' : 'bg-gray-100 dark:bg-gray-700 text-slate-800 dark:text-slate-200'}`} onClick={() => { setForeignMenuOpen(false); setForeignActiveTab('booking') }}>Booking</button>
+                              </div>
                             </div>
                           </div>
-                        </div>
-                        {/* Desktop tabs remain */}
-                        <FinanceTabsList className="grid grid-cols-4" containerClassName="hidden sm:block" theme={theme}>
-                            <FinanceTabsTrigger 
-                              value="personal" 
-                              theme={theme} 
+                          {/* Desktop tabs remain */}
+                          <FinanceTabsList className="grid grid-cols-4" containerClassName="hidden sm:block" theme={theme}>
+                            <FinanceTabsTrigger
+                              value="personal"
+                              theme={theme}
                               className="text-sm px-4 py-3 data-[state=active]:text-green-600 data-[state=active]:bg-green-50 data-[state=active]:border-b-green-600 data-[state=inactive]:text-gray-600 data-[state=inactive]:hover:text-gray-800 data-[state=inactive]:hover:bg-gray-50"
                             >
                               Personal Info
                             </FinanceTabsTrigger>
-                            <FinanceTabsTrigger 
-                              value="travel-documents" 
-                              theme={theme} 
+                            <FinanceTabsTrigger
+                              value="travel-documents"
+                              theme={theme}
                               className="text-sm px-4 py-3 data-[state=active]:text-green-600 data-[state=active]:bg-green-50 data-[state=active]:border-b-green-600 data-[state=inactive]:text-gray-600 data-[state=inactive]:hover:text-gray-800 data-[state=inactive]:hover:bg-gray-50"
                             >
                               Travel Docs
                             </FinanceTabsTrigger>
-                            <FinanceTabsTrigger 
-                              value="form-c" 
-                              theme={theme} 
+                            <FinanceTabsTrigger
+                              value="form-c"
+                              theme={theme}
                               className="text-sm px-4 py-3 data-[state=active]:text-green-600 data-[state=active]:bg-green-50 data-[state=active]:border-b-green-600 data-[state=inactive]:text-gray-600 data-[state=inactive]:hover:text-gray-800 data-[state=inactive]:hover:bg-gray-50"
                             >
                               Form C Details
                             </FinanceTabsTrigger>
-                            <FinanceTabsTrigger 
-                              value="booking" 
-                              theme={theme} 
+                            <FinanceTabsTrigger
+                              value="booking"
+                              theme={theme}
                               className="text-sm px-4 py-3 data-[state=active]:text-green-600 data-[state=active]:bg-green-50 data-[state=active]:border-b-green-600 data-[state=inactive]:text-gray-600 data-[state=inactive]:hover:text-gray-800 data-[state=inactive]:hover:bg-gray-50"
                             >
                               Booking
@@ -2548,13 +2548,13 @@ export default function GuestCheckInPage() {
                                 <Input
                                   id="foreign-email"
                                   type="email"
-                                inputMode="email"
-                                autoComplete="email"
+                                  inputMode="email"
+                                  autoComplete="email"
                                   value={foreignForm.email}
                                   onChange={(e) => setForeignForm({ ...foreignForm, email: e.target.value })}
                                   placeholder="your.email@example.com"
                                   required
-                                className="h-12 sm:h-11"
+                                  className="h-12 sm:h-11"
                                 />
                               </div>
                             </div>
@@ -2566,13 +2566,13 @@ export default function GuestCheckInPage() {
                               <Input
                                 id="foreign-phone"
                                 type="tel"
-                              inputMode="tel"
-                              autoComplete="tel"
+                                inputMode="tel"
+                                autoComplete="tel"
                                 value={foreignForm.phone}
                                 onChange={(e) => setForeignForm({ ...foreignForm, phone: e.target.value })}
                                 placeholder="+1 234 567 8900"
                                 required
-                              className="h-12 sm:h-11"
+                                className="h-12 sm:h-11"
                               />
                             </div>
 
@@ -2584,24 +2584,24 @@ export default function GuestCheckInPage() {
                                 id="foreign-address"
                                 value={foreignForm.address}
                                 onChange={(e) => setForeignForm({ ...foreignForm, address: e.target.value })}
-                              placeholder="Enter your address"
-                              required
-                              className="h-11"
-                            />
-                          </div>
-                          
-                          {/* Next Button */}
-                          <div className="pt-4">
-                            <Button
-                              type="button"
-                              onClick={() => setForeignActiveTab('travel-documents')}
-                              disabled={!isForeignPersonalInfoValid()}
-                              className="hidden sm:inline-flex w-full bg-green-600 hover:bg-green-700 disabled:bg-gray-400 disabled:cursor-not-allowed text-white py-6 text-lg font-semibold"
-                            >
-                              Next
-                            </Button>
-                          </div>
-                        </TabsContent>
+                                placeholder="Enter your address"
+                                required
+                                className="h-11"
+                              />
+                            </div>
+
+                            {/* Next Button */}
+                            <div className="pt-4">
+                              <Button
+                                type="button"
+                                onClick={() => setForeignActiveTab('travel-documents')}
+                                disabled={!isForeignPersonalInfoValid()}
+                                className="hidden sm:inline-flex w-full bg-green-600 hover:bg-green-700 disabled:bg-gray-400 disabled:cursor-not-allowed text-white py-6 text-lg font-semibold"
+                              >
+                                Next
+                              </Button>
+                            </div>
+                          </TabsContent>
 
                           {/* Travel Documents Tab - Comprehensive Passport and Visa Details */}
                           <TabsContent value="travel-documents" className="space-y-6">
@@ -2610,7 +2610,7 @@ export default function GuestCheckInPage() {
                               <h4 className="text-md font-medium text-gray-800 dark:text-gray-200 border-b border-gray-200 dark:border-gray-700 pb-2">
                                 Passport Details
                               </h4>
-                              
+
                               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                                 <div className="space-y-2">
                                   <Label htmlFor="passport-number" className="text-sm font-medium text-gray-700 dark:text-gray-300">
@@ -2633,8 +2633,8 @@ export default function GuestCheckInPage() {
                                   <Input
                                     id="passport-country"
                                     value={foreignForm.passportCountry}
-                                    onChange={(e) => setForeignForm({ 
-                                      ...foreignForm, 
+                                    onChange={(e) => setForeignForm({
+                                      ...foreignForm,
                                       passportCountry: e.target.value,
                                       country: e.target.value // Sync legacy field for backward compatibility
                                     })}
@@ -2730,7 +2730,7 @@ export default function GuestCheckInPage() {
                               <h4 className="text-md font-medium text-gray-800 dark:text-gray-200 border-b border-gray-200 dark:border-gray-700 pb-2">
                                 Visa Details (FRRO C-Form Ready)
                               </h4>
-                              
+
                               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                                 <div className="space-y-2">
                                   <Label htmlFor="visa-type" className="text-sm font-medium text-gray-700 dark:text-gray-300">
@@ -2915,7 +2915,7 @@ export default function GuestCheckInPage() {
                                 </div>
                               </div>
                             </div>
-                            
+
                             {/* Next Button */}
                             <div className="pt-4">
                               <Button
@@ -2952,8 +2952,8 @@ export default function GuestCheckInPage() {
                                   <Label htmlFor="form-c-property" className="text-sm font-medium text-gray-700 dark:text-gray-300">
                                     Select Property *
                                   </Label>
-                                  <Select 
-                                    value={foreignForm.propertyId} 
+                                  <Select
+                                    value={foreignForm.propertyId}
                                     onValueChange={(value) => {
                                       console.log('=== PROPERTY SELECTION (Form C Tab) ===');
                                       autofillIndianAddressFromProperty(value);
@@ -2982,7 +2982,7 @@ export default function GuestCheckInPage() {
                               <h4 className="text-md font-medium text-gray-800 dark:text-gray-200 border-b border-gray-200 dark:border-gray-700 pb-2">
                                 Additional Personal Details
                               </h4>
-                              
+
                               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                                 <div className="space-y-2">
                                   <Label htmlFor="surname" className="text-sm font-medium text-gray-700 dark:text-gray-300 flex items-center gap-1">
@@ -3060,7 +3060,7 @@ export default function GuestCheckInPage() {
                               <h4 className="text-md font-medium text-gray-800 dark:text-gray-200 border-b border-gray-200 dark:border-gray-700 pb-2">
                                 Address/Reference in India
                               </h4>
-                              
+
                               <div className="grid grid-cols-1 gap-4">
                                 <div className="space-y-2">
                                   <Label htmlFor="indian-address" className="text-sm font-medium text-gray-700 dark:text-gray-300 flex items-center gap-1">
@@ -3134,7 +3134,7 @@ export default function GuestCheckInPage() {
                               <h4 className="text-md font-medium text-gray-800 dark:text-gray-200 border-b border-gray-200 dark:border-gray-700 pb-2">
                                 Arrival Information
                               </h4>
-                              
+
                               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                 <div className="space-y-2">
                                   <Label htmlFor="arrived-from" className="text-sm font-medium text-gray-700 dark:text-gray-300 flex items-center gap-1">
@@ -3236,7 +3236,7 @@ export default function GuestCheckInPage() {
                               <h4 className="text-md font-medium text-gray-800 dark:text-gray-200 border-b border-gray-200 dark:border-gray-700 pb-2">
                                 Other Details
                               </h4>
-                              
+
                               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                 <div className="space-y-2">
                                   <Label htmlFor="purpose-visit" className="text-sm font-medium text-gray-700 dark:text-gray-300">
@@ -3375,8 +3375,8 @@ export default function GuestCheckInPage() {
                                 <Label htmlFor="foreign-property" className="text-sm font-medium text-gray-700 dark:text-gray-300">
                                   Property *
                                 </Label>
-                                <Select 
-                                  value={foreignForm.propertyId} 
+                                <Select
+                                  value={foreignForm.propertyId}
                                   onValueChange={(value) => {
                                     console.log('=== PROPERTY SELECTION (Booking Tab) ===');
                                     autofillIndianAddressFromProperty(value);
@@ -3438,7 +3438,7 @@ export default function GuestCheckInPage() {
                                 />
                               </div>
                             </div>
-                            
+
                             {/* Complete Check-in Button */}
                             <Button
                               type="submit"
@@ -3453,11 +3453,11 @@ export default function GuestCheckInPage() {
                               ) : !foreignPassportUploaded || !foreignVisaUploaded ? (
                                 <>
                                   <AlertCircle className="h-5 w-5 mr-2" />
-                                  {!foreignPassportUploaded && !foreignVisaUploaded 
+                                  {!foreignPassportUploaded && !foreignVisaUploaded
                                     ? 'Please upload passport and visa'
-                                    : !foreignPassportUploaded 
-                                    ? 'Please upload passport' 
-                                    : 'Please upload visa'}
+                                    : !foreignPassportUploaded
+                                      ? 'Please upload passport'
+                                      : 'Please upload visa'}
                                 </>
                               ) : !isForeignBookingValid() ? (
                                 <>
@@ -3529,7 +3529,7 @@ export default function GuestCheckInPage() {
                     <div className="bg-white dark:bg-gray-800 rounded-xl shadow-2xl p-6 sm:p-8 w-full max-w-3xl transform transition-all">
                       <div className="flex justify-between items-center mb-6">
                         <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-100">Add New Guest</h2>
-                        <button 
+                        <button
                           className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition-colors"
                           onClick={() => setShowAddGuestModal(false)}
                         >
@@ -3539,17 +3539,17 @@ export default function GuestCheckInPage() {
                       <form onSubmit={(e) => e.preventDefault()} className="grid grid-cols-1 md:grid-cols-2 gap-6">
                         <div>
                           <Label htmlFor="guest-name" className="block text-sm font-medium text-gray-600 dark:text-gray-400 mb-1">Full Name</Label>
-                          <Input 
-                            id="guest-name" 
-                            type="text" 
+                          <Input
+                            id="guest-name"
+                            type="text"
                             className="w-full"
                           />
                         </div>
                         <div>
                           <Label htmlFor="dob" className="block text-sm font-medium text-gray-600 dark:text-gray-400 mb-1">Date of Birth</Label>
-                          <Input 
-                            id="dob" 
-                            type="date" 
+                          <Input
+                            id="dob"
+                            type="date"
                             className="w-full"
                           />
                         </div>
@@ -3567,25 +3567,25 @@ export default function GuestCheckInPage() {
                         </div>
                         <div>
                           <Label htmlFor="id-proof" className="block text-sm font-medium text-gray-600 dark:text-gray-400 mb-1">ID Proof</Label>
-                          <Input 
-                            id="id-proof" 
-                            type="file" 
+                          <Input
+                            id="id-proof"
+                            type="file"
                             className="w-full"
                           />
                         </div>
                         <div>
                           <Label htmlFor="payment-proof" className="block text-sm font-medium text-gray-600 dark:text-gray-400 mb-1">Payment Proof</Label>
-                          <Input 
-                            id="payment-proof" 
-                            type="file" 
+                          <Input
+                            id="payment-proof"
+                            type="file"
                             className="w-full"
                           />
                         </div>
                         <div>
                           <Label htmlFor="days-stay" className="block text-sm font-medium text-gray-600 dark:text-gray-400 mb-1">No. of Days</Label>
-                          <Input 
-                            id="days-stay" 
-                            type="number" 
+                          <Input
+                            id="days-stay"
+                            type="number"
                             className="w-full"
                           />
                         </div>
@@ -3619,14 +3619,14 @@ export default function GuestCheckInPage() {
                           </Select>
                         </div>
                         <div className="md:col-span-2 flex justify-end gap-4 mt-4">
-                          <Button 
-                            variant="outline" 
+                          <Button
+                            variant="outline"
                             onClick={() => setShowAddGuestModal(false)}
                             type="button"
                           >
                             Cancel
                           </Button>
-                          <Button 
+                          <Button
                             className="bg-green-600 hover:bg-green-700"
                             type="button"
                             onClick={() => setShowAddGuestModal(false)}
@@ -3656,7 +3656,7 @@ export default function GuestCheckInPage() {
                           </CardDescription>
                         </div>
                         <div className="flex-shrink-0 flex gap-3">
-                          <Button 
+                          <Button
                             variant="outline"
                             onClick={fetchCheckIns}
                             disabled={isLoading}
@@ -3681,10 +3681,10 @@ export default function GuestCheckInPage() {
                         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                           <div>
                             <Label htmlFor="filter-guest-name" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Guest Name</Label>
-                            <Input 
-                              id="filter-guest-name" 
-                              placeholder="Search by name" 
-                              type="text" 
+                            <Input
+                              id="filter-guest-name"
+                              placeholder="Search by name"
+                              type="text"
                               className="h-10 bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600"
                               value={filterGuestName}
                               onChange={(e) => setFilterGuestName(e.target.value)}
@@ -3692,9 +3692,9 @@ export default function GuestCheckInPage() {
                           </div>
                           <div>
                             <Label htmlFor="filter-checkin-date" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Check-in Date</Label>
-                            <Input 
-                              id="filter-checkin-date" 
-                              type="date" 
+                            <Input
+                              id="filter-checkin-date"
+                              type="date"
                               className="h-10 bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600"
                               value={filterCheckInDate}
                               onChange={(e) => setFilterCheckInDate(e.target.value)}
@@ -3719,40 +3719,37 @@ export default function GuestCheckInPage() {
                           <div>
                             <Label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Nationality</Label>
                             <div className="flex items-center w-full h-10 rounded-md border border-gray-300 dark:border-gray-600 overflow-hidden bg-white dark:bg-gray-800">
-                              <Button 
+                              <Button
                                 type="button"
                                 variant="ghost"
-                                className={`flex-1 h-full rounded-none text-xs font-medium transition-colors ${
-                                  filterGuestType === 'all' 
-                                    ? 'bg-blue-600 text-white hover:bg-blue-700 hover:text-white' 
-                                    : 'hover:bg-gray-100 dark:hover:bg-gray-700'
-                                }`}
+                                className={`flex-1 h-full rounded-none text-xs font-medium transition-colors ${filterGuestType === 'all'
+                                  ? 'bg-blue-600 text-white hover:bg-blue-700 hover:text-white'
+                                  : 'hover:bg-gray-100 dark:hover:bg-gray-700'
+                                  }`}
                                 onClick={() => setFilterGuestType('all')}
                               >
                                 All
                               </Button>
                               <div className="w-px h-6 bg-gray-300 dark:bg-gray-600"></div>
-                              <Button 
+                              <Button
                                 type="button"
                                 variant="ghost"
-                                className={`flex-1 h-full rounded-none text-xs font-medium transition-colors ${
-                                  filterGuestType === 'indian' 
-                                    ? 'bg-blue-600 text-white hover:bg-blue-700 hover:text-white' 
-                                    : 'hover:bg-gray-100 dark:hover:bg-gray-700'
-                                }`}
+                                className={`flex-1 h-full rounded-none text-xs font-medium transition-colors ${filterGuestType === 'indian'
+                                  ? 'bg-blue-600 text-white hover:bg-blue-700 hover:text-white'
+                                  : 'hover:bg-gray-100 dark:hover:bg-gray-700'
+                                  }`}
                                 onClick={() => setFilterGuestType(prev => prev === 'indian' ? 'all' : 'indian')}
                               >
                                 Indian
                               </Button>
                               <div className="w-px h-6 bg-gray-300 dark:bg-gray-600"></div>
-                              <Button 
+                              <Button
                                 type="button"
                                 variant="ghost"
-                                className={`flex-1 h-full rounded-none text-xs font-medium transition-colors ${
-                                  filterGuestType === 'foreign' 
-                                    ? 'bg-blue-600 text-white hover:bg-blue-700 hover:text-white' 
-                                    : 'hover:bg-gray-100 dark:hover:bg-gray-700'
-                                }`}
+                                className={`flex-1 h-full rounded-none text-xs font-medium transition-colors ${filterGuestType === 'foreign'
+                                  ? 'bg-blue-600 text-white hover:bg-blue-700 hover:text-white'
+                                  : 'hover:bg-gray-100 dark:hover:bg-gray-700'
+                                  }`}
                                 onClick={() => setFilterGuestType(prev => prev === 'foreign' ? 'all' : 'foreign')}
                               >
                                 Foreign
@@ -3815,18 +3812,17 @@ export default function GuestCheckInPage() {
                                 </tr>
                               ) : (
                                 checkIns.map((checkIn) => (
-                                  <tr 
-                                    key={checkIn.id} 
-                                    className={`border-b border-gray-100 dark:border-gray-700 transition-all duration-200 ${
-                                      openMenuId === checkIn.id 
-                                        ? 'bg-blue-50 dark:bg-blue-900/20 ring-2 ring-inset ring-blue-300 dark:ring-blue-700 shadow-sm' 
-                                        : 'hover:bg-gray-50 dark:hover:bg-gray-800/50 bg-white dark:bg-gray-850'
-                                    }`}
+                                  <tr
+                                    key={checkIn.id}
+                                    className={`border-b border-gray-100 dark:border-gray-700 transition-all duration-200 ${openMenuId === checkIn.id
+                                      ? 'bg-blue-50 dark:bg-blue-900/20 ring-2 ring-inset ring-blue-300 dark:ring-blue-700 shadow-sm'
+                                      : 'hover:bg-gray-50 dark:hover:bg-gray-800/50 bg-white dark:bg-gray-850'
+                                      }`}
                                   >
                                     <td className="px-4 py-4 font-medium text-gray-900 dark:text-gray-100">{checkIn.fullName}</td>
                                     <td className="px-4 py-4 text-gray-600 dark:text-gray-400">{checkIn.propertyName}</td>
                                     <td className="px-4 py-4">
-                                      <Badge 
+                                      <Badge
                                         variant={checkIn.guestType === 'indian' ? 'default' : 'secondary'}
                                         className={checkIn.guestType === 'indian' ? 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200 font-medium' : 'bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200 font-medium'}
                                       >
@@ -3836,16 +3832,16 @@ export default function GuestCheckInPage() {
                                     <td className="px-4 py-4 text-gray-600 dark:text-gray-400">{checkIn.roomNumber || 'Not assigned'}</td>
                                     <td className="px-4 py-4 text-gray-600 dark:text-gray-400">{new Date(checkIn.checkInDate).toLocaleDateString()}</td>
                                     <td className="px-4 py-4 text-gray-600 dark:text-gray-400">
-                                      {checkIn.expectedCheckoutDate ? 
-                                        Math.ceil((new Date(checkIn.expectedCheckoutDate).getTime() - new Date(checkIn.checkInDate).getTime()) / (1000 * 60 * 60 * 24)) : 
+                                      {checkIn.expectedCheckoutDate ?
+                                        Math.ceil((new Date(checkIn.expectedCheckoutDate).getTime() - new Date(checkIn.checkInDate).getTime()) / (1000 * 60 * 60 * 24)) :
                                         'N/A'
                                       }
                                     </td>
                                     <td className="px-4 py-4 relative text-right">
                                       <div className="flex items-center gap-2">
-                                        <Button 
-                                          size="sm" 
-                                          variant="ghost" 
+                                        <Button
+                                          size="sm"
+                                          variant="ghost"
                                           className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
                                           onClick={() => handleViewDocuments(checkIn)}
                                           title="View Documents"
@@ -3856,9 +3852,8 @@ export default function GuestCheckInPage() {
                                           <Button
                                             size="sm"
                                             variant="ghost"
-                                            className={`p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors ${
-                                              openMenuId === checkIn.id ? 'bg-gray-100 dark:bg-gray-700' : ''
-                                            }`}
+                                            className={`p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors ${openMenuId === checkIn.id ? 'bg-gray-100 dark:bg-gray-700' : ''
+                                              }`}
                                             title="More actions"
                                             onClick={(e) => {
                                               e.stopPropagation();
@@ -3870,8 +3865,8 @@ export default function GuestCheckInPage() {
                                           {openMenuId === checkIn.id && (
                                             <>
                                               {/* Backdrop for visual emphasis */}
-                                              <div 
-                                                className="fixed inset-0 z-40" 
+                                              <div
+                                                className="fixed inset-0 z-40"
                                                 onClick={(e) => {
                                                   e.stopPropagation();
                                                   setOpenMenuId(null);
@@ -3975,242 +3970,242 @@ export default function GuestCheckInPage() {
                 </TabsContent>
               </div>
 
-            {/* Guest Details Modal */}
-            {showGuestDetailsModal && selectedGuestForDetails && (
-              <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-                {/* Backdrop */}
-                <div 
-                  className="absolute inset-0 bg-slate-900/60 dark:bg-black/70"
-                  onClick={() => setShowGuestDetailsModal(false)}
-                ></div>
-                
-                {/* Modal Content */}
-                <div className="relative w-full max-w-lg rounded-xl bg-white dark:bg-[#18212a] shadow-xl overflow-hidden">
-                  {/* Header */}
-                  <div className="flex items-center justify-between gap-2 p-4 sm:p-6 border-b border-slate-200 dark:border-slate-700/60">
-                    <div className="w-8 sm:w-10"></div>
-                    <div className="flex-1 text-center">
-                      <p className="text-base sm:text-lg font-bold text-slate-800 dark:text-slate-200 tracking-tight">Guest Details</p>
-                    </div>
-                    <button 
-                      className="flex h-8 w-8 sm:h-10 sm:w-10 items-center justify-center rounded-full text-slate-600 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800 transition-colors"
-                      onClick={() => setShowGuestDetailsModal(false)}
-                      aria-label="Close modal"
-                    >
-                      <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                      </svg>
-                    </button>
-                  </div>
+              {/* Guest Details Modal */}
+              {showGuestDetailsModal && selectedGuestForDetails && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+                  {/* Backdrop */}
+                  <div
+                    className="absolute inset-0 bg-slate-900/60 dark:bg-black/70"
+                    onClick={() => setShowGuestDetailsModal(false)}
+                  ></div>
 
-                  {/* Body */}
-                  <div className="flex flex-col p-4 sm:p-6 space-y-4 sm:space-y-6 max-h-[calc(100vh-120px)] overflow-y-auto">
-                    {/* Guest Profile */}
-                    <div className="flex items-center gap-3 sm:gap-4">
-                      <div className="flex h-14 w-14 sm:h-16 sm:w-16 shrink-0 items-center justify-center rounded-full bg-slate-100 dark:bg-slate-800">
-                        <User className="h-7 w-7 sm:h-8 sm:w-8 text-slate-500 dark:text-slate-400" />
+                  {/* Modal Content */}
+                  <div className="relative w-full max-w-lg rounded-xl bg-white dark:bg-[#18212a] shadow-xl overflow-hidden">
+                    {/* Header */}
+                    <div className="flex items-center justify-between gap-2 p-4 sm:p-6 border-b border-slate-200 dark:border-slate-700/60">
+                      <div className="w-8 sm:w-10"></div>
+                      <div className="flex-1 text-center">
+                        <p className="text-base sm:text-lg font-bold text-slate-800 dark:text-slate-200 tracking-tight">Guest Details</p>
                       </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-xl sm:text-2xl font-black leading-tight tracking-tight text-slate-900 dark:text-white truncate">
-                          {selectedGuestForDetails!.fullName}
-                        </p>
-                        <Badge 
-                          variant={selectedGuestForDetails!.guestType === 'indian' ? 'default' : 'secondary'}
-                          className={`mt-1 text-xs ${selectedGuestForDetails!.guestType === 'indian' ? 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200' : 'bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200'}`}
-                        >
-                          {selectedGuestForDetails!.guestType === 'indian' ? 'Indian Guest' : 'Foreign Guest'}
-                        </Badge>
+                      <button
+                        className="flex h-8 w-8 sm:h-10 sm:w-10 items-center justify-center rounded-full text-slate-600 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800 transition-colors"
+                        onClick={() => setShowGuestDetailsModal(false)}
+                        aria-label="Close modal"
+                      >
+                        <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                      </button>
+                    </div>
+
+                    {/* Body */}
+                    <div className="flex flex-col p-4 sm:p-6 space-y-4 sm:space-y-6 max-h-[calc(100vh-120px)] overflow-y-auto">
+                      {/* Guest Profile */}
+                      <div className="flex items-center gap-3 sm:gap-4">
+                        <div className="flex h-14 w-14 sm:h-16 sm:w-16 shrink-0 items-center justify-center rounded-full bg-slate-100 dark:bg-slate-800">
+                          <User className="h-7 w-7 sm:h-8 sm:w-8 text-slate-500 dark:text-slate-400" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-xl sm:text-2xl font-black leading-tight tracking-tight text-slate-900 dark:text-white truncate">
+                            {selectedGuestForDetails!.fullName}
+                          </p>
+                          <Badge
+                            variant={selectedGuestForDetails!.guestType === 'indian' ? 'default' : 'secondary'}
+                            className={`mt-1 text-xs ${selectedGuestForDetails!.guestType === 'indian' ? 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200' : 'bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200'}`}
+                          >
+                            {selectedGuestForDetails!.guestType === 'indian' ? 'Indian Guest' : 'Foreign Guest'}
+                          </Badge>
+                        </div>
                       </div>
-                    </div>
 
-                    {/* Details Section */}
-                    <div className="flex flex-col divide-y divide-slate-200 dark:divide-slate-700/60">
-                  {/* Mobile Number */}
-                  <div className="flex items-center gap-3 py-3 sm:py-4">
-                    <Phone className="h-5 w-5 text-slate-500 dark:text-slate-400 shrink-0" />
-                    <div className="flex-1 min-w-0">
-                      <p className="text-xs font-medium text-slate-500 dark:text-slate-400 mb-0.5">Mobile Number</p>
-                      <p className="text-sm sm:text-base font-medium text-slate-800 dark:text-slate-200 truncate">
-                        {selectedGuestForDetails!.phone || 'Not provided'}
-                      </p>
-                    </div>
-                    {selectedGuestForDetails!.phone && (
-                      <button 
-                        className="group relative flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-slate-500 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800 transition-colors"
-                        onClick={() => copyToClipboard(selectedGuestForDetails!.phone, 'Phone number')}
-                        aria-label="Copy phone number"
-                      >
-                        <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                        </svg>
-                        <span className="absolute -top-8 left-1/2 -translate-x-1/2 scale-0 rounded bg-slate-800 px-2 py-1 text-xs text-white transition-all group-hover:scale-100 whitespace-nowrap">Copy</span>
-                      </button>
-                    )}
-                  </div>
+                      {/* Details Section */}
+                      <div className="flex flex-col divide-y divide-slate-200 dark:divide-slate-700/60">
+                        {/* Mobile Number */}
+                        <div className="flex items-center gap-3 py-3 sm:py-4">
+                          <Phone className="h-5 w-5 text-slate-500 dark:text-slate-400 shrink-0" />
+                          <div className="flex-1 min-w-0">
+                            <p className="text-xs font-medium text-slate-500 dark:text-slate-400 mb-0.5">Mobile Number</p>
+                            <p className="text-sm sm:text-base font-medium text-slate-800 dark:text-slate-200 truncate">
+                              {selectedGuestForDetails!.phone || 'Not provided'}
+                            </p>
+                          </div>
+                          {selectedGuestForDetails!.phone && (
+                            <button
+                              className="group relative flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-slate-500 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800 transition-colors"
+                              onClick={() => copyToClipboard(selectedGuestForDetails!.phone, 'Phone number')}
+                              aria-label="Copy phone number"
+                            >
+                              <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                              </svg>
+                              <span className="absolute -top-8 left-1/2 -translate-x-1/2 scale-0 rounded bg-slate-800 px-2 py-1 text-xs text-white transition-all group-hover:scale-100 whitespace-nowrap">Copy</span>
+                            </button>
+                          )}
+                        </div>
 
-                  {/* Email Address */}
-                  <div className="flex items-center gap-3 py-3 sm:py-4">
-                    <Mail className="h-5 w-5 text-slate-500 dark:text-slate-400 shrink-0" />
-                    <div className="flex-1 min-w-0">
-                      <p className="text-xs font-medium text-slate-500 dark:text-slate-400 mb-0.5">Email Address</p>
-                      <p className="text-sm sm:text-base font-medium text-slate-800 dark:text-slate-200 truncate">
-                        {selectedGuestForDetails!.email || 'Not provided'}
-                      </p>
-                    </div>
-                    {selectedGuestForDetails!.email && (
-                      <button 
-                        className="group relative flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-slate-500 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800 transition-colors"
-                        onClick={() => copyToClipboard(selectedGuestForDetails!.email, 'Email')}
-                        aria-label="Copy email"
-                      >
-                        <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                        </svg>
-                        <span className="absolute -top-8 left-1/2 -translate-x-1/2 scale-0 rounded bg-slate-800 px-2 py-1 text-xs text-white transition-all group-hover:scale-100 whitespace-nowrap">Copy</span>
-                      </button>
-                    )}
-                  </div>
+                        {/* Email Address */}
+                        <div className="flex items-center gap-3 py-3 sm:py-4">
+                          <Mail className="h-5 w-5 text-slate-500 dark:text-slate-400 shrink-0" />
+                          <div className="flex-1 min-w-0">
+                            <p className="text-xs font-medium text-slate-500 dark:text-slate-400 mb-0.5">Email Address</p>
+                            <p className="text-sm sm:text-base font-medium text-slate-800 dark:text-slate-200 truncate">
+                              {selectedGuestForDetails!.email || 'Not provided'}
+                            </p>
+                          </div>
+                          {selectedGuestForDetails!.email && (
+                            <button
+                              className="group relative flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-slate-500 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800 transition-colors"
+                              onClick={() => copyToClipboard(selectedGuestForDetails!.email, 'Email')}
+                              aria-label="Copy email"
+                            >
+                              <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                              </svg>
+                              <span className="absolute -top-8 left-1/2 -translate-x-1/2 scale-0 rounded bg-slate-800 px-2 py-1 text-xs text-white transition-all group-hover:scale-100 whitespace-nowrap">Copy</span>
+                            </button>
+                          )}
+                        </div>
 
-                  {/* Address */}
-                  <div className="flex items-start gap-3 py-3 sm:py-4">
-                    <MapPin className="h-5 w-5 text-slate-500 dark:text-slate-400 shrink-0 mt-0.5" />
-                    <div className="flex-1 min-w-0">
-                      <p className="text-xs font-medium text-slate-500 dark:text-slate-400 mb-0.5">Address</p>
-                      <p className="text-sm sm:text-base font-medium text-slate-800 dark:text-slate-200 break-words">
-                        {selectedGuestForDetails!.address || 'Not provided'}
-                      </p>
-                    </div>
-                    {selectedGuestForDetails!.address && (
-                      <button 
-                        className="group relative flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-slate-500 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800 transition-colors"
-                        onClick={() => copyToClipboard(selectedGuestForDetails!.address, 'Address')}
-                        aria-label="Copy address"
-                      >
-                        <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                        </svg>
-                        <span className="absolute -top-8 left-1/2 -translate-x-1/2 scale-0 rounded bg-slate-800 px-2 py-1 text-xs text-white transition-all group-hover:scale-100 whitespace-nowrap">Copy</span>
-                      </button>
-                    )}
-                  </div>
+                        {/* Address */}
+                        <div className="flex items-start gap-3 py-3 sm:py-4">
+                          <MapPin className="h-5 w-5 text-slate-500 dark:text-slate-400 shrink-0 mt-0.5" />
+                          <div className="flex-1 min-w-0">
+                            <p className="text-xs font-medium text-slate-500 dark:text-slate-400 mb-0.5">Address</p>
+                            <p className="text-sm sm:text-base font-medium text-slate-800 dark:text-slate-200 break-words">
+                              {selectedGuestForDetails!.address || 'Not provided'}
+                            </p>
+                          </div>
+                          {selectedGuestForDetails!.address && (
+                            <button
+                              className="group relative flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-slate-500 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800 transition-colors"
+                              onClick={() => copyToClipboard(selectedGuestForDetails!.address, 'Address')}
+                              aria-label="Copy address"
+                            >
+                              <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                              </svg>
+                              <span className="absolute -top-8 left-1/2 -translate-x-1/2 scale-0 rounded bg-slate-800 px-2 py-1 text-xs text-white transition-all group-hover:scale-100 whitespace-nowrap">Copy</span>
+                            </button>
+                          )}
+                        </div>
 
-                  {/* Allotted Room */}
-                  <div className="flex items-center gap-3 py-3 sm:py-4">
-                    <Home className="h-5 w-5 text-slate-500 dark:text-slate-400 shrink-0" />
-                    <div className="flex-1 min-w-0">
-                      <p className="text-xs font-medium text-slate-500 dark:text-slate-400 mb-0.5">Allotted Room</p>
-                      <p className="text-sm sm:text-base font-mono font-medium text-slate-800 dark:text-slate-200 truncate">
-                        {selectedGuestForDetails!.roomNumber ? `Room ${selectedGuestForDetails!.roomNumber}` : 'Not assigned'}
-                      </p>
-                    </div>
-                    {selectedGuestForDetails!.roomNumber && (
-                      <button 
-                        className="group relative flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-slate-500 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800 transition-colors"
-                        onClick={() => copyToClipboard(selectedGuestForDetails!.roomNumber || '', 'Room number')}
-                        aria-label="Copy room number"
-                      >
-                        <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                        </svg>
-                        <span className="absolute -top-8 left-1/2 -translate-x-1/2 scale-0 rounded bg-slate-800 px-2 py-1 text-xs text-white transition-all group-hover:scale-100 whitespace-nowrap">Copy</span>
-                      </button>
-                    )}
-                  </div>
+                        {/* Allotted Room */}
+                        <div className="flex items-center gap-3 py-3 sm:py-4">
+                          <Home className="h-5 w-5 text-slate-500 dark:text-slate-400 shrink-0" />
+                          <div className="flex-1 min-w-0">
+                            <p className="text-xs font-medium text-slate-500 dark:text-slate-400 mb-0.5">Allotted Room</p>
+                            <p className="text-sm sm:text-base font-mono font-medium text-slate-800 dark:text-slate-200 truncate">
+                              {selectedGuestForDetails!.roomNumber ? `Room ${selectedGuestForDetails!.roomNumber}` : 'Not assigned'}
+                            </p>
+                          </div>
+                          {selectedGuestForDetails!.roomNumber && (
+                            <button
+                              className="group relative flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-slate-500 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800 transition-colors"
+                              onClick={() => copyToClipboard(selectedGuestForDetails!.roomNumber || '', 'Room number')}
+                              aria-label="Copy room number"
+                            >
+                              <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                              </svg>
+                              <span className="absolute -top-8 left-1/2 -translate-x-1/2 scale-0 rounded bg-slate-800 px-2 py-1 text-xs text-white transition-all group-hover:scale-100 whitespace-nowrap">Copy</span>
+                            </button>
+                          )}
+                        </div>
 
-                  {/* Guest Type Specific Details - Aadhaar for Indian */}
-                  {selectedGuestForDetails!.guestType === 'indian' && selectedGuestForDetails!.aadharNumber && (
-                    <div className="flex items-center gap-3 py-3 sm:py-4">
-                      <CreditCard className="h-5 w-5 text-slate-500 dark:text-slate-400 shrink-0" />
-                      <div className="flex-1 min-w-0">
-                        <p className="text-xs font-medium text-slate-500 dark:text-slate-400 mb-0.5">Aadhaar Number</p>
-                        <p className="text-sm sm:text-base font-mono font-medium text-slate-800 dark:text-slate-200 truncate">
-                          {selectedGuestForDetails!.aadharNumber?.replace(/(\d{4})(\d{4})(\d{4})/, '$1 $2 $3')}
-                        </p>
+                        {/* Guest Type Specific Details - Aadhaar for Indian */}
+                        {selectedGuestForDetails!.guestType === 'indian' && selectedGuestForDetails!.aadharNumber && (
+                          <div className="flex items-center gap-3 py-3 sm:py-4">
+                            <CreditCard className="h-5 w-5 text-slate-500 dark:text-slate-400 shrink-0" />
+                            <div className="flex-1 min-w-0">
+                              <p className="text-xs font-medium text-slate-500 dark:text-slate-400 mb-0.5">Aadhaar Number</p>
+                              <p className="text-sm sm:text-base font-mono font-medium text-slate-800 dark:text-slate-200 truncate">
+                                {selectedGuestForDetails!.aadharNumber?.replace(/(\d{4})(\d{4})(\d{4})/, '$1 $2 $3')}
+                              </p>
+                            </div>
+                            <button
+                              className="group relative flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-slate-500 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800 transition-colors"
+                              onClick={() => copyToClipboard(selectedGuestForDetails!.aadharNumber || '', 'Aadhaar number')}
+                              aria-label="Copy Aadhaar number"
+                            >
+                              <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                              </svg>
+                              <span className="absolute -top-8 left-1/2 -translate-x-1/2 scale-0 rounded bg-slate-800 px-2 py-1 text-xs text-white transition-all group-hover:scale-100 whitespace-nowrap">Copy</span>
+                            </button>
+                          </div>
+                        )}
+
+                        {/* Passport Number for Foreign */}
+                        {selectedGuestForDetails!.guestType === 'foreign' && selectedGuestForDetails!.passportNumber && (
+                          <div className="flex items-center gap-3 py-3 sm:py-4">
+                            <Globe className="h-5 w-5 text-slate-500 dark:text-slate-400 shrink-0" />
+                            <div className="flex-1 min-w-0">
+                              <p className="text-xs font-medium text-slate-500 dark:text-slate-400 mb-0.5">Passport Number</p>
+                              <p className="text-sm sm:text-base font-mono font-medium text-slate-800 dark:text-slate-200 truncate">
+                                {selectedGuestForDetails!.passportNumber}
+                              </p>
+                            </div>
+                            <button
+                              className="group relative flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-slate-500 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800 transition-colors"
+                              onClick={() => copyToClipboard(selectedGuestForDetails!.passportNumber || '', 'Passport number')}
+                              aria-label="Copy passport number"
+                            >
+                              <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                              </svg>
+                              <span className="absolute -top-8 left-1/2 -translate-x-1/2 scale-0 rounded bg-slate-800 px-2 py-1 text-xs text-white transition-all group-hover:scale-100 whitespace-nowrap">Copy</span>
+                            </button>
+                          </div>
+                        )}
+
+                        {/* Country for Foreign */}
+                        {selectedGuestForDetails!.guestType === 'foreign' && selectedGuestForDetails!.country && (
+                          <div className="flex items-center gap-3 py-3 sm:py-4">
+                            <Globe className="h-5 w-5 text-slate-500 dark:text-slate-400 shrink-0" />
+                            <div className="flex-1 min-w-0">
+                              <p className="text-xs font-medium text-slate-500 dark:text-slate-400 mb-0.5">Country</p>
+                              <p className="text-sm sm:text-base font-medium text-slate-800 dark:text-slate-200 truncate">
+                                {selectedGuestForDetails!.country}
+                              </p>
+                            </div>
+                            <button
+                              className="group relative flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-slate-500 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800 transition-colors"
+                              onClick={() => copyToClipboard(selectedGuestForDetails!.country || '', 'Country')}
+                              aria-label="Copy country"
+                            >
+                              <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                              </svg>
+                              <span className="absolute -top-8 left-1/2 -translate-x-1/2 scale-0 rounded bg-slate-800 px-2 py-1 text-xs text-white transition-all group-hover:scale-100 whitespace-nowrap">Copy</span>
+                            </button>
+                          </div>
+                        )}
                       </div>
-                      <button 
-                        className="group relative flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-slate-500 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800 transition-colors"
-                        onClick={() => copyToClipboard(selectedGuestForDetails!.aadharNumber || '', 'Aadhaar number')}
-                        aria-label="Copy Aadhaar number"
-                      >
-                        <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                        </svg>
-                        <span className="absolute -top-8 left-1/2 -translate-x-1/2 scale-0 rounded bg-slate-800 px-2 py-1 text-xs text-white transition-all group-hover:scale-100 whitespace-nowrap">Copy</span>
-                      </button>
-                    </div>
-                  )}
-
-                  {/* Passport Number for Foreign */}
-                  {selectedGuestForDetails!.guestType === 'foreign' && selectedGuestForDetails!.passportNumber && (
-                    <div className="flex items-center gap-3 py-3 sm:py-4">
-                      <Globe className="h-5 w-5 text-slate-500 dark:text-slate-400 shrink-0" />
-                      <div className="flex-1 min-w-0">
-                        <p className="text-xs font-medium text-slate-500 dark:text-slate-400 mb-0.5">Passport Number</p>
-                        <p className="text-sm sm:text-base font-mono font-medium text-slate-800 dark:text-slate-200 truncate">
-                          {selectedGuestForDetails!.passportNumber}
-                        </p>
-                      </div>
-                      <button 
-                        className="group relative flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-slate-500 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800 transition-colors"
-                        onClick={() => copyToClipboard(selectedGuestForDetails!.passportNumber || '', 'Passport number')}
-                        aria-label="Copy passport number"
-                      >
-                        <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                        </svg>
-                        <span className="absolute -top-8 left-1/2 -translate-x-1/2 scale-0 rounded bg-slate-800 px-2 py-1 text-xs text-white transition-all group-hover:scale-100 whitespace-nowrap">Copy</span>
-                      </button>
-                    </div>
-                  )}
-
-                  {/* Country for Foreign */}
-                  {selectedGuestForDetails!.guestType === 'foreign' && selectedGuestForDetails!.country && (
-                    <div className="flex items-center gap-3 py-3 sm:py-4">
-                      <Globe className="h-5 w-5 text-slate-500 dark:text-slate-400 shrink-0" />
-                      <div className="flex-1 min-w-0">
-                        <p className="text-xs font-medium text-slate-500 dark:text-slate-400 mb-0.5">Country</p>
-                        <p className="text-sm sm:text-base font-medium text-slate-800 dark:text-slate-200 truncate">
-                          {selectedGuestForDetails!.country}
-                        </p>
-                      </div>
-                      <button 
-                        className="group relative flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-slate-500 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800 transition-colors"
-                        onClick={() => copyToClipboard(selectedGuestForDetails!.country || '', 'Country')}
-                        aria-label="Copy country"
-                      >
-                        <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                        </svg>
-                        <span className="absolute -top-8 left-1/2 -translate-x-1/2 scale-0 rounded bg-slate-800 px-2 py-1 text-xs text-white transition-all group-hover:scale-100 whitespace-nowrap">Copy</span>
-                      </button>
-                      </div>
-                    )}
                     </div>
                   </div>
                 </div>
-              </div>
-            )}
+              )}
 
-            {/* Document Viewer Modal */}
-            {showDocumentViewer && selectedGuestForDocs && (
-              <DocumentViewer
-                open={showDocumentViewer}
-                onClose={() => setShowDocumentViewer(false)}
-                guestCheckInId={selectedGuestForDocs!.id}
-                guestName={selectedGuestForDocs!.fullName}
-                documents={documentViewerDocs}
+              {/* Document Viewer Modal */}
+              {showDocumentViewer && selectedGuestForDocs && (
+                <DocumentViewer
+                  open={showDocumentViewer}
+                  onClose={() => setShowDocumentViewer(false)}
+                  guestCheckInId={selectedGuestForDocs!.id}
+                  guestName={selectedGuestForDocs!.fullName}
+                  documents={documentViewerDocs}
+                />
+              )}
+
+              {/* Audit Log Detail Modal */}
+              <AuditLogDetailModal
+                open={showAuditDetailModal}
+                onClose={() => {
+                  setShowAuditDetailModal(false);
+                  setSelectedAuditLog(null);
+                }}
+                log={selectedAuditLog}
               />
-            )}
-
-            {/* Audit Log Detail Modal */}
-            <AuditLogDetailModal
-              open={showAuditDetailModal}
-              onClose={() => {
-                setShowAuditDetailModal(false);
-                setSelectedAuditLog(null);
-              }}
-              log={selectedAuditLog}
-            />
             </Tabs>
           </div>
         </div>
@@ -4274,7 +4269,7 @@ export default function GuestCheckInPage() {
                 {/* Personal Information */}
                 <div className="space-y-4">
                   <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Personal Information</h3>
-                  
+
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div className="space-y-2">
                       <Label htmlFor="indian-name" className="text-sm font-medium text-gray-700 dark:text-gray-300">
@@ -4359,7 +4354,7 @@ export default function GuestCheckInPage() {
                 {/* ID Documents */}
                 <div className="space-y-4">
                   <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">ID Documents</h3>
-                  
+
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div className="space-y-2">
                       <Label htmlFor="indian-aadhar" className="text-sm font-medium text-gray-700 dark:text-gray-300">
@@ -4426,7 +4421,7 @@ export default function GuestCheckInPage() {
                 {/* Booking Details */}
                 <div className="space-y-4">
                   <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Booking Details</h3>
-                  
+
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div className="space-y-2">
                       <Label htmlFor="indian-property" className="text-sm font-medium text-gray-700 dark:text-gray-300">
@@ -4548,7 +4543,7 @@ export default function GuestCheckInPage() {
                 {/* Personal Information */}
                 <div className="space-y-4">
                   <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Personal Information</h3>
-                  
+
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div className="space-y-2">
                       <Label htmlFor="foreign-name" className="text-sm font-medium text-gray-700 dark:text-gray-300">
@@ -4613,13 +4608,13 @@ export default function GuestCheckInPage() {
                 {/* Travel Documents - Comprehensive Passport and Visa Details */}
                 <div className="space-y-6">
                   <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Travel Documents</h3>
-                  
+
                   {/* Passport Details Section */}
                   <div className="space-y-4">
                     <h4 className="text-md font-medium text-gray-800 dark:text-gray-200 border-b border-gray-200 dark:border-gray-700 pb-2">
                       Passport Details
                     </h4>
-                    
+
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                       <div className="space-y-2">
                         <Label htmlFor="passport-number" className="text-sm font-medium text-gray-700 dark:text-gray-300">
@@ -4642,8 +4637,8 @@ export default function GuestCheckInPage() {
                         <Input
                           id="passport-country"
                           value={foreignForm.passportCountry}
-                          onChange={(e) => setForeignForm({ 
-                            ...foreignForm, 
+                          onChange={(e) => setForeignForm({
+                            ...foreignForm,
                             passportCountry: e.target.value,
                             country: e.target.value // Sync legacy field for backward compatibility
                           })}
@@ -4726,7 +4721,7 @@ export default function GuestCheckInPage() {
                     <h4 className="text-md font-medium text-gray-800 dark:text-gray-200 border-b border-gray-200 dark:border-gray-700 pb-2">
                       Visa Details (FRRO C-Form Ready)
                     </h4>
-                    
+
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                       <div className="space-y-2">
                         <Label htmlFor="visa-type" className="text-sm font-medium text-gray-700 dark:text-gray-300">
@@ -4916,7 +4911,7 @@ export default function GuestCheckInPage() {
                 {/* Booking Details */}
                 <div className="space-y-4">
                   <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Booking Details</h3>
-                  
+
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div className="space-y-2">
                       <Label htmlFor="foreign-property" className="text-sm font-medium text-gray-700 dark:text-gray-300">
@@ -5016,7 +5011,7 @@ export default function GuestCheckInPage() {
           <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl p-8 w-full max-w-3xl transform transition-all">
             <div className="flex justify-between items-center mb-6">
               <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-100">Add New Guest</h2>
-              <button 
+              <button
                 className="text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100"
                 onClick={() => setViewMode('admin-dashboard')}
               >
@@ -5026,17 +5021,17 @@ export default function GuestCheckInPage() {
             <form onSubmit={(e) => e.preventDefault()} className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div>
                 <Label htmlFor="guest-name" className="block text-sm font-medium text-gray-600 dark:text-gray-400 mb-1">Full Name</Label>
-                <Input 
-                  id="guest-name" 
-                  type="text" 
+                <Input
+                  id="guest-name"
+                  type="text"
                   className="w-full"
                 />
               </div>
               <div>
                 <Label htmlFor="dob" className="block text-sm font-medium text-gray-600 dark:text-gray-400 mb-1">Date of Birth</Label>
-                <Input 
-                  id="dob" 
-                  type="date" 
+                <Input
+                  id="dob"
+                  type="date"
                   className="w-full"
                 />
               </div>
@@ -5054,25 +5049,25 @@ export default function GuestCheckInPage() {
               </div>
               <div>
                 <Label htmlFor="id-proof" className="block text-sm font-medium text-gray-600 dark:text-gray-400 mb-1">ID Proof</Label>
-                <Input 
-                  id="id-proof" 
-                  type="file" 
+                <Input
+                  id="id-proof"
+                  type="file"
                   className="w-full"
                 />
               </div>
               <div>
                 <Label htmlFor="payment-proof" className="block text-sm font-medium text-gray-600 dark:text-gray-400 mb-1">Payment Proof</Label>
-                <Input 
-                  id="payment-proof" 
-                  type="file" 
+                <Input
+                  id="payment-proof"
+                  type="file"
                   className="w-full"
                 />
               </div>
               <div>
                 <Label htmlFor="days-stay" className="block text-sm font-medium text-gray-600 dark:text-gray-400 mb-1">No. of Days</Label>
-                <Input 
-                  id="days-stay" 
-                  type="number" 
+                <Input
+                  id="days-stay"
+                  type="number"
                   className="w-full"
                 />
               </div>
@@ -5106,14 +5101,14 @@ export default function GuestCheckInPage() {
                 </Select>
               </div>
               <div className="md:col-span-2 flex justify-end gap-4 mt-4">
-                <Button 
-                  variant="outline" 
+                <Button
+                  variant="outline"
                   onClick={() => setViewMode('admin-dashboard')}
                   type="button"
                 >
                   Cancel
                 </Button>
-                <Button 
+                <Button
                   className="bg-green-600 hover:bg-green-700"
                   type="button"
                   onClick={() => setViewMode('admin-dashboard')}
@@ -5133,7 +5128,7 @@ export default function GuestCheckInPage() {
                 <p className="text-gray-600 dark:text-gray-400 text-sm">View and manage all checked-in guests.</p>
               </div>
               <div className="flex flex-col md:flex-row items-start md:items-center gap-4 w-full md:w-auto">
-                <Button 
+                <Button
                   className="flex items-center gap-2 bg-green-600 hover:bg-green-700"
                   onClick={() => setViewMode('add-guest')}
                 >
@@ -5146,10 +5141,10 @@ export default function GuestCheckInPage() {
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
               <div>
                 <Label htmlFor="filter-guest-name-mobile" className="block text-sm font-medium text-gray-600 dark:text-gray-400 mb-1">Guest Name</Label>
-                <Input 
-                  id="filter-guest-name-mobile" 
-                  placeholder="Search by name" 
-                  type="text" 
+                <Input
+                  id="filter-guest-name-mobile"
+                  placeholder="Search by name"
+                  type="text"
                   className="text-sm"
                   value={filterGuestName}
                   onChange={(e) => setFilterGuestName(e.target.value)}
@@ -5157,9 +5152,9 @@ export default function GuestCheckInPage() {
               </div>
               <div>
                 <Label htmlFor="filter-checkin-date-mobile" className="block text-sm font-medium text-gray-600 dark:text-gray-400 mb-1">Check-in Date</Label>
-                <Input 
-                  id="filter-checkin-date-mobile" 
-                  type="date" 
+                <Input
+                  id="filter-checkin-date-mobile"
+                  type="date"
                   className="text-sm"
                   value={filterCheckInDate}
                   onChange={(e) => setFilterCheckInDate(e.target.value)}
@@ -5184,21 +5179,21 @@ export default function GuestCheckInPage() {
               <div>
                 <Label className="block text-sm font-medium text-gray-600 dark:text-gray-400 mb-1">Nationality</Label>
                 <div className="flex items-center w-full">
-                  <Button 
+                  <Button
                     variant={filterGuestType === 'all' ? 'default' : 'outline'}
                     className="flex-1 rounded-r-none border-r-0 text-xs px-2 py-2"
                     onClick={() => setFilterGuestType('all')}
                   >
                     All
                   </Button>
-                  <Button 
+                  <Button
                     variant={filterGuestType === 'indian' ? 'default' : 'outline'}
                     className="flex-1 rounded-none border-r-0 text-xs px-2 py-2"
                     onClick={() => setFilterGuestType(prev => prev === 'indian' ? 'all' : 'indian')}
                   >
                     Indian
                   </Button>
-                  <Button 
+                  <Button
                     variant={filterGuestType === 'foreign' ? 'default' : 'outline'}
                     className="flex-1 rounded-l-none text-xs px-2 py-2"
                     onClick={() => setFilterGuestType(prev => prev === 'foreign' ? 'all' : 'foreign')}
@@ -5243,18 +5238,17 @@ export default function GuestCheckInPage() {
                   </thead>
                   <tbody className="relative">
                     {checkIns.map((checkIn) => (
-                      <tr 
-                        key={checkIn.id} 
-                        className={`border-b border-gray-200 dark:border-gray-700 transition-colors ${
-                          openMenuId === checkIn.id 
-                            ? 'bg-blue-50 dark:bg-blue-900/20 ring-2 ring-blue-200 dark:ring-blue-700' 
-                            : 'hover:bg-gray-50 dark:hover:bg-gray-800/50'
-                        }`}
+                      <tr
+                        key={checkIn.id}
+                        className={`border-b border-gray-200 dark:border-gray-700 transition-colors ${openMenuId === checkIn.id
+                          ? 'bg-blue-50 dark:bg-blue-900/20 ring-2 ring-blue-200 dark:ring-blue-700'
+                          : 'hover:bg-gray-50 dark:hover:bg-gray-800/50'
+                          }`}
                       >
                         <td className="p-3 font-medium">{checkIn.fullName}</td>
                         <td className="p-3 text-gray-600 dark:text-gray-400">{checkIn.propertyName}</td>
                         <td className="p-3">
-                          <Badge 
+                          <Badge
                             variant={checkIn.guestType === 'indian' ? 'default' : 'secondary'}
                             className={checkIn.guestType === 'indian' ? 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200' : 'bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200'}
                           >
@@ -5264,16 +5258,16 @@ export default function GuestCheckInPage() {
                         <td className="p-3 text-gray-600 dark:text-gray-400">{checkIn.roomNumber || 'Not assigned'}</td>
                         <td className="p-3 text-gray-600 dark:text-gray-400">{new Date(checkIn.checkInDate).toLocaleDateString()}</td>
                         <td className="p-3 text-gray-600 dark:text-gray-400">
-                          {checkIn.expectedCheckoutDate ? 
-                            Math.ceil((new Date(checkIn.expectedCheckoutDate).getTime() - new Date(checkIn.checkInDate).getTime()) / (1000 * 60 * 60 * 24)) : 
+                          {checkIn.expectedCheckoutDate ?
+                            Math.ceil((new Date(checkIn.expectedCheckoutDate).getTime() - new Date(checkIn.checkInDate).getTime()) / (1000 * 60 * 60 * 24)) :
                             'N/A'
                           }
                         </td>
                         <td className="p-3 relative">
                           <div className="flex items-center gap-2">
-                            <Button 
-                              size="sm" 
-                              variant="ghost" 
+                            <Button
+                              size="sm"
+                              variant="ghost"
                               className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
                               onClick={() => handleViewDocuments(checkIn)}
                               title="View Documents"
@@ -5287,9 +5281,8 @@ export default function GuestCheckInPage() {
                               <Button
                                 size="sm"
                                 variant="ghost"
-                                className={`p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors ${
-                                  openMenuId === checkIn.id ? 'bg-gray-100 dark:bg-gray-700' : ''
-                                }`}
+                                className={`p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors ${openMenuId === checkIn.id ? 'bg-gray-100 dark:bg-gray-700' : ''
+                                  }`}
                                 title="More actions"
                                 onClick={(e) => {
                                   e.stopPropagation();
@@ -5301,8 +5294,8 @@ export default function GuestCheckInPage() {
                               {openMenuId === checkIn.id && (
                                 <>
                                   {/* Backdrop for visual emphasis */}
-                                  <div 
-                                    className="fixed inset-0 z-40" 
+                                  <div
+                                    className="fixed inset-0 z-40"
                                     onClick={(e) => {
                                       e.stopPropagation();
                                       setOpenMenuId(null);

@@ -1326,7 +1326,7 @@ export default function ReportsPage() {
 
   return (
     <div className="w-full min-h-screen bg-gray-50">
-      <div className="px-6 pb-6 sm:py-6">
+      <div className="px-6 pb-6 sm:py-6 lg:bg-[#F5F7FA]">
         {/* Header Section (hidden on mobile since title appears in app nav) */}
         <div className="hidden sm:flex items-center justify-between mb-6">
           <div className="flex items-center gap-4">
@@ -1346,7 +1346,7 @@ export default function ReportsPage() {
 
         <FinanceTabs defaultValue="daily-manager" theme={theme}>
           {/* Enhanced Sticky Tabs for mobile and desktop */}
-          <div className="sticky top-16 z-30 bg-white border-b border-gray-200 -mx-6 px-4 sm:px-6 py-3 shadow-sm">
+          <div className="sticky top-16 z-30 bg-white lg:bg-[#F5F7FA] border-b border-gray-200 -mx-6 px-4 sm:px-6 py-3 shadow-sm lg:shadow-none">
             <div className="overflow-x-auto no-scrollbar">
               <FinanceTabsList className="grid w-full grid-cols-3 min-w-max bg-gray-100" theme={theme}>
                 <FinanceTabsTrigger value="daily-manager" theme={theme}>

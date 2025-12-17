@@ -16,7 +16,7 @@ export default function ResetPasswordPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
   const [error, setError] = useState('');
-  
+
   const [searchParams] = useSearchParams();
   const token = searchParams.get('token');
   const { theme } = useTheme();

@@ -39,7 +39,7 @@ const getThemeStyles = (theme?: Theme) => {
   }
 
   const primaryRgb = hexToRgb(theme.primaryColor);
-  
+
   return {
     containerBg: 'bg-gray-100',
     containerBorder: 'border-gray-200',
@@ -55,11 +55,11 @@ const getThemeStyles = (theme?: Theme) => {
   };
 };
 
-export function FinanceTabs({ 
-  children, 
-  className, 
-  theme, 
-  ...props 
+export function FinanceTabs({
+  children,
+  className,
+  theme,
+  ...props
 }: React.ComponentProps<typeof Tabs> & { theme?: Theme }) {
   return (
     <Tabs
@@ -71,18 +71,18 @@ export function FinanceTabs({
   );
 }
 
-export function FinanceTabsList({ 
-  children, 
-  className, 
-  theme, 
+export function FinanceTabsList({
+  children,
+  className,
+  theme,
   /** Optional className applied to the outer container to control visibility/layout (e.g., hide wrapper on mobile) */
   containerClassName,
-  ...props 
+  ...props
 }: React.ComponentProps<typeof TabsList> & { theme?: Theme; containerClassName?: string }) {
   const themeStyles = getThemeStyles(theme);
   return (
     <div className={cn("mb-0", containerClassName)}>
-      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-1">
+      <div className="bg-gray-100/80 backdrop-blur-sm rounded-full p-1.5">
         <TabsList
           className={cn("w-full bg-transparent h-auto p-0 gap-0 flex", className)}
           {...props}
@@ -94,11 +94,11 @@ export function FinanceTabsList({
   );
 }
 
-export function FinanceTabsTrigger({ 
-  children, 
-  className, 
-  theme, 
-  ...props 
+export function FinanceTabsTrigger({
+  children,
+  className,
+  theme,
+  ...props
 }: React.ComponentProps<typeof TabsTrigger> & { theme?: Theme }) {
   // Create inline styles for theme colors
   const themeStyles_inline = theme?.primaryColor ? {
@@ -111,11 +111,11 @@ export function FinanceTabsTrigger({
     <TabsTrigger
       style={themeStyles_inline}
       className={cn(
-        "theme-tabs-trigger flex-1 px-6 py-4 text-base font-semibold transition-all duration-200 relative border-b-2 border-transparent",
-        // Default blue classes as fallback
-        "data-[state=active]:text-blue-600 data-[state=active]:bg-blue-50 data-[state=active]:border-b-blue-600",
-        "data-[state=inactive]:text-gray-600 data-[state=inactive]:hover:text-gray-800 data-[state=inactive]:hover:bg-gray-50",
-        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2",
+        "theme-tabs-trigger flex-1 px-6 py-2.5 text-sm font-medium transition-all duration-300 rounded-full relative",
+        // Segmented Control Styles
+        "data-[state=active]:text-gray-900 data-[state=active]:bg-white data-[state=active]:shadow-[0_2px_8px_rgba(0,0,0,0.08)]",
+        "data-[state=inactive]:text-gray-500 data-[state=inactive]:hover:text-gray-700 data-[state=inactive]:hover:bg-white/50",
+        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gray-400 focus-visible:ring-offset-2",
         className
       )}
       {...props}

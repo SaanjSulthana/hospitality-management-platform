@@ -9,10 +9,10 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { useToast } from '@/components/ui/use-toast';
 import { API_CONFIG } from '@/src/config/api';
 import { formatCardDateTime } from '@/lib/datetime';
-import { 
-  Check, 
-  X, 
-  RefreshCw, 
+import {
+  Check,
+  X,
+  RefreshCw,
   AlertCircle,
   TrendingUp,
   TrendingDown,
@@ -34,10 +34,10 @@ export function DailyApprovalManager({ className, propertyId, startDate, endDate
   const { getAuthenticatedBackend, user } = useAuth();
   const { toast } = useToast();
   const queryClient = useQueryClient();
-  
+
   // Realtime is handled globally by FinancePage via useFinanceRealtimeV2.
   // This component listens to cache updates and does not run its own polling.
-  
+
   const [selectedTransactions, setSelectedTransactions] = useState<Set<number>>(new Set());
 
   // Get today's pending transactions with filters
@@ -54,12 +54,12 @@ export function DailyApprovalManager({ className, propertyId, startDate, endDate
       if (endDate) {
         params.append('endDate', endDate);
       }
-      
+
       const backend = getAuthenticatedBackend();
       if (!backend) {
         throw new Error('Not authenticated');
       }
-      
+
       const response = await backend.finance.getTodayPendingTransactions({
         propertyId: propertyId && propertyId !== 'all' ? parseInt(propertyId) : undefined,
         startDate,
@@ -81,7 +81,7 @@ export function DailyApprovalManager({ className, propertyId, startDate, endDate
       if (!backend) {
         throw new Error('Not authenticated');
       }
-      
+
       try {
         const response = await backend.finance.bulkApproveTransactions({
           transactionIds,
@@ -97,37 +97,37 @@ export function DailyApprovalManager({ className, propertyId, startDate, endDate
     onMutate: async ({ transactionIds, action }) => {
       // Cancel outgoing refetches
       await queryClient.cancelQueries({ queryKey: ['today-pending-transactions'] });
-      
+
       // Snapshot previous value
       const previousTransactions = queryClient.getQueryData(['today-pending-transactions']);
-      
+
       // Optimistically update UI
       queryClient.setQueryData(['today-pending-transactions'], (old: any) => {
         if (!old?.transactions) return old;
-        
+
         return {
           ...old,
-          transactions: old.transactions.filter((t: any) => 
+          transactions: old.transactions.filter((t: any) =>
             !transactionIds.includes(t.id)
           )
         };
       });
-      
+
       return { previousTransactions };
     },
     onSuccess: (data, variables) => {
       const action = variables.action === 'approve' ? 'approved' : 'rejected';
       const count = variables.action === 'approve' ? data.results.approved : data.results.rejected;
       const newStatus = variables.action === 'approve' ? 'approved' : 'rejected';
-      
+
       toast({
         title: `Transactions ${action}`,
         description: `${count} transactions have been ${action} successfully.`,
       });
-      
+
       // Clear selection and refresh data
       setSelectedTransactions(new Set());
-      
+
       // Immediately update revenues/expenses lists to reflect the new status
       // This ensures the UI updates even before the realtime event arrives
       queryClient.setQueriesData(
@@ -144,7 +144,7 @@ export function DailyApprovalManager({ className, propertyId, startDate, endDate
           };
         }
       );
-      
+
       queryClient.setQueriesData(
         { queryKey: ['expenses'] },
         (old: any) => {
@@ -159,18 +159,18 @@ export function DailyApprovalManager({ className, propertyId, startDate, endDate
           };
         }
       );
-      
+
       // Invalidate the approval manager and approval status queries
       queryClient.invalidateQueries({ queryKey: ['today-pending-transactions'] });
       queryClient.invalidateQueries({ queryKey: ['daily-approval-check'] });
-      
+
     },
     onError: (error: any, variables, context) => {
       // Rollback on error
       if (context?.previousTransactions) {
         queryClient.setQueryData(['today-pending-transactions'], context.previousTransactions);
       }
-      
+
       toast({
         variant: "destructive",
         title: "Error",
@@ -181,7 +181,7 @@ export function DailyApprovalManager({ className, propertyId, startDate, endDate
 
   const handleSelectAll = () => {
     if (!pendingTransactions?.transactions) return;
-    
+
     const allIds = pendingTransactions.transactions.map((t: any) => t.id);
     setSelectedTransactions(new Set(allIds));
   };
@@ -251,8 +251,8 @@ export function DailyApprovalManager({ className, propertyId, startDate, endDate
             </div>
             <p className="text-lg font-medium text-red-900 mb-2">Error loading pending transactions</p>
             <p className="text-sm text-gray-600 mb-4">{(transactionsError as Error).message}</p>
-            <Button 
-              variant="outline" 
+            <Button
+              variant="outline"
               onClick={() => window.location.reload()}
               className="bg-white border-rose-200 text-red-700 hover:bg-rose-50 hover:border-rose-300 font-semibold"
             >
@@ -267,17 +267,28 @@ export function DailyApprovalManager({ className, propertyId, startDate, endDate
 
   return (
     <div className={className}>
-      <Card className="border-l-4 border-l-blue-500 shadow-sm">
-        <CardHeader className="pb-4">
-          <CardTitle className="text-lg flex items-center gap-2">
-            <div className="w-3 h-3 bg-blue-500 rounded-full animate-pulse"></div>
-            Daily Approval Manager
-            <span className="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded-full font-medium">Admin Only</span>
-          </CardTitle>
-          <CardDescription className="text-sm text-gray-600">
+      <Card className="border-none shadow-sm bg-white rounded-3xl lg:bg-white/70 lg:backdrop-blur-xl lg:shadow-[0_8px_40px_-12px_rgba(0,0,0,0.1)] lg:border-white/20 transition-all duration-300">
+        <CardHeader className="pb-2 pt-6 px-6 lg:px-8 lg:pt-8">
+          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 mb-1">
+            <div className="flex items-center gap-3">
+              <div className="w-3 h-3 bg-blue-400 rounded-full shadow-sm animate-pulse lg:w-4 lg:h-4" />
+              <h2 className="text-xl lg:text-2xl font-bold text-gray-900 tracking-tight">
+                Daily Approval
+                <span className="lg:hidden"><br /></span>
+                <span className="lg:ml-2">Manager</span>
+              </h2>
+            </div>
+            <div className="flex items-center gap-3">
+              <Badge variant="secondary" className="bg-blue-50 text-blue-600 hover:bg-blue-100 border-none rounded-full px-3 py-1 text-xs font-semibold tracking-wide lg:text-sm lg:px-4 lg:py-1.5 transition-colors">
+                Admin Only
+              </Badge>
+              {/* Desktop Filters summary could go here */}
+            </div>
+          </div>
+          <CardDescription className="text-gray-500 text-sm leading-relaxed mt-2 max-w-sm lg:max-w-none lg:text-base">
             Review and approve pending transactions from managers and staff
             {(propertyId && propertyId !== 'all') || startDate || endDate ? (
-              <span className="block mt-1 text-xs text-blue-600">
+              <span className="block mt-2 text-xs font-medium text-blue-600 bg-blue-50 p-2 rounded-lg lg:inline-block lg:ml-2 lg:mt-0">
                 Filtered by: {propertyId && propertyId !== 'all' ? `Property ${propertyId}` : ''}
                 {startDate && endDate ? ` • ${startDate} to ${endDate}` : ''}
                 {startDate && !endDate ? ` • From ${startDate}` : ''}
@@ -286,162 +297,182 @@ export function DailyApprovalManager({ className, propertyId, startDate, endDate
             ) : null}
           </CardDescription>
         </CardHeader>
-        <CardContent className="space-y-6">
-          {/* Action Buttons */}
-          <div className="flex flex-wrap items-center gap-3">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleSelectAll}
-              disabled={transactionsLoading || !pendingTransactions?.transactions?.length}
-              className="transition-all duration-200 hover:scale-105 hover:shadow-md"
-            >
-              <CheckCircle2 className="h-4 w-4 mr-2" />
-              Select All Pending
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleClearSelection}
-              disabled={selectedTransactions.size === 0}
-              className="transition-all duration-200 hover:scale-105 hover:shadow-md"
-            >
-              <X className="h-4 w-4 mr-2" />
-              Clear Selection
-            </Button>
-            <div className="flex-1" />
-            <Button
-              onClick={() => handleBulkAction('approve')}
-              disabled={selectedTransactions.size === 0 || bulkApproveMutation.isPending}
-              className="bg-green-600 hover:bg-green-700 transition-all duration-200 hover:scale-105 hover:shadow-md"
-            >
-              {bulkApproveMutation.isPending ? (
-                <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
-              ) : (
-                <Check className="h-4 w-4 mr-2" />
-              )}
-              Approve Selected ({selectedTransactions.size})
-            </Button>
-            <Button
-              onClick={() => handleBulkAction('reject')}
-              disabled={selectedTransactions.size === 0 || bulkApproveMutation.isPending}
-              variant="destructive"
-              className="transition-all duration-200 hover:scale-105 hover:shadow-md"
-            >
-              {bulkApproveMutation.isPending ? (
-                <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
-              ) : (
-                <X className="h-4 w-4 mr-2" />
-              )}
-              Reject Selected ({selectedTransactions.size})
-            </Button>
+        <CardContent className="px-6 pb-6 space-y-8 lg:px-8 lg:pb-8">
+          {/* Action Buttons Stack (Mobile) / Row (Desktop) */}
+          <div className="flex flex-col gap-3 mt-4 lg:flex-row lg:items-center lg:bg-white/50 lg:p-1.5 lg:rounded-2xl lg:border lg:border-gray-100/50">
+            <div className="flex gap-2 w-full lg:w-auto">
+              <Button
+                variant="outline"
+                onClick={handleSelectAll}
+                disabled={transactionsLoading || !pendingTransactions?.transactions?.length}
+                className="h-12 flex-1 lg:flex-none lg:h-10 lg:px-4 justify-center lg:justify-start font-medium text-gray-600 border-gray-200 hover:bg-gray-50 hover:text-gray-900 hover:border-gray-300 rounded-xl lg:rounded-xl transition-all duration-200 lg:bg-white lg:shadow-sm"
+              >
+                <CheckCircle2 className="h-5 w-5 lg:h-4 lg:w-4 mr-2 text-gray-400" />
+                <span className="lg:hidden">Select All</span>
+                <span className="hidden lg:inline">All</span>
+              </Button>
+
+              <Button
+                variant="outline"
+                onClick={handleClearSelection}
+                disabled={selectedTransactions.size === 0}
+                className="h-12 flex-1 lg:flex-none lg:h-10 lg:px-4 justify-center lg:justify-start font-medium text-gray-600 border-gray-200 hover:bg-gray-50 hover:text-gray-900 hover:border-gray-300 rounded-xl lg:rounded-xl transition-all duration-200 lg:bg-white lg:shadow-sm"
+              >
+                <X className="h-5 w-5 lg:h-4 lg:w-4 mr-2 text-gray-400" />
+                <span className="lg:hidden">Clear</span>
+                <span className="hidden lg:inline">Clear</span>
+              </Button>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3 pt-2 lg:pt-0 lg:flex lg:ml-auto w-full lg:w-auto">
+              <Button
+                onClick={() => handleBulkAction('approve')}
+                disabled={selectedTransactions.size === 0 || bulkApproveMutation.isPending}
+                className="h-12 lg:h-10 w-full lg:w-auto font-semibold text-white bg-green-500 hover:bg-green-600 shadow-sm active:scale-[0.98] rounded-xl transition-all duration-200 lg:px-6"
+              >
+                {bulkApproveMutation.isPending ? (
+                  <RefreshCw className="h-5 w-5 lg:h-4 lg:w-4 mr-2 animate-spin" />
+                ) : (
+                  <Check className="h-5 w-5 lg:h-4 lg:w-4 mr-2" />
+                )}
+                <span className="lg:hidden">Approve ({selectedTransactions.size})</span>
+                <span className="hidden lg:inline">Approve Selected ({selectedTransactions.size})</span>
+              </Button>
+
+              <Button
+                onClick={() => handleBulkAction('reject')}
+                disabled={selectedTransactions.size === 0 || bulkApproveMutation.isPending}
+                className="h-12 lg:h-10 w-full lg:w-auto font-semibold text-white bg-red-500 hover:bg-red-600 shadow-sm active:scale-[0.98] rounded-xl transition-all duration-200 lg:px-6"
+              >
+                {bulkApproveMutation.isPending ? (
+                  <RefreshCw className="h-5 w-5 lg:h-4 lg:w-4 mr-2 animate-spin" />
+                ) : (
+                  <X className="h-5 w-5 lg:h-4 lg:w-4 mr-2" />
+                )}
+                <span className="lg:hidden">Reject ({selectedTransactions.size})</span>
+                <span className="hidden lg:inline">Reject Selected ({selectedTransactions.size})</span>
+              </Button>
+            </div>
           </div>
 
           {/* Pending Transactions List */}
           {transactionsLoading ? (
-            <Card className="border-l-4 border-l-blue-500">
-              <CardContent className="flex items-center justify-center p-12">
-                <div className="text-center">
-                  <RefreshCw className="h-8 w-8 animate-spin text-blue-600 mx-auto mb-4" />
-                  <p className="text-lg font-medium text-gray-900">Loading pending transactions...</p>
-                  <p className="text-sm text-gray-600 mt-2">Please wait while we fetch the data</p>
-                </div>
-              </CardContent>
-            </Card>
+            <div className="flex flex-col items-center justify-center py-8 lg:py-16 text-center bg-gray-50 lg:bg-gray-50/50 rounded-2xl border border-gray-100 lg:border-dashed">
+              <RefreshCw className="h-8 w-8 lg:h-10 lg:w-10 animate-spin text-blue-500 mb-3" />
+              <p className="text-sm lg:text-base font-medium text-gray-900">Loading transactions...</p>
+            </div>
           ) : !pendingTransactions?.transactions?.length ? (
-            <Card className="border-l-4 border-l-green-500">
-              <CardContent className="flex flex-col items-center justify-center py-12">
-                <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                  <CheckCircle2 className="h-8 w-8 text-green-600" />
-                </div>
-                <h3 className="text-lg font-medium text-gray-900 mb-2">No pending transactions</h3>
-                <p className="text-gray-500 text-center">
-                  {(propertyId && propertyId !== 'all') || startDate || endDate 
-                    ? 'No pending transactions match the current filters' 
-                    : 'All transactions for today have been approved'
-                  }
-                </p>
-              </CardContent>
-            </Card>
+            <div className="flex flex-col items-center justify-center py-8 lg:py-16 text-center bg-green-50/50 lg:bg-green-50/30 rounded-2xl border border-green-100/50 lg:border-green-100/30">
+              <div className="w-12 h-12 lg:w-16 lg:h-16 bg-green-100 rounded-full flex items-center justify-center mb-3">
+                <CheckCircle2 className="h-6 w-6 lg:h-8 lg:w-8 text-green-600" />
+              </div>
+              <p className="text-sm lg:text-lg font-medium text-gray-900">All Clear!</p>
+              <p className="text-xs lg:text-sm text-gray-500 mt-1 max-w-[200px] lg:max-w-md">No pending transactions to review right now. Great job!</p>
+            </div>
           ) : (
-            <div className="space-y-3">
-              <div className="flex items-center justify-between">
-                <h3 className="text-sm font-medium text-gray-700">
+            <div className="space-y-4">
+              <div className="flex items-center justify-between px-1">
+                <h3 className="text-sm lg:text-base font-semibold text-gray-900">
                   Pending Transactions ({pendingTransactions.transactions.length})
                 </h3>
-                <Badge variant="outline" className="border-yellow-500 text-yellow-700">
-                  <Clock className="h-3 w-3 mr-1" />
-                  Live Updates
-                </Badge>
+                {/* Desktop Header Labels could go here for the list below if it wasn't using flex-col on mobile */}
               </div>
-              
-              {pendingTransactions.transactions.map((transaction: any) => (
-                <Card 
-                  key={`${transaction.type}-${transaction.id}`} 
-                  className="border-l-4 border-l-yellow-500 shadow-sm hover:shadow-md transition-all duration-200"
-                >
-                  <CardContent className="p-4">
-                    <div className="flex items-start gap-4">
-                      <Checkbox
-                        checked={selectedTransactions.has(transaction.id)}
-                        onCheckedChange={(checked) => handleTransactionSelect(transaction.id, checked as boolean)}
-                        className="mt-1"
-                      />
-                      
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 mb-2">
-                          {getTypeIcon(transaction.type)}
-                          <h4 className="font-medium capitalize truncate">
-                            {transaction.type} - {transaction.category || transaction.source}
+
+              {/* Desktop Headers Row */}
+              <div className="hidden lg:grid grid-cols-12 gap-4 px-4 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                <div className="col-span-1">Select</div>
+                <div className="col-span-4">Details</div>
+                <div className="col-span-3">Property</div>
+                <div className="col-span-2">Submitted By</div>
+                <div className="col-span-2 text-right">Amount</div>
+              </div>
+
+              <div className="space-y-3">
+                {pendingTransactions.transactions.map((transaction: any) => (
+                  <div
+                    key={`${transaction.type}-${transaction.id}`}
+                    className={`
+                      relative group border rounded-2xl p-4 transition-all duration-300
+                      ${selectedTransactions.has(transaction.id)
+                        ? 'bg-blue-50/50 border-blue-200 shadow-sm lg:bg-blue-50/30'
+                        : 'bg-white border-gray-100 hover:border-gray-200 lg:hover:bg-white/60 lg:hover:shadow-md lg:hover:-translate-y-0.5'
+                      }
+                      /* Desktop Grid Layout Override */
+                      lg:grid lg:grid-cols-12 lg:gap-4 lg:items-center lg:py-3 lg:px-4
+                    `}
+                  >
+                    {/* Mobile Layout Wrapper */}
+                    <div className="flex items-start gap-4 lg:contents">
+                      <div className="lg:col-span-1 flex items-center">
+                        <Checkbox
+                          checked={selectedTransactions.has(transaction.id)}
+                          onCheckedChange={(checked) => handleTransactionSelect(transaction.id, checked as boolean)}
+                          className="mt-1 lg:mt-0 h-5 w-5 border-2 border-gray-300 data-[state=checked]:border-blue-500 data-[state=checked]:bg-blue-500 rounded-md transition-all"
+                        />
+                      </div>
+
+                      <div className="flex-1 min-w-0 lg:col-span-4 lg:flex lg:flex-col lg:justify-center">
+                        <div className="flex flex-wrap items-center gap-2 mb-1.5 lg:mb-0.5">
+                          <h4 className="font-semibold text-gray-900 capitalize truncate text-sm lg:text-base">
+                            {transaction.category || transaction.source}
                           </h4>
-                          <Badge className={`${getStatusColor(transaction.status)} flex-shrink-0`}>
-                            {transaction.status}
-                          </Badge>
-                          <Badge variant="outline" className="text-xs flex-shrink-0">
-                            {transaction.paymentMode}
-                          </Badge>
+                          <span className={`text-[10px] lg:text-[11px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded ${transaction.type === 'revenue' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
+                            }`}>
+                            {transaction.type}
+                          </span>
                         </div>
-                        
-                        <p className="text-sm text-gray-600 mb-1 truncate">
+                        {/* Mobile Property Name (Hidden on Desktop, moved to own col) */}
+                        <p className="text-xs text-gray-500 mb-2 truncate font-medium lg:hidden">
                           {transaction.propertyName}
                         </p>
-                        
-                        {transaction.description && (
-                          <p className="text-sm text-gray-500 line-clamp-2 leading-relaxed mb-2">
-                            {transaction.description}
-                          </p>
-                        )}
-                        
-                        <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4 text-xs text-gray-500">
-                          <span className="flex items-center">
-                            <User className="h-3 w-3 mr-1 flex-shrink-0" />
-                            By {transaction.createdByName}
-                          </span>
-                          <span className="flex items-center">
-                            <Clock className="h-3 w-3 mr-1 flex-shrink-0" />
-                            {formatCardDateTime(transaction.createdAt)}
-                          </span>
-                          {transaction.receiptUrl && (
-                            <span className="flex items-center text-blue-600">
-                              <Receipt className="h-3 w-3 mr-1 flex-shrink-0" />
-                              Has Receipt
-                            </span>
-                          )}
-                        </div>
                       </div>
-                      
-                      <div className="flex flex-col items-end">
-                        <div className={`text-lg font-semibold ${getTypeColor(transaction.type)}`}>
+
+                      {/* Desktop Property Column */}
+                      <div className="hidden lg:col-span-3 lg:flex items-center text-sm text-gray-600 font-medium">
+                        <Building2 className="h-3.5 w-3.5 mr-2 text-gray-400" />
+                        {transaction.propertyName}
+                      </div>
+
+                      {/* Desktop User/Time Column */}
+                      <div className="hidden lg:col-span-2 lg:flex flex-col justify-center text-xs text-gray-500">
+                        <span className="flex items-center mb-1">
+                          <User className="h-3 w-3 mr-1.5 text-gray-400" />
+                          {transaction.createdByName}
+                        </span>
+                        <span className="flex items-center">
+                          <Clock className="h-3 w-3 mr-1.5 text-gray-400" />
+                          {formatCardDateTime(transaction.createdAt).split(' ')[0]}
+                        </span>
+                      </div>
+
+                      {/* Mobile User/Time (Hidden on Desktop) */}
+                      <div className="flex items-center gap-3 text-xs text-gray-400 lg:hidden">
+                        <span className="flex items-center">
+                          <User className="h-3 w-3 mr-1" />
+                          {transaction.createdByName}
+                        </span>
+                        <span className="flex items-center">
+                          <Clock className="h-3 w-3 mr-1" />
+                          {formatCardDateTime(transaction.createdAt).split(' ')[0]}
+                        </span>
+                      </div>
+
+
+                      <div className="text-right lg:col-span-2 lg:flex lg:flex-col lg:items-end lg:justify-center">
+                        <span className={`block font-bold ${getTypeColor(transaction.type)} lg:text-base`}>
                           {formatCurrency(transaction.amountCents)}
-                        </div>
-                        <div className="text-xs text-gray-500 mt-1">
-                          {transaction.type === 'revenue' ? 'Revenue' : 'Expense'}
-                        </div>
+                        </span>
+                        {transaction.receiptUrl && (
+                          <span className="inline-flex items-center text-[10px] font-medium text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded mt-1 lg:mt-0.5">
+                            <Receipt className="h-3 w-3 mr-1" />
+                            Receipt
+                          </span>
+                        )}
                       </div>
                     </div>
-                  </CardContent>
-                </Card>
-              ))}
+                  </div>
+                ))}
+              </div>
             </div>
           )}
         </CardContent>

@@ -4,6 +4,8 @@ import type { AuthData } from '~backend/auth/types';
 import { useQueryClient } from '@tanstack/react-query';
 import { getUserLocation, getUserIP, getUserAgent, getUserLocale } from '../utils/geolocation';
 import { tokenManager } from '../services/token-manager';
+import { createNativeAuthClient, shouldUseNativeHttp } from '../src/utils/native-http';
+import { getVersionedApiUrl } from '../src/utils/env';
 
 interface AuthContextType {
   user: AuthData | null;
@@ -165,10 +167,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const login = async (email: string, password: string) => {
-    // #region agent log - IMMEDIATE debug alert
-    window.alert(`[DEBUG] Login function called with: ${email}`);
-    // #endregion
-    
     try {
       console.log('[AuthContext] Login started');
       setIsLoggingIn(true);
@@ -177,14 +175,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setShowLogoutProgress(false);
       setIsLoggingOut(false);
       
-      // #region agent log - visible debug
-      const apiUrl = (await import('../src/utils/env')).getVersionedApiUrl();
-      console.log('[DEBUG] API URL:', apiUrl);
-      localStorage.setItem('__debug_api_url', apiUrl);
-      window.alert(`[DEBUG] Calling API: ${apiUrl}/auth/login`);
-      // #endregion
+      let response: any;
       
-      const response = await backend.auth.login({ email, password });
+      // Use native HTTP for Capacitor (bypasses CORS)
+      if (shouldUseNativeHttp()) {
+        console.log('[AuthContext] Using Native HTTP for login (Capacitor)');
+        const apiUrl = getVersionedApiUrl();
+        const nativeClient = createNativeAuthClient(apiUrl);
+        response = await nativeClient.login(email, password);
+        console.log('[AuthContext] Native HTTP login response:', response);
+      } else {
+        // Use regular Encore client for web
+        response = await backend.auth.login({ email, password });
+      }
       
       // #region agent log - visible debug after login API
       console.log('[DEBUG] Login API response received:', !!response);
@@ -231,22 +234,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         throw new Error('Failed to create authenticated backend client');
       }
       
-      console.log('[AuthContext] Calling /auth/me with authenticated backend...');
-      const meResponse = await authenticatedBackend.auth.me();
-      setUser(meResponse.user);
+      console.log('[AuthContext] Calling /auth/me...');
+      let meResponse: any;
       
-      // #region agent log - visible debug success
-      console.log('[DEBUG] Login complete, user set:', meResponse.user?.email);
-      localStorage.setItem('__debug_login_success', JSON.stringify({
-        success: true,
-        userEmail: meResponse.user?.email,
-        timestamp: new Date().toISOString()
-      }));
-      // Show success alert for debugging
-      if (typeof window !== 'undefined') {
-        window.alert(`Login Success! User: ${meResponse.user?.email}`);
+      if (shouldUseNativeHttp()) {
+        // Use native HTTP for /auth/me in Capacitor
+        const apiUrl = getVersionedApiUrl();
+        const nativeClient = createNativeAuthClient(apiUrl);
+        const token = tokenManager.getAccessToken();
+        meResponse = await nativeClient.me(token!);
+      } else {
+        meResponse = await authenticatedBackend.auth.me();
       }
-      // #endregion
+      
+      setUser(meResponse.user);
+      console.log('[AuthContext] Login complete, user set:', meResponse.user?.email);
       
       // Track login activity with geolocation (non-blocking)
       trackUserActivity(parseInt(meResponse.user.userID), 'login').catch(error => {

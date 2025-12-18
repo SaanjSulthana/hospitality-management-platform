@@ -165,13 +165,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const login = async (email: string, password: string) => {
+    // #region agent log - IMMEDIATE debug alert
+    window.alert(`[DEBUG] Login function called with: ${email}`);
+    // #endregion
+    
     try {
       console.log('[AuthContext] Login started');
       setIsLoggingIn(true);
-      
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/33d595d9-e296-4216-afc6-6fa72f7ee3e2',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AuthContext.tsx:login:start',message:'Login attempt starting',data:{email,timestamp:new Date().toISOString()},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H1'})}).catch(()=>{});
-      // #endregion
       
       // Reset logout progress state immediately to prevent popup after login
       setShowLogoutProgress(false);
@@ -181,6 +181,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const apiUrl = (await import('../src/utils/env')).getVersionedApiUrl();
       console.log('[DEBUG] API URL:', apiUrl);
       localStorage.setItem('__debug_api_url', apiUrl);
+      window.alert(`[DEBUG] Calling API: ${apiUrl}/auth/login`);
       // #endregion
       
       const response = await backend.auth.login({ email, password });

@@ -148,11 +148,11 @@ export function getApiUrl(): string {
   if (viteApiUrl) return viteApiUrl;
   if (reactApiUrl) return reactApiUrl;
   
-  // For Capacitor native apps - use Encore staging API
+  // For Capacitor native apps - use api.curat.ai (Encore public API)
   if (isCapacitor()) {
-    const capacitorApiUrl = 'https://staging-hospitality-management-platform-cr8i.encr.app';
+    const capacitorApiUrl = 'https://api.curat.ai';
     // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/33d595d9-e296-4216-afc6-6fa72f7ee3e2',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'env.ts:getApiUrl:capacitor',message:'Capacitor detected, returning staging API',data:{url:capacitorApiUrl},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H1'})}).catch(()=>{});
+    console.log('[DEBUG] Capacitor detected, using API:', capacitorApiUrl);
     // #endregion
     return capacitorApiUrl;
   }

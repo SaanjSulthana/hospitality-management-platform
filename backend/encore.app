@@ -20,26 +20,19 @@
   },
   "global_cors": {
     "allow_origins_without_credentials": [
-      "http://localhost:5173",
-      "http://localhost:4173",
-      "http://localhost",
-      "capacitor://localhost",
-      "https://staging-hospitality-management-platform-cr8i.frontend.encr.app",
-      "https://hospitality-management-platform-cr8i.frontend.encr.app",
-      "https://hospitalitymanagementplatform.netlify.app",
-      "https://*.netlify.app",
-      "https://*.vercel.app"
+      "*"
     ],
     "allow_origins_with_credentials": [
       "http://localhost:5173",
       "http://localhost:4173",
       "http://localhost",
       "capacitor://localhost",
+      "ionic://localhost",
+      "https://localhost",
       "https://staging-hospitality-management-platform-cr8i.frontend.encr.app",
       "https://hospitality-management-platform-cr8i.frontend.encr.app",
       "https://hospitalitymanagementplatform.netlify.app",
-      "https://*.netlify.app",
-      "https://*.vercel.app"
+      "https://api.curat.ai"
     ],
     "allow_headers": [
       "Content-Type",

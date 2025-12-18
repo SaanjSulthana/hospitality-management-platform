@@ -1,0 +1,2 @@
+{"location":"AuthContext.tsx:login:start","message":"Login attempt starting","data":{"email":"stdntzn@gmail.com","timestamp":"2025-12-18T10:37:05.064Z"},"timestamp":1766054225064,"sessionId":"debug-session","hypothesisId":"H1"}
+{"location":"env.ts:getApiUrl:entry","message":"getApiUrl called","data":{"isCapacitorResult":false,"platform":"web"},"timestamp":1766054225065,"sessionId":"debug-session","hypothesisId":"H1"}

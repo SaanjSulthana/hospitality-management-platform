@@ -1,9 +1,12 @@
 [build]
-  # Run the build from the frontend folder
-  command = "cd frontend && bun run build"
+  # Base directory (where to run the build)
+  base = "frontend"
+  
+  # Build command (runs inside base directory)
+  command = "bun run build"
 
-  # Publish the built Vite app (relative to repo root)
-  publish = "frontend/dist"
+  # Publish directory (relative to base)
+  publish = "dist"
 
 [[redirects]]
   from = "/*"

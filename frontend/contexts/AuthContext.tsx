@@ -177,14 +177,34 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setShowLogoutProgress(false);
       setIsLoggingOut(false);
       
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/33d595d9-e296-4216-afc6-6fa72f7ee3e2',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AuthContext.tsx:login:beforeApiCall',message:'About to call backend.auth.login',data:{backendType:typeof backend,hasAuth:!!backend?.auth},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H4'})}).catch(()=>{});
+      // #region agent log - visible debug
+      const apiUrl = (await import('../src/utils/env')).getVersionedApiUrl();
+      console.log('[DEBUG] API URL:', apiUrl);
+      localStorage.setItem('__debug_api_url', apiUrl);
       // #endregion
       
       const response = await backend.auth.login({ email, password });
       
+      // #region agent log - visible debug after login API
+      console.log('[DEBUG] Login API response received:', !!response);
+      localStorage.setItem('__debug_login_response', JSON.stringify({
+        hasResponse: !!response,
+        hasAccessToken: !!response?.accessToken,
+        hasUser: !!response?.user,
+        timestamp: new Date().toISOString()
+      }));
+      // #endregion
+      
       // Use TokenManager to store tokens (includes validation and cleaning)
       const stored = tokenManager.setTokens(response.accessToken, response.refreshToken);
+      
+      // #region agent log - visible debug token storage
+      console.log('[DEBUG] Token storage result:', stored);
+      localStorage.setItem('__debug_token_stored', JSON.stringify({
+        stored,
+        timestamp: new Date().toISOString()
+      }));
+      // #endregion
       
       if (!stored) {
         throw new Error('Failed to store tokens safely');
@@ -214,6 +234,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const meResponse = await authenticatedBackend.auth.me();
       setUser(meResponse.user);
       
+      // #region agent log - visible debug success
+      console.log('[DEBUG] Login complete, user set:', meResponse.user?.email);
+      localStorage.setItem('__debug_login_success', JSON.stringify({
+        success: true,
+        userEmail: meResponse.user?.email,
+        timestamp: new Date().toISOString()
+      }));
+      // Show success alert for debugging
+      if (typeof window !== 'undefined') {
+        window.alert(`Login Success! User: ${meResponse.user?.email}`);
+      }
+      // #endregion
+      
       // Track login activity with geolocation (non-blocking)
       trackUserActivity(parseInt(meResponse.user.userID), 'login').catch(error => {
         console.warn('[AuthContext] Login activity tracking failed (non-critical):', error);
@@ -223,8 +256,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     } catch (error) {
       console.error('[AuthContext] Login failed:', error);
       
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/33d595d9-e296-4216-afc6-6fa72f7ee3e2',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AuthContext.tsx:login:error',message:'Login API call failed',data:{errorMessage:String(error),errorName:(error as any)?.name,errorStack:(error as any)?.stack?.substring(0,500)},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H1,H2,H3,H4'})}).catch(()=>{});
+      // #region agent log - visible debug for mobile
+      const errorInfo = {
+        message: String(error),
+        name: (error as any)?.name || 'Unknown',
+        stack: (error as any)?.stack?.substring(0, 300) || 'No stack'
+      };
+      // Store debug info for visibility
+      try {
+        localStorage.setItem('__debug_last_login_error', JSON.stringify(errorInfo));
+        // Show alert on mobile for debugging
+        if (typeof window !== 'undefined' && window.alert) {
+          window.alert(`Login Error: ${errorInfo.message}`);
+        }
+      } catch (e) { /* ignore storage errors */ }
       // #endregion
       
       // Clear tokens using TokenManager

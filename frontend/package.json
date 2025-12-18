@@ -4,6 +4,7 @@
   "type": "module",
   "packageManager": "bun@1.2.21",
   "scripts": {
+    "postinstall": "node scripts/fix-capacitor-http-namespace.js",
     "dev": "vite",
     "build": "tsc && vite build",
     "preview": "vite preview",

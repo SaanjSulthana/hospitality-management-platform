@@ -8,8 +8,9 @@
         </trust-anchors>
     </base-config>
     
-    <!-- Production API domain -->
+    <!-- Encore Cloud API domains (staging and production) -->
     <domain-config cleartextTrafficPermitted="false">
+        <domain includeSubdomains="true">encr.app</domain>
         <domain includeSubdomains="true">api.curat.ai</domain>
         <trust-anchors>
             <certificates src="system" />

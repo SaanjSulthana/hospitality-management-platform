@@ -137,6 +137,10 @@ export const API_VERSION = '/v1';
  * Enhanced with Capacitor support
  */
 export function getApiUrl(): string {
+  // #region agent log
+  fetch('http://127.0.0.1:7242/ingest/33d595d9-e296-4216-afc6-6fa72f7ee3e2',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'env.ts:getApiUrl:entry',message:'getApiUrl called',data:{isCapacitorResult:isCapacitor(),platform:getPlatform()},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H1'})}).catch(()=>{});
+  // #endregion
+
   // Check for explicit environment variables first
   const viteApiUrl = getEnvVar('VITE_API_URL');
   const reactApiUrl = getEnvVar('REACT_APP_API_URL');
@@ -144,10 +148,13 @@ export function getApiUrl(): string {
   if (viteApiUrl) return viteApiUrl;
   if (reactApiUrl) return reactApiUrl;
   
-  // For Capacitor native apps, always use production API
-  // Native apps can't access localhost on the device
+  // For Capacitor native apps - use Encore staging API
   if (isCapacitor()) {
-    return 'https://prod-hospitality-management-platform-cr8i.encr.app';
+    const capacitorApiUrl = 'https://staging-hospitality-management-platform-cr8i.encr.app';
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/33d595d9-e296-4216-afc6-6fa72f7ee3e2',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'env.ts:getApiUrl:capacitor',message:'Capacitor detected, returning staging API',data:{url:capacitorApiUrl},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H1'})}).catch(()=>{});
+    // #endregion
+    return capacitorApiUrl;
   }
   
   // Auto-detect based on current hostname for Encore Cloud

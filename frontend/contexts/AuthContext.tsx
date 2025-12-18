@@ -169,9 +169,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       console.log('[AuthContext] Login started');
       setIsLoggingIn(true);
       
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/33d595d9-e296-4216-afc6-6fa72f7ee3e2',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AuthContext.tsx:login:start',message:'Login attempt starting',data:{email,timestamp:new Date().toISOString()},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H1'})}).catch(()=>{});
+      // #endregion
+      
       // Reset logout progress state immediately to prevent popup after login
       setShowLogoutProgress(false);
       setIsLoggingOut(false);
+      
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/33d595d9-e296-4216-afc6-6fa72f7ee3e2',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AuthContext.tsx:login:beforeApiCall',message:'About to call backend.auth.login',data:{backendType:typeof backend,hasAuth:!!backend?.auth},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H4'})}).catch(()=>{});
+      // #endregion
+      
       const response = await backend.auth.login({ email, password });
       
       // Use TokenManager to store tokens (includes validation and cleaning)
@@ -213,6 +222,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       console.log('[AuthContext] Login successful, user set:', meResponse.user);
     } catch (error) {
       console.error('[AuthContext] Login failed:', error);
+      
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/33d595d9-e296-4216-afc6-6fa72f7ee3e2',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AuthContext.tsx:login:error',message:'Login API call failed',data:{errorMessage:String(error),errorName:(error as any)?.name,errorStack:(error as any)?.stack?.substring(0,500)},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H1,H2,H3,H4'})}).catch(()=>{});
+      // #endregion
       
       // Clear tokens using TokenManager
       tokenManager.clearTokens();

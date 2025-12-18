@@ -16,6 +16,10 @@ console.log('Local type:', typeof Local);
 const apiUrl = getVersionedApiUrl();
 console.log('Using Versioned API URL:', apiUrl);
 
+// #region agent log
+fetch('http://127.0.0.1:7242/ingest/33d595d9-e296-4216-afc6-6fa72f7ee3e2',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'backend.ts:init',message:'Backend client initializing',data:{apiUrl,fullUrl:apiUrl},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H1,H4'})}).catch(()=>{});
+// #endregion
+
 // Create a client instance with the versioned URL
 const clientInstance = new Client(apiUrl);
 

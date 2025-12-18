@@ -1,12 +1,11 @@
 /**
  * Native HTTP Wrapper for Capacitor
  * 
- * Uses native HTTP when running in Capacitor (bypasses CORS)
+ * Uses Capacitor's built-in CapacitorHttp (bypasses CORS)
  * Falls back to regular fetch when running in browser
  */
 
-import { Capacitor } from '@capacitor/core';
-import { Http, HttpResponse, HttpOptions } from '@capacitor-community/http';
+import { Capacitor, CapacitorHttp, HttpResponse } from '@capacitor/core';
 
 /**
  * Check if we should use native HTTP
@@ -27,12 +26,12 @@ export async function nativeGet(url: string, headers?: Record<string, string>): 
     return response.json();
   }
 
-  const options: HttpOptions = {
+  console.log('[NativeHTTP] GET request:', url);
+  const response: HttpResponse = await CapacitorHttp.get({
     url,
     headers: headers || {},
-  };
-
-  const response: HttpResponse = await Http.get(options);
+  });
+  console.log('[NativeHTTP] Response status:', response.status);
   
   if (response.status >= 400) {
     throw new Error(`HTTP ${response.status}: ${JSON.stringify(response.data)}`);
@@ -66,17 +65,18 @@ export async function nativePost(url: string, data: any, headers?: Record<string
     return responseData;
   }
 
-  const options: HttpOptions = {
+  console.log('[NativeHTTP] POST request:', url);
+  console.log('[NativeHTTP] POST data:', data);
+  
+  const response: HttpResponse = await CapacitorHttp.post({
     url,
     headers: {
       'Content-Type': 'application/json',
       ...headers,
     },
     data,
-  };
-
-  console.log('[NativeHTTP] POST request:', url);
-  const response: HttpResponse = await Http.post(options);
+  });
+  
   console.log('[NativeHTTP] Response status:', response.status);
   console.log('[NativeHTTP] Response data:', response.data);
   
@@ -110,16 +110,14 @@ export async function nativePut(url: string, data: any, headers?: Record<string,
     return response.json();
   }
 
-  const options: HttpOptions = {
+  const response: HttpResponse = await CapacitorHttp.put({
     url,
     headers: {
       'Content-Type': 'application/json',
       ...headers,
     },
     data,
-  };
-
-  const response: HttpResponse = await Http.put(options);
+  });
   
   if (response.status >= 400) {
     throw new Error(`HTTP ${response.status}: ${JSON.stringify(response.data)}`);
@@ -145,12 +143,10 @@ export async function nativeDelete(url: string, headers?: Record<string, string>
     return response.json();
   }
 
-  const options: HttpOptions = {
+  const response: HttpResponse = await CapacitorHttp.delete({
     url,
     headers: headers || {},
-  };
-
-  const response: HttpResponse = await Http.del(options);
+  });
   
   if (response.status >= 400) {
     throw new Error(`HTTP ${response.status}: ${JSON.stringify(response.data)}`);

@@ -4,7 +4,7 @@
   "type": "module",
   "packageManager": "bun@1.2.21",
   "scripts": {
-    "postinstall": "node scripts/fix-capacitor-http-namespace.js",
+    "postinstall": "node scripts/fix-capacitor-http-namespace.cjs",
     "dev": "vite",
     "build": "tsc && vite build",
     "preview": "vite preview",
@@ -24,7 +24,6 @@
     "run:ios": "npx cap run ios"
   },
   "dependencies": {
-    "@capacitor-community/http": "^1.4.1",
     "@capacitor/android": "^8.0.0",
     "@capacitor/app": "^8.0.0",
     "@capacitor/browser": "^8.0.0",

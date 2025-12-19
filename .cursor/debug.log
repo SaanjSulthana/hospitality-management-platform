@@ -1,2 +1,17 @@
 {"location":"AuthContext.tsx:login:start","message":"Login attempt starting","data":{"email":"stdntzn@gmail.com","timestamp":"2025-12-18T10:37:05.064Z"},"timestamp":1766054225064,"sessionId":"debug-session","hypothesisId":"H1"}
 {"location":"env.ts:getApiUrl:entry","message":"getApiUrl called","data":{"isCapacitorResult":false,"platform":"web"},"timestamp":1766054225065,"sessionId":"debug-session","hypothesisId":"H1"}
+{"location":"env.ts:getApiUrl:entry","message":"getApiUrl called","data":{"isCapacitorResult":false,"platform":"web"},"timestamp":1766058180495,"sessionId":"debug-session","hypothesisId":"H1"}
+{"location":"env.ts:getApiUrl:entry","message":"getApiUrl called","data":{"isCapacitorResult":false,"platform":"web"},"timestamp":1766058180496,"sessionId":"debug-session","hypothesisId":"H1"}
+{"location":"env.ts:getApiUrl:entry","message":"getApiUrl called","data":{"isCapacitorResult":false,"platform":"web"},"timestamp":1766058180517,"sessionId":"debug-session","hypothesisId":"H1"}
+{"location":"backend.ts:init","message":"Backend client initializing","data":{"apiUrl":"http://localhost:4000/v1","fullUrl":"http://localhost:4000/v1"},"timestamp":1766058180517,"sessionId":"debug-session","hypothesisId":"H1,H4"}
+{"location":"env.ts:getApiUrl:entry","message":"getApiUrl called","data":{"isCapacitorResult":false,"platform":"web"},"timestamp":1766058180801,"sessionId":"debug-session","hypothesisId":"H1"}
+{"location":"env.ts:getApiUrl:entry","message":"getApiUrl called","data":{"isCapacitorResult":false,"platform":"web"},"timestamp":1766058279850,"sessionId":"debug-session","hypothesisId":"H1"}
+{"location":"env.ts:getApiUrl:entry","message":"getApiUrl called","data":{"isCapacitorResult":false,"platform":"web"},"timestamp":1766058279850,"sessionId":"debug-session","hypothesisId":"H1"}
+{"location":"backend.ts:init","message":"Backend client initializing","data":{"apiUrl":"http://localhost:4000/v1","fullUrl":"http://localhost:4000/v1"},"timestamp":1766058279851,"sessionId":"debug-session","hypothesisId":"H1,H4"}
+{"location":"env.ts:getApiUrl:entry","message":"getApiUrl called","data":{"isCapacitorResult":false,"platform":"web"},"timestamp":1766058279851,"sessionId":"debug-session","hypothesisId":"H1"}
+{"location":"env.ts:getApiUrl:entry","message":"getApiUrl called","data":{"isCapacitorResult":false,"platform":"web"},"timestamp":1766058279973,"sessionId":"debug-session","hypothesisId":"H1"}
+{"location":"env.ts:getApiUrl:entry","message":"getApiUrl called","data":{"isCapacitorResult":false,"platform":"web"},"timestamp":1766058359852,"sessionId":"debug-session","hypothesisId":"H1"}
+{"location":"env.ts:getApiUrl:entry","message":"getApiUrl called","data":{"isCapacitorResult":false,"platform":"web"},"timestamp":1766058359852,"sessionId":"debug-session","hypothesisId":"H1"}
+{"location":"env.ts:getApiUrl:entry","message":"getApiUrl called","data":{"isCapacitorResult":false,"platform":"web"},"timestamp":1766058359853,"sessionId":"debug-session","hypothesisId":"H1"}
+{"location":"backend.ts:init","message":"Backend client initializing","data":{"apiUrl":"http://localhost:4000/v1","fullUrl":"http://localhost:4000/v1"},"timestamp":1766058359853,"sessionId":"debug-session","hypothesisId":"H1,H4"}
+{"location":"env.ts:getApiUrl:entry","message":"getApiUrl called","data":{"isCapacitorResult":false,"platform":"web"},"timestamp":1766058359938,"sessionId":"debug-session","hypothesisId":"H1"}

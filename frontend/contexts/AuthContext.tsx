@@ -189,26 +189,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         response = await backend.auth.login({ email, password });
       }
       
-      // #region agent log - visible debug after login API
-      console.log('[DEBUG] Login API response received:', !!response);
-      localStorage.setItem('__debug_login_response', JSON.stringify({
-        hasResponse: !!response,
-        hasAccessToken: !!response?.accessToken,
-        hasUser: !!response?.user,
-        timestamp: new Date().toISOString()
-      }));
-      // #endregion
-      
       // Use TokenManager to store tokens (includes validation and cleaning)
       const stored = tokenManager.setTokens(response.accessToken, response.refreshToken);
-      
-      // #region agent log - visible debug token storage
-      console.log('[DEBUG] Token storage result:', stored);
-      localStorage.setItem('__debug_token_stored', JSON.stringify({
-        stored,
-        timestamp: new Date().toISOString()
-      }));
-      // #endregion
       
       if (!stored) {
         throw new Error('Failed to store tokens safely');
@@ -259,21 +241,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     } catch (error) {
       console.error('[AuthContext] Login failed:', error);
       
-      // #region agent log - visible debug for mobile
-      const errorInfo = {
+      // Log error for debugging
+      console.error('[AuthContext] Login error details:', {
         message: String(error),
-        name: (error as any)?.name || 'Unknown',
-        stack: (error as any)?.stack?.substring(0, 300) || 'No stack'
-      };
-      // Store debug info for visibility
-      try {
-        localStorage.setItem('__debug_last_login_error', JSON.stringify(errorInfo));
-        // Show alert on mobile for debugging
-        if (typeof window !== 'undefined' && window.alert) {
-          window.alert(`Login Error: ${errorInfo.message}`);
-        }
-      } catch (e) { /* ignore storage errors */ }
-      // #endregion
+        name: (error as any)?.name || 'Unknown'
+      });
       
       // Clear tokens using TokenManager
       tokenManager.clearTokens();

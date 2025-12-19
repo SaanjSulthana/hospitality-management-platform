@@ -134,13 +134,9 @@ export const API_VERSION = '/v1';
 /**
  * Get API URL from environment or use default
  * Returns BASE URL without version prefix (version added per request)
- * Enhanced with Capacitor support
+ * Enhanced with Capacitor support and deployment platform detection
  */
 export function getApiUrl(): string {
-  // #region agent log
-  fetch('http://127.0.0.1:7242/ingest/33d595d9-e296-4216-afc6-6fa72f7ee3e2',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'env.ts:getApiUrl:entry',message:'getApiUrl called',data:{isCapacitorResult:isCapacitor(),platform:getPlatform()},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H1'})}).catch(()=>{});
-  // #endregion
-
   // Check for explicit environment variables first
   const viteApiUrl = getEnvVar('VITE_API_URL');
   const reactApiUrl = getEnvVar('REACT_APP_API_URL');
@@ -150,25 +146,31 @@ export function getApiUrl(): string {
   
   // For Capacitor native apps - use api.curat.ai (Encore public API)
   if (isCapacitor()) {
-    const capacitorApiUrl = 'https://api.curat.ai';
-    // #region agent log
-    console.log('[DEBUG] Capacitor detected, using API:', capacitorApiUrl);
-    // #endregion
-    return capacitorApiUrl;
+    return 'https://api.curat.ai';
   }
   
-  // Auto-detect based on current hostname for Encore Cloud
+  // Auto-detect based on current hostname
   if (typeof window !== 'undefined') {
     const hostname = window.location.hostname;
     
-    // If running on Encore Cloud staging frontend, use staging API
+    // Netlify deployment
+    if (hostname.includes('netlify.app')) {
+      return 'https://api.curat.ai';
+    }
+    
+    // Vercel deployment
+    if (hostname.includes('vercel.app')) {
+      return 'https://api.curat.ai';
+    }
+    
+    // Encore Cloud staging frontend
     if (hostname.includes('staging-hospitality-management-platform-cr8i.frontend.encr.app')) {
       return 'https://api.curat.ai';
     }
     
-    // If running on Encore Cloud production frontend, use production API
+    // Encore Cloud production frontend
     if (hostname.includes('hospitality-management-platform-cr8i.frontend.encr.app')) {
-      return 'https://api.curat.ai'; // Update this when you have production API
+      return 'https://api.curat.ai';
     }
   }
   

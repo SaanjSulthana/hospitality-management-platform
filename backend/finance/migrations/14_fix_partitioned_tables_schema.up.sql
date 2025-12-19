@@ -1,183 +1,147 @@
 -- =========================================================================
--- Migration 14: Add missing columns to partitioned tables
+-- Migration 14: Add missing columns to partitioned tables (SAFE VERSION)
 -- Purpose: Align partitioned tables with main hospitality database schema
 -- Created: December 2025
 -- =========================================================================
 
--- -------------------------------------------------------------------------
--- 1. Add missing columns to revenues_partitioned
--- -------------------------------------------------------------------------
-
--- Source column (matches revenues.source in hospitality DB)
-ALTER TABLE revenues_partitioned ADD COLUMN IF NOT EXISTS source TEXT;
-
--- Currency column
-ALTER TABLE revenues_partitioned ADD COLUMN IF NOT EXISTS currency TEXT DEFAULT 'INR';
-
--- Receipt URL for storing receipt image links
-ALTER TABLE revenues_partitioned ADD COLUMN IF NOT EXISTS receipt_url TEXT;
-
--- Meta JSON for additional metadata
-ALTER TABLE revenues_partitioned ADD COLUMN IF NOT EXISTS meta_json JSONB;
-
--- Receipt file ID for file management
-ALTER TABLE revenues_partitioned ADD COLUMN IF NOT EXISTS receipt_file_id INTEGER;
-
--- Payment mode (cash, bank, upi, etc.)
-ALTER TABLE revenues_partitioned ADD COLUMN IF NOT EXISTS payment_mode VARCHAR(50) DEFAULT 'cash';
-
--- Bank reference for bank transactions
-ALTER TABLE revenues_partitioned ADD COLUMN IF NOT EXISTS bank_reference VARCHAR(100);
+-- This migration safely adds columns that may be missing
+-- It uses IF NOT EXISTS to prevent errors on columns that already exist
 
 -- -------------------------------------------------------------------------
--- 2. Add missing columns to expenses_partitioned
+-- 1. Add missing columns to revenues_partitioned (if table exists)
 -- -------------------------------------------------------------------------
 
--- Currency column
-ALTER TABLE expenses_partitioned ADD COLUMN IF NOT EXISTS currency TEXT DEFAULT 'INR';
-
--- Receipt URL for storing receipt image links
-ALTER TABLE expenses_partitioned ADD COLUMN IF NOT EXISTS receipt_url TEXT;
-
--- Expense date (separate from occurred_at timestamp)
-ALTER TABLE expenses_partitioned ADD COLUMN IF NOT EXISTS expense_date DATE;
-
--- Receipt file ID for file management
-ALTER TABLE expenses_partitioned ADD COLUMN IF NOT EXISTS receipt_file_id INTEGER;
-
--- Payment mode (cash, bank, upi, etc.)
-ALTER TABLE expenses_partitioned ADD COLUMN IF NOT EXISTS payment_mode VARCHAR(50) DEFAULT 'cash';
-
--- Bank reference for bank transactions
-ALTER TABLE expenses_partitioned ADD COLUMN IF NOT EXISTS bank_reference VARCHAR(100);
-
--- -------------------------------------------------------------------------
--- 3. Set default expense_date from occurred_at for existing rows
--- -------------------------------------------------------------------------
-
-UPDATE expenses_partitioned 
-SET expense_date = DATE(occurred_at) 
-WHERE expense_date IS NULL AND occurred_at IS NOT NULL;
-
--- -------------------------------------------------------------------------
--- 4. Create indexes for new columns
--- -------------------------------------------------------------------------
-
-CREATE INDEX IF NOT EXISTS idx_revenues_part_source ON revenues_partitioned(source);
-CREATE INDEX IF NOT EXISTS idx_revenues_part_payment_mode ON revenues_partitioned(payment_mode);
-CREATE INDEX IF NOT EXISTS idx_expenses_part_expense_date ON expenses_partitioned(expense_date);
-CREATE INDEX IF NOT EXISTS idx_expenses_part_payment_mode ON expenses_partitioned(payment_mode);
-
--- -------------------------------------------------------------------------
--- 5. Update sync triggers to include new columns
--- -------------------------------------------------------------------------
-
--- Drop and recreate revenues sync trigger function
-CREATE OR REPLACE FUNCTION sync_revenues_insert()
-RETURNS TRIGGER AS $$
+DO $$
 BEGIN
-  INSERT INTO revenues_partitioned (
-    id, org_id, property_id, amount_cents, occurred_at, description,
-    category, payment_method, reference_number, status,
-    approved_by_user_id, approved_at, created_by_user_id,
-    created_at, updated_at,
-    -- New columns
-    source, currency, receipt_url, meta_json, receipt_file_id, payment_mode, bank_reference
-  ) VALUES (
-    NEW.id, NEW.org_id, NEW.property_id, NEW.amount_cents, 
-    COALESCE(NEW.occurred_at, NOW()),
-    NEW.description, 
-    COALESCE(NEW.category, NEW.source), -- Use source as category fallback
-    COALESCE(NEW.payment_method, NEW.payment_mode),
-    NEW.reference_number, NEW.status, NEW.approved_by_user_id,
-    NEW.approved_at, NEW.created_by_user_id, NEW.created_at, NEW.updated_at,
-    -- New column values
-    NEW.source, NEW.currency, NEW.receipt_url, NEW.meta_json, 
-    NEW.receipt_file_id, NEW.payment_mode, NEW.bank_reference
-  )
-  ON CONFLICT (id, occurred_at)
-  DO UPDATE SET
-    org_id = EXCLUDED.org_id,
-    property_id = EXCLUDED.property_id,
-    amount_cents = EXCLUDED.amount_cents,
-    description = EXCLUDED.description,
-    category = EXCLUDED.category,
-    payment_method = EXCLUDED.payment_method,
-    reference_number = EXCLUDED.reference_number,
-    status = EXCLUDED.status,
-    approved_by_user_id = EXCLUDED.approved_by_user_id,
-    approved_at = EXCLUDED.approved_at,
-    updated_at = EXCLUDED.updated_at,
-    -- New columns update
-    source = EXCLUDED.source,
-    currency = EXCLUDED.currency,
-    receipt_url = EXCLUDED.receipt_url,
-    meta_json = EXCLUDED.meta_json,
-    receipt_file_id = EXCLUDED.receipt_file_id,
-    payment_mode = EXCLUDED.payment_mode,
-    bank_reference = EXCLUDED.bank_reference;
-  RETURN NEW;
-EXCEPTION WHEN undefined_column THEN
-  -- Fallback for tables that don't have all columns yet
-  RETURN NEW;
-END;
-$$ LANGUAGE plpgsql;
+  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'revenues_partitioned') THEN
+    -- Add source column
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'revenues_partitioned' AND column_name = 'source') THEN
+      ALTER TABLE revenues_partitioned ADD COLUMN source TEXT;
+    END IF;
+    
+    -- Add currency column
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'revenues_partitioned' AND column_name = 'currency') THEN
+      ALTER TABLE revenues_partitioned ADD COLUMN currency TEXT DEFAULT 'INR';
+    END IF;
+    
+    -- Add receipt_url column
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'revenues_partitioned' AND column_name = 'receipt_url') THEN
+      ALTER TABLE revenues_partitioned ADD COLUMN receipt_url TEXT;
+    END IF;
+    
+    -- Add meta_json column
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'revenues_partitioned' AND column_name = 'meta_json') THEN
+      ALTER TABLE revenues_partitioned ADD COLUMN meta_json JSONB;
+    END IF;
+    
+    -- Add receipt_file_id column
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'revenues_partitioned' AND column_name = 'receipt_file_id') THEN
+      ALTER TABLE revenues_partitioned ADD COLUMN receipt_file_id INTEGER;
+    END IF;
+    
+    -- Add bank_reference column
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'revenues_partitioned' AND column_name = 'bank_reference') THEN
+      ALTER TABLE revenues_partitioned ADD COLUMN bank_reference VARCHAR(100);
+    END IF;
+    
+    -- Add created_by_user_id column
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'revenues_partitioned' AND column_name = 'created_by_user_id') THEN
+      ALTER TABLE revenues_partitioned ADD COLUMN created_by_user_id INTEGER;
+    END IF;
+    
+    -- Add approved_by_user_id column
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'revenues_partitioned' AND column_name = 'approved_by_user_id') THEN
+      ALTER TABLE revenues_partitioned ADD COLUMN approved_by_user_id INTEGER;
+    END IF;
+    
+    -- Add approved_at column
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'revenues_partitioned' AND column_name = 'approved_at') THEN
+      ALTER TABLE revenues_partitioned ADD COLUMN approved_at TIMESTAMP;
+    END IF;
+    
+    RAISE NOTICE 'revenues_partitioned columns updated';
+  ELSE
+    RAISE NOTICE 'revenues_partitioned table does not exist, skipping';
+  END IF;
+END $$;
 
--- Drop and recreate expenses sync trigger function
-CREATE OR REPLACE FUNCTION sync_expenses_insert()
-RETURNS TRIGGER AS $$
+-- -------------------------------------------------------------------------
+-- 2. Add missing columns to expenses_partitioned (if table exists)
+-- -------------------------------------------------------------------------
+
+DO $$
 BEGIN
-  INSERT INTO expenses_partitioned (
-    id, org_id, property_id, amount_cents, occurred_at, description,
-    category, payment_method, vendor_name, reference_number, status,
-    approved_by_user_id, approved_at, created_by_user_id,
-    created_at, updated_at,
-    -- New columns
-    currency, receipt_url, expense_date, receipt_file_id, payment_mode, bank_reference
-  ) VALUES (
-    NEW.id, NEW.org_id, NEW.property_id, NEW.amount_cents, 
-    COALESCE(NEW.occurred_at, NEW.expense_date::timestamp, NOW()),
-    NEW.description, NEW.category, 
-    COALESCE(NEW.payment_method, NEW.payment_mode), 
-    NEW.vendor_name,
-    NEW.reference_number, NEW.status, NEW.approved_by_user_id,
-    NEW.approved_at, NEW.created_by_user_id, NEW.created_at, NEW.updated_at,
-    -- New column values
-    NEW.currency, NEW.receipt_url, 
-    COALESCE(NEW.expense_date, DATE(NEW.occurred_at)),
-    NEW.receipt_file_id, NEW.payment_mode, NEW.bank_reference
-  )
-  ON CONFLICT (id, occurred_at)
-  DO UPDATE SET
-    org_id = EXCLUDED.org_id,
-    property_id = EXCLUDED.property_id,
-    amount_cents = EXCLUDED.amount_cents,
-    description = EXCLUDED.description,
-    category = EXCLUDED.category,
-    payment_method = EXCLUDED.payment_method,
-    vendor_name = EXCLUDED.vendor_name,
-    reference_number = EXCLUDED.reference_number,
-    status = EXCLUDED.status,
-    approved_by_user_id = EXCLUDED.approved_by_user_id,
-    approved_at = EXCLUDED.approved_at,
-    updated_at = EXCLUDED.updated_at,
-    -- New columns update
-    currency = EXCLUDED.currency,
-    receipt_url = EXCLUDED.receipt_url,
-    expense_date = EXCLUDED.expense_date,
-    receipt_file_id = EXCLUDED.receipt_file_id,
-    payment_mode = EXCLUDED.payment_mode,
-    bank_reference = EXCLUDED.bank_reference;
-  RETURN NEW;
-EXCEPTION WHEN undefined_column THEN
-  -- Fallback for tables that don't have all columns yet
-  RETURN NEW;
-END;
-$$ LANGUAGE plpgsql;
+  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'expenses_partitioned') THEN
+    -- Add currency column
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'expenses_partitioned' AND column_name = 'currency') THEN
+      ALTER TABLE expenses_partitioned ADD COLUMN currency TEXT DEFAULT 'INR';
+    END IF;
+    
+    -- Add receipt_url column
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'expenses_partitioned' AND column_name = 'receipt_url') THEN
+      ALTER TABLE expenses_partitioned ADD COLUMN receipt_url TEXT;
+    END IF;
+    
+    -- Add receipt_file_id column
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'expenses_partitioned' AND column_name = 'receipt_file_id') THEN
+      ALTER TABLE expenses_partitioned ADD COLUMN receipt_file_id INTEGER;
+    END IF;
+    
+    -- Add bank_reference column
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'expenses_partitioned' AND column_name = 'bank_reference') THEN
+      ALTER TABLE expenses_partitioned ADD COLUMN bank_reference VARCHAR(100);
+    END IF;
+    
+    -- Add created_by_user_id column
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'expenses_partitioned' AND column_name = 'created_by_user_id') THEN
+      ALTER TABLE expenses_partitioned ADD COLUMN created_by_user_id INTEGER;
+    END IF;
+    
+    -- Add approved_by_user_id column
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'expenses_partitioned' AND column_name = 'approved_by_user_id') THEN
+      ALTER TABLE expenses_partitioned ADD COLUMN approved_by_user_id INTEGER;
+    END IF;
+    
+    -- Add approved_at column
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'expenses_partitioned' AND column_name = 'approved_at') THEN
+      ALTER TABLE expenses_partitioned ADD COLUMN approved_at TIMESTAMP;
+    END IF;
+    
+    RAISE NOTICE 'expenses_partitioned columns updated';
+  ELSE
+    RAISE NOTICE 'expenses_partitioned table does not exist, skipping';
+  END IF;
+END $$;
+
+-- -------------------------------------------------------------------------
+-- 3. Create indexes safely (only if tables and columns exist)
+-- -------------------------------------------------------------------------
+
+DO $$
+BEGIN
+  -- Index on revenues_partitioned.source
+  IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'revenues_partitioned' AND column_name = 'source') THEN
+    CREATE INDEX IF NOT EXISTS idx_revenues_part_source ON revenues_partitioned(source);
+  END IF;
+  
+  -- Index on revenues_partitioned.created_by_user_id
+  IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'revenues_partitioned' AND column_name = 'created_by_user_id') THEN
+    CREATE INDEX IF NOT EXISTS idx_revenues_part_created_by ON revenues_partitioned(created_by_user_id);
+  END IF;
+  
+  -- Index on expenses_partitioned.created_by_user_id
+  IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'expenses_partitioned' AND column_name = 'created_by_user_id') THEN
+    CREATE INDEX IF NOT EXISTS idx_expenses_part_created_by ON expenses_partitioned(created_by_user_id);
+  END IF;
+  
+  -- Index on expenses_partitioned.expense_date
+  IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'expenses_partitioned' AND column_name = 'expense_date') THEN
+    CREATE INDEX IF NOT EXISTS idx_expenses_part_expense_date ON expenses_partitioned(expense_date);
+  END IF;
+END $$;
 
 -- =========================================================================
 -- MIGRATION COMPLETE
--- This migration adds missing columns to align partitioned tables
--- with the main hospitality database schema for 10M+ org scaling
+-- This migration safely adds missing columns to partitioned tables
+-- All operations are idempotent and safe to run multiple times
 -- =========================================================================
-

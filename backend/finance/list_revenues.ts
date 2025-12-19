@@ -237,9 +237,10 @@ async function listRevenuesHandler(req: ListRevenuesRequest): Promise<ListRevenu
       // Handle schema errors with fallback query
       if (isSchemaError(error as Error)) {
         console.log('Schema error detected, attempting fallback query...');
+        // Declare fallbackQuery outside try block so it's accessible in catch
+        const fallbackQuery = generateFallbackQuery(query, ['status', 'payment_mode', 'bank_reference', 'receipt_file_id', 'approved_by_user_id', 'approved_at']);
         try {
           // Try with a simplified query without new columns
-          const fallbackQuery = generateFallbackQuery(query, ['status', 'payment_mode', 'bank_reference', 'receipt_file_id', 'approved_by_user_id', 'approved_at']);
           console.log('Executing fallback query:', fallbackQuery);
           
           const fallbackRevenues = await executeWithRetry(

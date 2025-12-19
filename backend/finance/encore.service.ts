@@ -110,3 +110,6 @@ export { financeEvents, realtimeUpdates } from "./events";
 export { subscribeFinanceEvents } from "./subscribe_events";
 export { getEventHistory, getEventMetrics } from "./event_store";
 export { subscribeFinanceRealtime } from "./subscribe_realtime";
+
+// Export staging schema fix endpoint
+export { fixStagingSchema } from "./fix_staging_schema";

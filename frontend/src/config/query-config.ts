@@ -29,18 +29,29 @@ export const QUERY_DEFAULTS = {
     refetchOnMount: true,
     refetchInterval: false,
   },
+  // Optimized for dashboard - keeps previous data on navigation to prevent reload flicker
+  DASHBOARD_OPTIMIZED: {
+    staleTime: 300_000, // 5 minutes - prevents refetch on route change
+    gcTime: 600_000, // 10 minutes
+    refetchOnWindowFocus: false,
+    refetchOnMount: false, // Use cached data when navigating back
+    refetchInterval: false,
+    placeholderData: (previousData: unknown) => previousData, // Keep previous data while fetching
+  },
 } as const;
 
 export const QUERY_CATEGORIES = {
-  properties: QUERY_DEFAULTS.STATIC_DATA,
-  users: QUERY_DEFAULTS.SLOW_CHANGING_DATA,
+  properties: QUERY_DEFAULTS.DASHBOARD_OPTIMIZED, // Optimized to prevent reload on navigation
+  users: QUERY_DEFAULTS.DASHBOARD_OPTIMIZED, // Optimized to prevent reload on navigation
+  staff: QUERY_DEFAULTS.DASHBOARD_OPTIMIZED, // Optimized to prevent reload on navigation
   revenues: QUERY_DEFAULTS.REAL_TIME_DATA,
   expenses: QUERY_DEFAULTS.REAL_TIME_DATA,
-  tasks: QUERY_DEFAULTS.REAL_TIME_DATA,
-  analytics: QUERY_DEFAULTS.SLOW_CHANGING_DATA,
-  'leave-requests': QUERY_DEFAULTS.SLOW_CHANGING_DATA,
+  tasks: QUERY_DEFAULTS.DASHBOARD_OPTIMIZED, // Use dashboard optimized to prevent reload on navigation
+  analytics: QUERY_DEFAULTS.DASHBOARD_OPTIMIZED, // Prevent dashboard stats from reloading
+  'leave-requests': QUERY_DEFAULTS.DASHBOARD_OPTIMIZED, // Optimized for staff page
   'pending-approvals': QUERY_DEFAULTS.SLOW_CHANGING_DATA,
   'realtime-connected': QUERY_DEFAULTS.REALTIME_CONNECTED,
+  dashboard: QUERY_DEFAULTS.DASHBOARD_OPTIMIZED, // New category for dashboard-specific queries
 } as const;
 
 

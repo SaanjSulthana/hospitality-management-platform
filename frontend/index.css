@@ -129,6 +129,12 @@
 }
 
 @layer base {
+  html {
+    height: 100%;
+    overscroll-behavior-y: none;
+    /* Prevent rubber-banding */
+  }
+
   * {
     @apply border-border outline-ring/50;
   }
@@ -136,11 +142,25 @@
   body {
     @apply bg-background text-foreground font-sans;
     font-family: 'Barlow Condensed', system-ui, sans-serif;
-    overflow-x: hidden;
+    min-height: 100%;
+    overscroll-behavior-y: none;
+    /* Prevent rubber-banding */
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  #root {
+    min-height: 100%;
+    overscroll-behavior-y: none;
+    /* Prevent rubber-banding */
   }
 }
 
 @layer utilities {
+  .overscroll-none {
+    overscroll-behavior: none;
+    -webkit-overscroll-behavior: none;
+  }
+
   .glass {
     @apply bg-white/70 dark:bg-black/70 backdrop-blur-md border border-white/20 dark:border-white/10 shadow-sm;
   }

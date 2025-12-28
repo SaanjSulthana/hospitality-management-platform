@@ -675,7 +675,7 @@ export default function Layout({ children }: LayoutProps) {
 
 
         {/* Page content */}
-        <main className="flex-1">
+        <main className="flex-1 overscroll-none">
           {bannerMode && (
             <GlobalAuthBanner
               mode={bannerMode}

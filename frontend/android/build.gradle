@@ -8,7 +8,7 @@ buildscript {
     }
     dependencies {
         classpath 'com.android.tools.build:gradle:8.13.2'
-        classpath 'com.google.gms:google-services:4.4.4'
+        classpath 'com.google.gms:google-services:4.4.0'
 
         // NOTE: Do not place your application dependencies here; they belong
         // in the individual module build.gradle files
@@ -21,6 +21,20 @@ allprojects {
     repositories {
         google()
         mavenCentral()
+    }
+    // Force all sub-projects (including Capacitor plugins) to use Java 17
+    tasks.withType(JavaCompile).configureEach {
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
+    }
+    
+    // Attempt to force toolchain for any plugin using it
+    plugins.withType(JavaPlugin).configureEach {
+        java {
+            toolchain {
+                languageVersion = JavaLanguageVersion.of(17)
+            }
+        }
     }
 }
 

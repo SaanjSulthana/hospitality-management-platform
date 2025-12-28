@@ -27,8 +27,8 @@ export function BottomNav({ onMenuClick }: BottomNavProps) {
     ];
 
     return (
-        <div className="fixed bottom-0 left-0 right-0 z-50 bg-white border-t border-gray-100 safe-area-bottom lg:hidden shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)]">
-            <div className="flex justify-around items-center h-16 px-2">
+        <div className="fixed bottom-0 left-0 right-0 z-50 bg-white border-t border-gray-100 pb-safe lg:hidden shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)]">
+            <nav className="flex items-center justify-around h-20 px-2 w-full">
                 {navItems.map((item) => {
                     const isActive = location.pathname === item.href;
                     const Icon = item.icon;
@@ -37,21 +37,20 @@ export function BottomNav({ onMenuClick }: BottomNavProps) {
                         <button
                             key={item.name}
                             onClick={() => navigate(item.href)}
-                            className={cn(
-                                "flex flex-col items-center justify-center w-full h-full space-y-1.5",
-                                isActive ? "text-blue-600" : "text-gray-500 hover:text-gray-900"
-                            )}
+                            className={`flex flex-col items-center justify-center w-full h-full gap-1.5 transition-all duration-200 active:scale-95 ${isActive ? 'text-blue-600' : 'text-gray-400 hover:text-gray-600'
+                                }`}
                         >
-                            <div className={cn(
-                                "flex items-center justify-center w-6 h-6 rounded-full border-2",
-                                isActive ? "bg-blue-600 border-blue-600 text-white" : "border-current bg-transparent"
-                            )}>
-                                <Icon className="h-3.5 w-3.5" />
+                            <div className={`p-1.5 rounded-xl transition-all duration-200 ${isActive ? 'bg-blue-50 shadow-sm' : 'bg-transparent'
+                                }`}>
+                                <Icon
+                                    className={`h-7 w-7 transition-all duration-200 ${isActive ? 'stroke-[2.5px]' : 'stroke-2'
+                                        }`}
+                                />
                             </div>
-                            <span className={cn(
-                                "text-[11px] font-bold uppercase tracking-tight leading-none",
-                                isActive ? "font-bold" : "font-medium"
-                            )}>{item.name}</span>
+                            <span className={`text-sm font-medium tracking-wide ${isActive ? 'font-semibold' : ''
+                                }`}>
+                                {item.name}
+                            </span>
                         </button>
                     );
                 })}
@@ -60,12 +59,12 @@ export function BottomNav({ onMenuClick }: BottomNavProps) {
                     onClick={onMenuClick}
                     className="flex flex-col items-center justify-center w-full h-full space-y-1.5 text-gray-500 hover:text-gray-900"
                 >
-                    <div className="flex items-center justify-center w-6 h-6 rounded-full border-2 border-current bg-transparent">
-                        <Menu className="h-3.5 w-3.5" strokeWidth={2} />
+                    <div className="flex items-center justify-center w-6 h-6 rounded-full">
+                        <Menu className="h-6 w-6" strokeWidth={2} />
                     </div>
-                    <span className="text-[11px] font-bold uppercase tracking-tight leading-none">Menu</span>
+                    <span className="text-xs font-medium tracking-tight leading-none">Menu</span>
                 </button>
-            </div>
+            </nav>
         </div>
     );
 }

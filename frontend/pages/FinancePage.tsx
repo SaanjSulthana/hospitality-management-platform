@@ -3364,7 +3364,7 @@ export default function FinancePage() {
         )}
 
         {/* FAB Container */}
-        <div className="fixed bottom-24 right-4 z-50 flex flex-col items-end gap-4 sm:hidden">
+        <div className="fixed bottom-28 right-4 z-[60] flex flex-col items-end gap-4 sm:hidden pb-safe">
 
           {/* Action Buttons (Reveal upwards) */}
           <div className={`flex flex-col gap-3 transition-all duration-300 ease-out origin-bottom ${isMobileMenuOpen ? 'opacity-100 translate-y-0 scale-100' : 'opacity-0 translate-y-10 scale-95 pointer-events-none'}`}>
@@ -3373,12 +3373,12 @@ export default function FinancePage() {
                 setIsRevenueDialogOpen(true);
                 setIsMobileMenuOpen(false);
               }}
-              className="h-11 pl-4 pr-5 rounded-full bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 text-white shadow-lg shadow-green-500/30 border-0 flex items-center gap-2 transition-transform active:scale-95"
+              className="h-12 pl-5 pr-6 rounded-full bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 text-white shadow-lg shadow-green-500/30 border-0 flex items-center gap-2 transition-transform active:scale-95"
             >
-              <div className="bg-white/20 p-1 rounded-full">
+              <div className="bg-white/20 p-1.5 rounded-full">
                 <IndianRupee className="h-4 w-4" />
               </div>
-              <span className="font-semibold tracking-wide">Add Revenue</span>
+              <span className="font-semibold tracking-wide text-sm">Add Revenue</span>
             </Button>
 
             <Button
@@ -3386,24 +3386,24 @@ export default function FinancePage() {
                 setIsExpenseDialogOpen(true);
                 setIsMobileMenuOpen(false);
               }}
-              className="h-11 pl-4 pr-5 rounded-full bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 text-white shadow-lg shadow-red-500/30 border-0 flex items-center gap-2 transition-transform active:scale-95"
+              className="h-12 pl-5 pr-6 rounded-full bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 text-white shadow-lg shadow-red-500/30 border-0 flex items-center gap-2 transition-transform active:scale-95"
             >
-              <div className="bg-white/20 p-1 rounded-full">
+              <div className="bg-white/20 p-1.5 rounded-full">
                 <Plus className="h-4 w-4" />
               </div>
-              <span className="font-semibold tracking-wide">Add Expense</span>
+              <span className="font-semibold tracking-wide text-sm">Add Expense</span>
             </Button>
           </div>
 
           {/* Main Trigger Button */}
           <Button
             onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-            className={`h-14 w-14 rounded-full shadow-xl flex items-center justify-center transition-all duration-300 border-0 ${isMobileMenuOpen ? 'bg-gray-800 rotate-90' : 'bg-blue-600 hover:bg-blue-700'}`}
+            className={`h-16 w-16 rounded-full shadow-xl flex items-center justify-center transition-all duration-300 border-0 ${isMobileMenuOpen ? 'bg-gray-800 rotate-90' : 'bg-blue-600 hover:bg-blue-700'}`}
           >
             <Plus className={`h-8 w-8 text-white transition-transform duration-300 ${isMobileMenuOpen ? 'rotate-45' : 'rotate-0'}`} />
           </Button>
         </div>
-      </div >
-    </div >
+      </div>
+    </div>
   );
 }

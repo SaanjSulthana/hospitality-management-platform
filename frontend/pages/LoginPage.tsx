@@ -50,7 +50,7 @@ export default function LoginPage() {
 
     try {
       setShowProgress(true);
-      await new Promise(resolve => setTimeout(resolve, 600)); // Slight delay for smooth animation
+      // Removed 600ms artificial delay - LoginProgress provides visual feedback
 
       await login(currentEmail, currentPassword);
 

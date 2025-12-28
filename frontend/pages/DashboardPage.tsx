@@ -8,7 +8,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 
 import { useNavigate } from 'react-router-dom';
-import { LoadingPage, LoadingCard } from '@/components/ui/loading-spinner'; // Fixed import: LoadingCard loaded from exact alias or file? Usually from loading-spinner too.
+import { LoadingCard, SkeletonCard, SkeletonStats, SkeletonActionCards } from '@/components/ui/loading-spinner';
 import { NoDataCard } from '@/components/ui/no-data';
 import { useApiError } from '@/hooks/use-api-error';
 import { QUERY_KEYS } from '../src/utils/api-standardizer';
@@ -84,7 +84,7 @@ export default function DashboardPage() {
   // Data fetching (Hooks)
   const dashboardData = useDashboardData();
   const {
-    analytics,
+    analytics, analyticsLoading,
     properties, propertiesLoading, propertiesError,
     tasks, tasksLoading, tasksError,
     pendingApprovals,
@@ -104,10 +104,8 @@ export default function DashboardPage() {
   const [showOverdueTasksModal, setShowOverdueTasksModal] = React.useState(false);
   const [showFinancialPendingModal, setShowFinancialPendingModal] = React.useState(false);
 
-  // Show loading state only if critical data (properties and tasks) is loading
-  if (propertiesLoading || tasksLoading) {
-    return <LoadingPage text="Loading dashboard..." />;
-  }
+  // Progressive rendering: Show layout immediately, skeleton loaders for loading sections
+  const isInitialLoading = propertiesLoading && tasksLoading && !properties && !tasks;
 
   // Show error state only if critical data (properties and tasks) failed to load
   if (propertiesError && tasksError) {
@@ -156,22 +154,26 @@ export default function DashboardPage() {
   return (
     <div className="w-full space-y-4 md:space-y-6 pt-safe pb-safe pb-20 sm:pb-safe px-4 sm:px-6">
 
-      {/* Works to be Done (New Component) */}
-      <ActionCards
-        stats={{
-          pendingApprovals: totalPendingApprovals,
-          urgentItems: totalUrgentItems,
-          financialPending: pendingRevenues.length + pendingExpenses.length,
-          pendingLeave: pendingLeaveRequests.length,
-          urgentTasksCount: urgentTasks.length
-        }}
-        onAction={handleActionCardClick}
-      />
+      {/* Works to be Done - Show skeleton if initial loading */}
+      {isInitialLoading ? (
+        <SkeletonActionCards />
+      ) : (
+        <ActionCards
+          stats={{
+            pendingApprovals: totalPendingApprovals,
+            urgentItems: totalUrgentItems,
+            financialPending: pendingRevenues.length + pendingExpenses.length,
+            pendingLeave: pendingLeaveRequests.length,
+            urgentTasksCount: urgentTasks.length
+          }}
+          onAction={handleActionCardClick}
+        />
+      )}
 
       {user?.role === 'ADMIN' ? (
         <>
-          {/* Stats Overview (New Component) */}
-          {analytics && <StatsOverview analytics={analytics} />}
+          {/* Stats Overview - Show skeleton while analytics loads */}
+          {analyticsLoading ? <SkeletonStats /> : analytics && <StatsOverview analytics={analytics} />}
 
           <div className="flex overflow-x-auto snap-x snap-mandatory px-4 -mx-4 pb-4 no-scrollbar sm:grid sm:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6 sm:overflow-visible sm:px-0 sm:mx-0 sm:pb-0">
             {/* Properties Overview - Consider Componentizing later */}

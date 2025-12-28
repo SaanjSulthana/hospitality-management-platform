@@ -211,3 +211,10 @@ docker-compose logs redis
 
 
 
+
+
+
+
+
+
+

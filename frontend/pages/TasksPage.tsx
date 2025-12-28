@@ -15,7 +15,7 @@ import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTr
 import { useToast } from '@/components/ui/use-toast';
 import { CreateTaskDialog } from '@/components/ui/create-task-dialog';
 import { StatsCard } from '@/components/ui/stats-card';
-import { LoadingSpinner } from '@/components/ui/loading-spinner';
+import { LoadingSpinner, SkeletonKanban, SkeletonTaskGrid } from '@/components/ui/loading-spinner';
 import { NoData } from '@/components/ui/no-data';
 import {
   Plus,
@@ -133,10 +133,10 @@ export default function TasksPage() {
         assignee: filters.assignee === 'me' ? 'me' : filters.assignee !== 'all' ? parseInt(filters.assignee) : undefined,
       });
     },
-    staleTime: 25000,
-    gcTime: 300000,
+    staleTime: 300000, // 5 minutes - optimized for navigation
+    gcTime: 600000,
     refetchOnWindowFocus: false,
-    refetchOnMount: true,
+    refetchOnMount: false, // Use cached data on navigation
   });
 
   // Fetch properties
@@ -786,11 +786,9 @@ export default function TasksPage() {
           </CardContent>
         </Card>
 
-        {/* Content */}
-        {tasksLoading ? (
-          <div className="flex items-center justify-center py-20">
-            <LoadingSpinner />
-          </div>
+        {/* Content - Progressive Loading */}
+        {tasksLoading && !tasksData ? (
+          <SkeletonKanban />
         ) : filteredTasks.length === 0 ? (
           <NoData
             icon={<ListTodo className="h-12 w-12" />}

@@ -38,6 +38,7 @@ import {
   API_ENDPOINTS
 } from '../src/utils/api-standardizer';
 import { getFlagBool } from '../lib/feature-flags';
+import { SkeletonPropertyGrid } from '@/components/ui/loading-spinner';
 
 export default function PropertiesPage() {
   const { user } = useAuth();
@@ -289,14 +290,8 @@ export default function PropertiesPage() {
   }, getFlagBool('PROPERTIES_REALTIME_V1', true));
 
 
-  // Loading State
-  if (isLoading) {
-    return (
-      <div className="flex justify-center items-center min-h-[50vh]">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-      </div>
-    );
-  }
+  // Progressive rendering: Show header immediately, skeleton for content
+  const isInitialLoading = isLoading && !properties;
 
   // Error State
   if (propertiesError) {
@@ -368,9 +363,13 @@ export default function PropertiesPage() {
         </div>
       </div>
 
-      {/* Main Grid */}
+      {/* Main Grid - Progressive Loading */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6 px-1 pb-safe">
-        {filteredProperties.length === 0 ? (
+        {isInitialLoading ? (
+          <div className="col-span-full">
+            <SkeletonPropertyGrid count={6} />
+          </div>
+        ) : filteredProperties.length === 0 ? (
           <div className="col-span-full py-12 text-center bg-white rounded-3xl shadow-sm border border-gray-100">
             <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
               <LayoutGrid className="h-8 w-8 text-gray-400" />

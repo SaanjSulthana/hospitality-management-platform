@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="ExternalDependencies">
+    <plugin id="com.android.tools.apk" />
+    <plugin id="com.android.tools.design" />
+    <plugin id="com.android.tools.ndk" />
+    <plugin id="com.google.targetsdkversionassistant" />
+    <plugin id="com.google.urlassistant" />
+    <plugin id="com.intellij.cidr.lang" />
+    <plugin id="org.jetbrains.idea.reposearch" />
+  </component>
+</project>

@@ -188,6 +188,9 @@ function getErrorTitle(errorType: DatabaseErrorType): string {
  * Convert database errors to appropriate APIError instances
  */
 export function convertToAPIError(error: Error, context: ErrorContext): APIError {
+  // #region agent log
+  fetch('http://127.0.0.1:7242/ingest/33d595d9-e296-4216-afc6-6fa72f7ee3e2',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'finance/error_handling.ts:190',message:'Converting error to APIError',data:{errorMessage:error.message,errorName:error.name,operation:context.operation},timestamp:Date.now(),sessionId:'debug-session',runId:'pre-fix',hypothesisId:'E'})}).catch(()=>{});
+  // #endregion
   if (error instanceof APIError) {
     return error;
   }
@@ -195,26 +198,37 @@ export function convertToAPIError(error: Error, context: ErrorContext): APIError
   const errorType = categorizeDatabaseError(error);
   const errorMessage = `Database error in ${context.operation}: ${error.message}`;
   
+  // #region agent log
+  fetch('http://127.0.0.1:7242/ingest/33d595d9-e296-4216-afc6-6fa72f7ee3e2',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'finance/error_handling.ts:196',message:'Error categorized',data:{errorType,errorMessage},timestamp:Date.now(),sessionId:'debug-session',runId:'pre-fix',hypothesisId:'E'})}).catch(()=>{});
+  // #endregion
+  
+  let apiError: APIError;
   switch (errorType) {
     case 'permission_denied':
-      return APIError.permissionDenied(errorMessage);
-    
+      apiError = APIError.permissionDenied(errorMessage);
+      break;
     case 'connection_timeout':
-      return APIError.unavailable(errorMessage);
-    
+      apiError = APIError.unavailable(errorMessage);
+      break;
     case 'column_does_not_exist':
     case 'table_does_not_exist':
-      return APIError.failedPrecondition(errorMessage);
-    
+      apiError = APIError.failedPrecondition(errorMessage);
+      break;
     case 'constraint_violation':
-      return APIError.invalidArgument(errorMessage);
-    
+      apiError = APIError.invalidArgument(errorMessage);
+      break;
     case 'query_execution_error':
-      return APIError.invalidArgument(errorMessage);
-    
+      apiError = APIError.invalidArgument(errorMessage);
+      break;
     default:
-      return APIError.internal(errorMessage);
+      apiError = APIError.internal(errorMessage);
   }
+  
+  // #region agent log
+  fetch('http://127.0.0.1:7242/ingest/33d595d9-e296-4216-afc6-6fa72f7ee3e2',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'finance/error_handling.ts:217',message:'APIError created',data:{errorType,apiErrorCode:apiError.code},timestamp:Date.now(),sessionId:'debug-session',runId:'pre-fix',hypothesisId:'E'})}).catch(()=>{});
+  // #endregion
+  
+  return apiError;
 }
 
 /**

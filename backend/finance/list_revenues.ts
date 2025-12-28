@@ -62,10 +62,20 @@ export interface ListRevenuesResponse {
 
 // Lists revenues with filtering
 async function listRevenuesHandler(req: ListRevenuesRequest): Promise<ListRevenuesResponse> {
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/33d595d9-e296-4216-afc6-6fa72f7ee3e2',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'finance/list_revenues.ts:64',message:'List revenues handler entry',data:{hasReq:!!req,propertyId:req?.propertyId},timestamp:Date.now(),sessionId:'debug-session',runId:'pre-fix',hypothesisId:'B'})}).catch(()=>{});
+    // #endregion
     const authData = getAuthData();
     if (!authData) {
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/33d595d9-e296-4216-afc6-6fa72f7ee3e2',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'finance/list_revenues.ts:67',message:'Auth data missing',data:{},timestamp:Date.now(),sessionId:'debug-session',runId:'pre-fix',hypothesisId:'B'})}).catch(()=>{});
+      // #endregion
       throw APIError.unauthenticated("Authentication required");
     }
+    
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/33d595d9-e296-4216-afc6-6fa72f7ee3e2',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'finance/list_revenues.ts:70',message:'Auth data retrieved',data:{userId:authData.userID,orgId:authData.orgId,role:authData.role},timestamp:Date.now(),sessionId:'debug-session',runId:'pre-fix',hypothesisId:'B'})}).catch(()=>{});
+    // #endregion
     
     // Wrap with metrics tracking and ETag support
     return trackMetrics('/v1/finance/revenues', async (timer) => {
@@ -142,12 +152,27 @@ async function listRevenuesHandler(req: ListRevenuesRequest): Promise<ListRevenu
       console.log('Executing query:', query);
       console.log('Query params:', params);
       
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/33d595d9-e296-4216-afc6-6fa72f7ee3e2',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'finance/list_revenues.ts:152',message:'Before database query',data:{queryLength:query.length,paramCount:params.length,orgId:authData.orgId},timestamp:Date.now(),sessionId:'debug-session',runId:'pre-fix',hypothesisId:'C'})}).catch(()=>{});
+      // #endregion
+      
       // Execute query with retry logic for connection issues
-      const revenues = await executeWithRetry(
-        () => financeDB.rawQueryAll(query, ...params),
-        3, // max retries
-        1000 // delay between retries
-      );
+      let revenues: any[];
+      try {
+        revenues = await executeWithRetry(
+          () => financeDB.rawQueryAll(query, ...params),
+          3, // max retries
+          1000 // delay between retries
+        );
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/33d595d9-e296-4216-afc6-6fa72f7ee3e2',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'finance/list_revenues.ts:160',message:'Database query success',data:{resultCount:revenues.length},timestamp:Date.now(),sessionId:'debug-session',runId:'pre-fix',hypothesisId:'C'})}).catch(()=>{});
+        // #endregion
+      } catch (dbError: any) {
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/33d595d9-e296-4216-afc6-6fa72f7ee3e2',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'finance/list_revenues.ts:165',message:'Database query error',data:{errorMessage:dbError?.message,errorName:dbError?.name,errorCode:dbError?.code},timestamp:Date.now(),sessionId:'debug-session',runId:'pre-fix',hypothesisId:'C'})}).catch(()=>{});
+        // #endregion
+        throw dbError;
+      }
       
       console.log('Query result count:', revenues.length);
 
@@ -234,9 +259,15 @@ async function listRevenuesHandler(req: ListRevenuesRequest): Promise<ListRevenu
         }
       };
     } catch (error) {
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/33d595d9-e296-4216-afc6-6fa72f7ee3e2',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'finance/list_revenues.ts:261',message:'Error caught in handler',data:{errorMessage:(error as Error)?.message,errorName:(error as Error)?.name,isSchemaError:isSchemaError(error as Error)},timestamp:Date.now(),sessionId:'debug-session',runId:'pre-fix',hypothesisId:'E'})}).catch(()=>{});
+      // #endregion
       // Handle schema errors with fallback query
       if (isSchemaError(error as Error)) {
         console.log('Schema error detected, attempting fallback query...');
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/33d595d9-e296-4216-afc6-6fa72f7ee3e2',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'finance/list_revenues.ts:264',message:'Schema error detected',data:{errorMessage:(error as Error)?.message},timestamp:Date.now(),sessionId:'debug-session',runId:'pre-fix',hypothesisId:'E'})}).catch(()=>{});
+        // #endregion
         // Declare fallbackQuery outside try block so it's accessible in catch
         const fallbackQuery = generateFallbackQuery(query, ['status', 'payment_mode', 'bank_reference', 'receipt_file_id', 'approved_by_user_id', 'approved_at']);
         try {

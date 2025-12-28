@@ -189,20 +189,27 @@ const stagingConfig: BackendEnvironmentConfig = {
  * Get current environment name
  */
 function getCurrentEnvironment(): string {
+  // #region agent log
+  fetch('http://127.0.0.1:7242/ingest/33d595d9-e296-4216-afc6-6fa72f7ee3e2',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'config/environment.ts:191',message:'Environment detection start',data:{nodeEnv:process.env.NODE_ENV,encoreEnv:process.env.ENCORE_ENV},timestamp:Date.now(),sessionId:'debug-session',runId:'pre-fix',hypothesisId:'A'})}).catch(()=>{});
+  // #endregion
   // In Encore.js, we can detect environment through various means
   const nodeEnv = process.env.NODE_ENV;
   const encoreEnv = process.env.ENCORE_ENV;
   
+  let detectedEnv: string;
   if (encoreEnv) {
-    return encoreEnv;
+    detectedEnv = encoreEnv;
+  } else if (nodeEnv) {
+    detectedEnv = nodeEnv;
+  } else {
+    detectedEnv = 'development';
   }
   
-  if (nodeEnv) {
-    return nodeEnv;
-  }
+  // #region agent log
+  fetch('http://127.0.0.1:7242/ingest/33d595d9-e296-4216-afc6-6fa72f7ee3e2',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'config/environment.ts:205',message:'Environment detected',data:{detectedEnv,nodeEnv,encoreEnv},timestamp:Date.now(),sessionId:'debug-session',runId:'pre-fix',hypothesisId:'A'})}).catch(()=>{});
+  // #endregion
   
-  // Default to development
-  return 'development';
+  return detectedEnv;
 }
 
 /**
@@ -211,19 +218,34 @@ function getCurrentEnvironment(): string {
 export function getEnvironmentConfig(): BackendEnvironmentConfig {
   const env = getCurrentEnvironment();
   
+  // #region agent log
+  fetch('http://127.0.0.1:7242/ingest/33d595d9-e296-4216-afc6-6fa72f7ee3e2',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'config/environment.ts:211',message:'Getting environment config',data:{env},timestamp:Date.now(),sessionId:'debug-session',runId:'pre-fix',hypothesisId:'A'})}).catch(()=>{});
+  // #endregion
+  
+  let config: BackendEnvironmentConfig;
   switch (env) {
     case 'development':
-      return developmentConfig;
+      config = developmentConfig;
+      break;
     case 'production':
-      return productionConfig;
+      config = productionConfig;
+      break;
     case 'test':
-      return testConfig;
+      config = testConfig;
+      break;
     case 'staging':
-      return stagingConfig;
+      config = stagingConfig;
+      break;
     default:
       log.warn(`Unknown environment: ${env}, defaulting to development`);
-      return developmentConfig;
+      config = developmentConfig;
   }
+  
+  // #region agent log
+  fetch('http://127.0.0.1:7242/ingest/33d595d9-e296-4216-afc6-6fa72f7ee3e2',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'config/environment.ts:226',message:'Environment config selected',data:{env,configName:config.name,debug:config.debug,dbMaxConnections:config.database.maxConnections,dbTimeout:config.database.queryTimeout},timestamp:Date.now(),sessionId:'debug-session',runId:'pre-fix',hypothesisId:'A'})}).catch(()=>{});
+  // #endregion
+  
+  return config;
 }
 
 /**

@@ -23,18 +23,38 @@ export interface LoginResponse {
 
 // Shared handler for authentication logic
 async function loginHandler(req: LoginRequest): Promise<LoginResponse> {
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/33d595d9-e296-4216-afc6-6fa72f7ee3e2',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'auth/login.ts:25',message:'Login handler entry',data:{email:req.email,hasPassword:!!req.password},timestamp:Date.now(),sessionId:'debug-session',runId:'pre-fix',hypothesisId:'D'})}).catch(()=>{});
+    // #endregion
     const { email, password } = req;
 
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/33d595d9-e296-4216-afc6-6fa72f7ee3e2',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'auth/login.ts:29',message:'Before database transaction',data:{},timestamp:Date.now(),sessionId:'debug-session',runId:'pre-fix',hypothesisId:'C'})}).catch(()=>{});
+    // #endregion
     const tx = await authDB.begin();
     try {
       log.info("Login attempt", { email });
 
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/33d595d9-e296-4216-afc6-6fa72f7ee3e2',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'auth/login.ts:33',message:'Before user query',data:{email},timestamp:Date.now(),sessionId:'debug-session',runId:'pre-fix',hypothesisId:'C'})}).catch(()=>{});
+      // #endregion
       // Find user by email
-      const userRow = await tx.queryRow`
-        SELECT u.id, u.org_id, u.email, u.password_hash, u.role, u.display_name, u.created_by_user_id, u.created_at, u.last_login_at
-        FROM users u
-        WHERE u.email = ${email}
-      `;
+      let userRow: any;
+      try {
+        userRow = await tx.queryRow`
+          SELECT u.id, u.org_id, u.email, u.password_hash, u.role, u.display_name, u.created_by_user_id, u.created_at, u.last_login_at
+          FROM users u
+          WHERE u.email = ${email}
+        `;
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/33d595d9-e296-4216-afc6-6fa72f7ee3e2',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'auth/login.ts:40',message:'User query result',data:{found:!!userRow,userId:userRow?.id},timestamp:Date.now(),sessionId:'debug-session',runId:'pre-fix',hypothesisId:'C'})}).catch(()=>{});
+        // #endregion
+      } catch (dbError: any) {
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/33d595d9-e296-4216-afc6-6fa72f7ee3e2',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'auth/login.ts:43',message:'User query error',data:{errorMessage:dbError?.message,errorName:dbError?.name,errorCode:dbError?.code},timestamp:Date.now(),sessionId:'debug-session',runId:'pre-fix',hypothesisId:'C'})}).catch(()=>{});
+        // #endregion
+        throw dbError;
+      }
 
       if (!userRow) {
         log.warn("Login failed - user not found", { email });

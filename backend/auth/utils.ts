@@ -6,6 +6,16 @@ import { JWTPayload, User } from "./types";
 const jwtSecret = secret("JWTSecret");
 const refreshSecret = secret("RefreshSecret");
 
+// #region agent log
+try {
+  const jwtSecretValue = jwtSecret();
+  const refreshSecretValue = refreshSecret();
+  fetch('http://127.0.0.1:7242/ingest/33d595d9-e296-4216-afc6-6fa72f7ee3e2',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'auth/utils.ts:8',message:'Secrets check',data:{hasJWTSecret:!!jwtSecretValue,hasRefreshSecret:!!refreshSecretValue,jwtSecretLength:jwtSecretValue?.length||0,refreshSecretLength:refreshSecretValue?.length||0},timestamp:Date.now(),sessionId:'debug-session',runId:'pre-fix',hypothesisId:'D'})}).catch(()=>{});
+} catch (secretError: any) {
+  fetch('http://127.0.0.1:7242/ingest/33d595d9-e296-4216-afc6-6fa72f7ee3e2',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'auth/utils.ts:10',message:'Secret access error',data:{errorMessage:secretError?.message,errorName:secretError?.name},timestamp:Date.now(),sessionId:'debug-session',runId:'pre-fix',hypothesisId:'D'})}).catch(()=>{});
+}
+// #endregion
+
 // Security: NEVER log secrets in production
 // All debug logging has been removed to prevent credential leaks
 

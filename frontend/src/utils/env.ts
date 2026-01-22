@@ -133,9 +133,9 @@ export const API_VERSION = '/v1';
 
 /**
  * Encore Cloud API URLs
- * Note: api.curat.ai DNS is not configured, using default Encore URL
+ * Note: api.curat.ai DNS is not configured, using staging Encore URL
  */
-const ENCORE_CLOUD_API_URL = 'https://hospitality-management-platform-cr8i.encr.app';
+const ENCORE_CLOUD_API_URL = 'https://staging-hospitality-management-platform-cr8i.encr.app';
 
 /**
  * Get API URL from environment or use default
@@ -159,9 +159,9 @@ export function getApiUrl(): string {
   if (typeof window !== 'undefined') {
     const hostname = window.location.hostname;
     
-    // Production custom domain - curat.ai
+    // Production custom domain - curat.ai (use staging backend)
     if (hostname === 'curat.ai' || hostname.endsWith('.curat.ai')) {
-      return ENCORE_CLOUD_API_URL;
+      return 'https://staging-hospitality-management-platform-cr8i.encr.app';
     }
     
     // Netlify deployment

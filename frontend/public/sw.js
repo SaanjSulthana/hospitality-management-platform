@@ -3,7 +3,7 @@
  * Provides offline support and caching
  */
 
-const CACHE_NAME = 'hospitality-pms-v1';
+const CACHE_NAME = 'hospitality-pms-v2';
 const OFFLINE_URL = '/offline.html';
 
 // Assets to cache on install

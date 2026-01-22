@@ -23,6 +23,8 @@
     "allow_origins_without_credentials": [
       "https://curat.ai",
       "https://www.curat.ai",
+      "https://api.curat.ai",
+      "https://www.api.curat.ai",
       "https://hospitalitymanagementplatform.netlify.app",
       "https://prod-hospitality-management-platform-cr8i.frontend.encr.app",
       "http://localhost:5173",
@@ -31,6 +33,8 @@
     "allow_origins_with_credentials": [
       "https://curat.ai",
       "https://www.curat.ai",
+      "https://api.curat.ai",
+      "https://www.api.curat.ai",
       "https://hospitalitymanagementplatform.netlify.app",
       "https://prod-hospitality-management-platform-cr8i.frontend.encr.app",
       "http://localhost:5173",

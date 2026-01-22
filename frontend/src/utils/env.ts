@@ -132,14 +132,10 @@ export function getEnvVar(key: string, fallback: string = ''): string {
 export const API_VERSION = '/v1';
 
 /**
- * Encore Cloud default API URL (primary - guaranteed to work)
+ * Encore Cloud API URLs
  */
-const ENCORE_CLOUD_API_URL = 'https://hospitality-management-platform-cr8i.encr.app';
-
-/**
- * Custom domain API URL (use once DNS fully propagates)
- */
-const CUSTOM_DOMAIN_API_URL = 'https://api.curat.ai';
+const ENCORE_CLOUD_API_URL = 'https://api.curat.ai';
+const ENCORE_CLOUD_FALLBACK_URL = 'https://hospitality-management-platform-cr8i.encr.app';
 
 /**
  * Get API URL from environment or use default
@@ -154,7 +150,7 @@ export function getApiUrl(): string {
   if (viteApiUrl) return viteApiUrl;
   if (reactApiUrl) return reactApiUrl;
   
-  // For Capacitor native apps - use Encore Cloud URL (works everywhere)
+  // For Capacitor native apps
   if (isCapacitor()) {
     return ENCORE_CLOUD_API_URL;
   }
@@ -198,7 +194,7 @@ export function getApiUrl(): string {
  * Use this if custom domain fails
  */
 export function getFallbackApiUrl(): string {
-  return ENCORE_CLOUD_API_URL;
+  return ENCORE_CLOUD_FALLBACK_URL;
 }
 
 /**

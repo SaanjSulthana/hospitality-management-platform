@@ -19,7 +19,7 @@
     }
   },
   "global_cors": {
-    "debug": true,
+    "debug": false,
     "allow_origins_without_credentials": [
       "https://curat.ai",
       "https://www.curat.ai",

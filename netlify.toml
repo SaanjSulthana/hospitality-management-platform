@@ -8,9 +8,63 @@
   # Publish directory (relative to base)
   publish = "dist"
 
+[build.environment]
+  # Production API URL for Encore Cloud backend
+  VITE_API_URL = "https://api.curat.ai"
+  NODE_VERSION = "20"
+
+# SPA redirects - all routes go to index.html
 [[redirects]]
   from = "/*"
   to = "/index.html"
   status = 200
 
+# Security and performance headers
+[[headers]]
+  for = "/*"
+  [headers.values]
+    # Security headers
+    X-Frame-Options = "DENY"
+    X-Content-Type-Options = "nosniff"
+    X-XSS-Protection = "1; mode=block"
+    Referrer-Policy = "strict-origin-when-cross-origin"
+    Permissions-Policy = "camera=(), microphone=(), geolocation=()"
+    
+    # Cache static assets
+[[headers]]
+  for = "/assets/*"
+  [headers.values]
+    Cache-Control = "public, max-age=31536000, immutable"
 
+[[headers]]
+  for = "*.js"
+  [headers.values]
+    Cache-Control = "public, max-age=31536000, immutable"
+
+[[headers]]
+  for = "*.css"
+  [headers.values]
+    Cache-Control = "public, max-age=31536000, immutable"
+
+[[headers]]
+  for = "*.woff2"
+  [headers.values]
+    Cache-Control = "public, max-age=31536000, immutable"
+
+# Production context settings
+[context.production]
+  [context.production.environment]
+    VITE_API_URL = "https://api.curat.ai"
+    NODE_ENV = "production"
+
+# Deploy preview settings (for PR previews)
+[context.deploy-preview]
+  [context.deploy-preview.environment]
+    VITE_API_URL = "https://api.curat.ai"
+    NODE_ENV = "production"
+
+# Branch deploy settings
+[context.branch-deploy]
+  [context.branch-deploy.environment]
+    VITE_API_URL = "https://api.curat.ai"
+    NODE_ENV = "production"

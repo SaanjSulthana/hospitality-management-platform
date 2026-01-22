@@ -153,6 +153,11 @@ export function getApiUrl(): string {
   if (typeof window !== 'undefined') {
     const hostname = window.location.hostname;
     
+    // Production custom domain - curat.ai
+    if (hostname === 'curat.ai' || hostname.endsWith('.curat.ai')) {
+      return 'https://api.curat.ai';
+    }
+    
     // Netlify deployment
     if (hostname.includes('netlify.app')) {
       return 'https://api.curat.ai';

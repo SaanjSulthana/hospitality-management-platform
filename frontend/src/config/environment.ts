@@ -65,7 +65,7 @@ const developmentConfig: EnvironmentConfig = {
  */
 const productionConfig: EnvironmentConfig = {
   name: 'production',
-  apiUrl: getEnvVar('VITE_API_URL') || getEnvVar('REACT_APP_API_URL') || 'https://api.hospitality-platform.com',
+  apiUrl: getEnvVar('VITE_API_URL') || getEnvVar('REACT_APP_API_URL') || 'https://api.curat.ai',
   debug: false,
   logging: {
     level: 'error',

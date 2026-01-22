@@ -27,6 +27,7 @@
       "https://www.api.curat.ai",
       "https://hospitalitymanagementplatform.netlify.app",
       "https://prod-hospitality-management-platform-cr8i.frontend.encr.app",
+      "https://staging-hospitality-management-platform-cr8i.frontend.encr.app",
       "http://localhost:5173",
       "http://localhost:3000"
     ],
@@ -37,6 +38,7 @@
       "https://www.api.curat.ai",
       "https://hospitalitymanagementplatform.netlify.app",
       "https://prod-hospitality-management-platform-cr8i.frontend.encr.app",
+      "https://staging-hospitality-management-platform-cr8i.frontend.encr.app",
       "http://localhost:5173",
       "http://localhost:3000"
     ],

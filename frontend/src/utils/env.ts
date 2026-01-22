@@ -132,13 +132,12 @@ export function getEnvVar(key: string, fallback: string = ''): string {
 export const API_VERSION = '/v1';
 
 /**
- * Encore Cloud default API URL (primary - use this until custom domain is configured)
+ * Encore Cloud default API URL (fallback)
  */
 const ENCORE_CLOUD_API_URL = 'https://hospitality-management-platform-cr8i.encr.app';
 
 /**
- * Custom domain API URL (will be used once DNS is configured)
- * Currently not resolving - use ENCORE_CLOUD_API_URL instead
+ * Custom domain API URL (primary - now configured in Encore Cloud)
  */
 const CUSTOM_DOMAIN_API_URL = 'https://api.curat.ai';
 
@@ -146,9 +145,6 @@ const CUSTOM_DOMAIN_API_URL = 'https://api.curat.ai';
  * Get API URL from environment or use default
  * Returns BASE URL without version prefix (version added per request)
  * Enhanced with Capacitor support and deployment platform detection
- * 
- * NOTE: Currently using Encore Cloud URL as primary since custom domain DNS is not configured.
- * Once api.curat.ai DNS is configured in Encore Cloud, this will automatically use it.
  */
 export function getApiUrl(): string {
   // Check for explicit environment variables first
@@ -158,10 +154,9 @@ export function getApiUrl(): string {
   if (viteApiUrl) return viteApiUrl;
   if (reactApiUrl) return reactApiUrl;
   
-  // For Capacitor native apps - use Encore Cloud URL until custom domain is configured
+  // For Capacitor native apps - use custom domain
   if (isCapacitor()) {
-    // TODO: Switch to CUSTOM_DOMAIN_API_URL once DNS is configured
-    return ENCORE_CLOUD_API_URL;
+    return CUSTOM_DOMAIN_API_URL;
   }
   
   // Auto-detect based on current hostname
@@ -169,30 +164,28 @@ export function getApiUrl(): string {
     const hostname = window.location.hostname;
     
     // Production custom domain - curat.ai
-    // TODO: Once api.curat.ai DNS is configured, change this to CUSTOM_DOMAIN_API_URL
     if (hostname === 'curat.ai' || hostname.endsWith('.curat.ai')) {
-      // Using Encore Cloud URL until custom domain DNS is configured
-      return ENCORE_CLOUD_API_URL;
+      return CUSTOM_DOMAIN_API_URL;
     }
     
-    // Netlify deployment - use Encore Cloud URL
+    // Netlify deployment
     if (hostname.includes('netlify.app')) {
-      return ENCORE_CLOUD_API_URL;
+      return CUSTOM_DOMAIN_API_URL;
     }
     
-    // Vercel deployment - use Encore Cloud URL
+    // Vercel deployment
     if (hostname.includes('vercel.app')) {
-      return ENCORE_CLOUD_API_URL;
+      return CUSTOM_DOMAIN_API_URL;
     }
     
-    // Encore Cloud staging frontend - use Encore Cloud staging URL
+    // Encore Cloud staging frontend
     if (hostname.includes('staging-hospitality-management-platform-cr8i.frontend.encr.app')) {
       return 'https://staging-hospitality-management-platform-cr8i.encr.app';
     }
     
-    // Encore Cloud production frontend - use Encore Cloud URL directly
+    // Encore Cloud production frontend
     if (hostname.includes('hospitality-management-platform-cr8i.frontend.encr.app')) {
-      return ENCORE_CLOUD_API_URL;
+      return CUSTOM_DOMAIN_API_URL;
     }
   }
   

@@ -9,7 +9,7 @@
   publish = "dist"
 
 [build.environment]
-  # Production API URL for Encore Cloud backend
+  # Production API URL for Encore Cloud backend (custom domain)
   VITE_API_URL = "https://api.curat.ai"
   NODE_VERSION = "20"
 

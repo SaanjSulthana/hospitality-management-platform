@@ -133,9 +133,9 @@ export const API_VERSION = '/v1';
 
 /**
  * Encore Cloud API URLs
+ * Note: api.curat.ai DNS is not configured, using default Encore URL
  */
-const ENCORE_CLOUD_API_URL = 'https://api.curat.ai';
-const ENCORE_CLOUD_FALLBACK_URL = 'https://hospitality-management-platform-cr8i.encr.app';
+const ENCORE_CLOUD_API_URL = 'https://hospitality-management-platform-cr8i.encr.app';
 
 /**
  * Get API URL from environment or use default
@@ -194,7 +194,7 @@ export function getApiUrl(): string {
  * Use this if custom domain fails
  */
 export function getFallbackApiUrl(): string {
-  return ENCORE_CLOUD_FALLBACK_URL;
+  return ENCORE_CLOUD_API_URL;
 }
 
 /**

@@ -9,8 +9,8 @@
   publish = "dist"
 
 [build.environment]
-  # Production API URL - using Encore Cloud custom domain
-  VITE_API_URL = "https://api.curat.ai"
+  # Production API URL - Encore Cloud (custom domain DNS not configured)
+  VITE_API_URL = "https://hospitality-management-platform-cr8i.encr.app"
   NODE_VERSION = "20"
 
 # SPA redirects - all routes go to index.html
@@ -54,17 +54,17 @@
 # Production context settings
 [context.production]
   [context.production.environment]
-    VITE_API_URL = "https://api.curat.ai"
+    VITE_API_URL = "https://hospitality-management-platform-cr8i.encr.app"
     NODE_ENV = "production"
 
 # Deploy preview settings (for PR previews)
 [context.deploy-preview]
   [context.deploy-preview.environment]
-    VITE_API_URL = "https://api.curat.ai"
+    VITE_API_URL = "https://hospitality-management-platform-cr8i.encr.app"
     NODE_ENV = "production"
 
 # Branch deploy settings
 [context.branch-deploy]
   [context.branch-deploy.environment]
-    VITE_API_URL = "https://api.curat.ai"
+    VITE_API_URL = "https://hospitality-management-platform-cr8i.encr.app"
     NODE_ENV = "production"

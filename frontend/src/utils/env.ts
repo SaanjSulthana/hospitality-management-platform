@@ -132,12 +132,12 @@ export function getEnvVar(key: string, fallback: string = ''): string {
 export const API_VERSION = '/v1';
 
 /**
- * Encore Cloud default API URL (fallback)
+ * Encore Cloud default API URL (primary - guaranteed to work)
  */
 const ENCORE_CLOUD_API_URL = 'https://hospitality-management-platform-cr8i.encr.app';
 
 /**
- * Custom domain API URL (primary - now configured in Encore Cloud)
+ * Custom domain API URL (use once DNS fully propagates)
  */
 const CUSTOM_DOMAIN_API_URL = 'https://api.curat.ai';
 
@@ -154,9 +154,9 @@ export function getApiUrl(): string {
   if (viteApiUrl) return viteApiUrl;
   if (reactApiUrl) return reactApiUrl;
   
-  // For Capacitor native apps - use custom domain
+  // For Capacitor native apps - use Encore Cloud URL (works everywhere)
   if (isCapacitor()) {
-    return CUSTOM_DOMAIN_API_URL;
+    return ENCORE_CLOUD_API_URL;
   }
   
   // Auto-detect based on current hostname
@@ -165,17 +165,17 @@ export function getApiUrl(): string {
     
     // Production custom domain - curat.ai
     if (hostname === 'curat.ai' || hostname.endsWith('.curat.ai')) {
-      return CUSTOM_DOMAIN_API_URL;
+      return ENCORE_CLOUD_API_URL;
     }
     
     // Netlify deployment
     if (hostname.includes('netlify.app')) {
-      return CUSTOM_DOMAIN_API_URL;
+      return ENCORE_CLOUD_API_URL;
     }
     
     // Vercel deployment
     if (hostname.includes('vercel.app')) {
-      return CUSTOM_DOMAIN_API_URL;
+      return ENCORE_CLOUD_API_URL;
     }
     
     // Encore Cloud staging frontend
@@ -185,7 +185,7 @@ export function getApiUrl(): string {
     
     // Encore Cloud production frontend
     if (hostname.includes('hospitality-management-platform-cr8i.frontend.encr.app')) {
-      return CUSTOM_DOMAIN_API_URL;
+      return ENCORE_CLOUD_API_URL;
     }
   }
   

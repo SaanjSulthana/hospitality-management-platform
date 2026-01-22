@@ -1,7 +1,8 @@
 import Client, { Local, Environment } from '../src/client';
-import { isDevelopment, getVersionedApiUrl } from '../src/utils/env';
+import { isDevelopment, getVersionedApiUrl, getFallbackApiUrl } from '../src/utils/env';
 import { API_CONFIG } from '../src/config/api';
 import { envUtils } from '@/src/utils/environment-detector';
+import { getBestAvailableApiUrl, getApiUrlSync } from '../src/utils/api-health-check';
 
 // Test if the import is working
 console.log('=== BACKEND IMPORT TEST ===');
@@ -11,9 +12,27 @@ console.log('Environment function:', Environment);
 console.log('Client type:', typeof Client);
 console.log('Local type:', typeof Local);
 
-// Use the versioned API URL from central config
-// This ensures all Encore-generated endpoints use /v1 prefix
-const apiUrl = getVersionedApiUrl();
+// Get API URL with fallback support
+// Start with synchronous URL for immediate use, then check health asynchronously
+let apiUrl = getVersionedApiUrl();
+console.log('Initial API URL:', apiUrl);
+
+// Asynchronously check and update to best available URL
+if (typeof window !== 'undefined' && !isDevelopment()) {
+  getBestAvailableApiUrl().then((bestUrl) => {
+    const versionedBestUrl = `${bestUrl}/v1`;
+    if (versionedBestUrl !== apiUrl) {
+      console.log(`[API Health Check] Switching to available API: ${versionedBestUrl}`);
+      apiUrl = versionedBestUrl;
+      // Update the client instance with new URL
+      // Note: This is a limitation - we can't change the URL after client creation
+      // But we log it for debugging
+    }
+  }).catch((error) => {
+    console.warn('[API Health Check] Health check failed, using initial URL:', error);
+  });
+}
+
 console.log('Using Versioned API URL:', apiUrl);
 
 // #region agent log

@@ -10,6 +10,17 @@ android {
         versionCode 1
         versionName "1.0"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+        
+        // API Configuration - Production backend
+        buildConfigField "String", "API_BASE_URL", "\"https://api.curat.ai\""
+        buildConfigField "String", "API_VERSION", "\"/v1\""
+        
+        // Manifest placeholders for API configuration
+        manifestPlaceholders = [
+            apiBaseUrl: "https://api.curat.ai",
+            apiVersion: "/v1"
+        ]
+        
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
              // Default: https://android.googlesource.com/platform/frameworks/base/+/282e181b58cf72b6ca770dc7ca5f91f135444502/tools/aapt/AaptAssets.cpp#61

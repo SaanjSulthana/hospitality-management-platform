@@ -24,7 +24,9 @@ export default defineConfig({
   define: {
     // Define environment variables for browser compatibility
     'process.env.NODE_ENV': JSON.stringify(process.env.NODE_ENV || 'development'),
-    'process.env.REACT_APP_API_URL': JSON.stringify(process.env.REACT_APP_API_URL || 'http://localhost:4000'),
+    'process.env.REACT_APP_API_URL': JSON.stringify(process.env.REACT_APP_API_URL || process.env.VITE_API_URL || 'http://localhost:4000'),
+    // Vite automatically exposes VITE_* variables via import.meta.env
+    // This is just for compatibility with code that uses process.env
   },
   envPrefix: 'VITE_',
   server: {

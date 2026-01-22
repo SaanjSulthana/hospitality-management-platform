@@ -19,7 +19,7 @@
     }
   },
   "global_cors": {
-    "debug": false,
+    "debug": true,
     "allow_origins_without_credentials": [
       "https://curat.ai",
       "https://www.curat.ai",
@@ -46,7 +46,11 @@
       "X-Requested-With",
       "Idempotency-Key",
       "If-None-Match",
-      "If-Modified-Since"
+      "If-Modified-Since",
+      "Accept",
+      "Origin",
+      "Access-Control-Request-Method",
+      "Access-Control-Request-Headers"
     ],
     "expose_headers": [
       "Content-Length",

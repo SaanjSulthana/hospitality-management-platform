@@ -19,18 +19,16 @@
     }
   },
   "global_cors": {
-    "debug": false,
+    "debug": true,
     "allow_origins_without_credentials": [
       "https://curat.ai",
       "https://www.curat.ai",
-      "https://*.netlify.app",
       "http://localhost:5173",
       "http://localhost:3000"
     ],
     "allow_origins_with_credentials": [
       "https://curat.ai",
       "https://www.curat.ai",
-      "https://*.netlify.app",
       "http://localhost:5173",
       "http://localhost:3000"
     ],
